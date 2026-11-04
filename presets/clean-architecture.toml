@@ -1,0 +1,77 @@
+name = "clean-architecture"
+description = "Dependency direction, boundaries and framework independence, as far as one file shows them"
+source = "Ideas discussed in Clean Architecture (Robert C. Martin, Prentice Hall, 2017). Independent paraphrase, not affiliated with or endorsed by the author or publisher."
+
+[[questions]]
+id = "dependency-direction"
+type = "score"
+title = "Imports point from details toward core logic"
+instructions = "From this file's imports and the code that uses them, does business logic depend on outer details such as web handlers, ORMs, UI and drivers? Files that are clearly adapters or entry points are expected to import those details, and count as fine."
+levels = [
+  "Core business logic imports and uses outer details throughout",
+  "Business logic depends on several outer details",
+  "One outer detail is imported where business logic is present",
+  "Imports point toward the core: this is either pure logic or a clear adapter or entry point",
+]
+weight = 2
+fix = "Have the business logic declare the small abstraction it needs, implement that in an adapter, and pass the adapter in from the entry point. Keep the logic itself unchanged."
+
+[[questions]]
+id = "framework-independence"
+type = "score"
+title = "Business rules can run without a framework"
+instructions = "Could the business rules in this file run in a plain test with no web server, ORM or framework loaded? Look for rules written inside request handlers, framework base types, decorators or model callbacks."
+levels = [
+  "Rules exist only inside framework handlers, base types or callbacks",
+  "Most rules need framework objects to run",
+  "Rules are mostly plain code, with some framework types in signatures",
+  "Rules are plain code that needs no framework, or the file holds no business rules",
+]
+weight = 2
+fix = "Extract the rule into a plain function taking plain values, and have the handler parse the request, call that function and format the response. Keep the external behaviour identical."
+
+[[questions]]
+id = "boundary-data"
+type = "score"
+title = "Data crossing a boundary is plain and purpose-built"
+instructions = "When data enters or leaves this file's logic, is it in plain structures meant for that purpose, or are database rows, ORM models and raw request or response objects passed straight into the logic?"
+levels = [
+  "Raw rows, ORM models or request objects flow all through the logic",
+  "Raw external structures reach the logic in several places",
+  "External structures are mostly converted at the edge, with a few leaks",
+  "External data is converted at the edge, or no external data appears here",
+]
+weight = 1
+fix = "Convert external structures to plain domain values at the edge, and pass only those inward. Add a small mapping function rather than changing the logic."
+
+[[questions]]
+id = "layer-separation"
+type = "score"
+title = "One file does not span several layers"
+instructions = "Does this file combine what should be separate layers, such as HTTP parsing, business decisions, SQL queries and output formatting, in the same function or module?"
+levels = [
+  "Input handling, decisions, storage and presentation are mixed within single functions",
+  "One module holds several layers, loosely separated by function",
+  "Mainly one layer, with a little of another",
+  "The file sits clearly in a single layer",
+]
+weight = 2
+fix = "Move each layer's code into its own function first, then its own module, with calls going inward. Do not change queries or rules as you move them."
+
+[[questions]]
+id = "testable-policy"
+type = "boolean"
+title = "Decisions can be tested without real I/O"
+instructions = "Can every business decision in this file be exercised without a real database, network, file system or clock? A file with no business decisions counts as yes."
+good = true
+weight = 1
+fix = "Pass time, randomness and external data in as arguments, or through a small abstraction, so decisions can be tested with plain values. Default to the real implementation at the entry point."
+
+[[questions]]
+id = "config-at-edges"
+type = "boolean"
+title = "Environment is read only at the edges"
+instructions = "Does code that makes business decisions read environment variables, global configuration or deployment details directly? Entry points and configuration loaders do not count."
+good = false
+weight = 1
+fix = "Read configuration once at the entry point and pass the values in as parameters."

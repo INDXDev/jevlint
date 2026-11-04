@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "jevlint",
+  "description": "A model-based linter that tells you what to refactor first.",
+  "owner": { "name": "INDX", "url": "https://github.com/INDXDev" },
+  "plugins": [
+    {
+      "name": "jevlint",
+      "description": "Rank what to refactor first with jevlint, and review what a change made worse.",
+      "source": "./",
+      "category": "development"
+    }
+  ]
+}

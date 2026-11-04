@@ -1,0 +1,82 @@
+name = "software-design"
+description = "Managing complexity: rich modules behind small interfaces, hidden decisions, simple use for callers"
+source = "Ideas discussed in A Philosophy of Software Design (John Ousterhout, Yaknyam Press, 2018). Independent paraphrase, not affiliated with or endorsed by the author or publisher."
+
+[[questions]]
+id = "interface-to-work-ratio"
+type = "score"
+title = "A small interface hides a lot of useful work"
+instructions = "Compare what this file exposes, its public functions, types and options, with the work done behind them. Does a caller gain much functionality for little to learn, or does the interface expose nearly as much as the implementation contains?"
+levels = [
+  "The exposed surface is as large as the implementation, and most functions are thin",
+  "Many exposed functions add little over what they call",
+  "A reasonable surface, with some thin or unnecessary exports",
+  "A small surface gives access to substantial behaviour, or the file is an entry point or plain data with nothing to judge",
+]
+weight = 2
+fix = "Merge thin functions into a smaller set of more capable ones, and make helpers private. Keep a compatibility wrapper only where external callers require it."
+
+[[questions]]
+id = "information-hiding"
+type = "score"
+title = "Implementation decisions stay private"
+instructions = "Are internal decisions, such as storage format, data layout, caching strategy or protocol details, kept inside this file, or do they show through public types, return values and parameters?"
+levels = [
+  "Internal structures and formats are exposed for callers to depend on",
+  "Several implementation details show through the public surface",
+  "Mostly hidden, with one detail showing through",
+  "Callers need no knowledge of how things are done, or there is nothing to hide",
+]
+weight = 2
+fix = "Replace exposed internals with operations named for what callers want to achieve, and make the underlying fields and formats private. Move the callers' knowledge of the format into this module."
+
+[[questions]]
+id = "caller-burden"
+type = "score"
+title = "Callers are not left with awkward work"
+instructions = "Does this file make its users do work it could do itself, such as setup steps in a fixed order, choosing among many options, or handling cases the module could resolve with a sensible default?"
+levels = [
+  "Callers must follow fixed sequences or supply many settings with no defaults",
+  "Common uses need more setup or option handling than they should",
+  "Common uses are simple, while rarer ones need extra work",
+  "The common case is one simple call with sensible defaults, or the file offers no API to use",
+]
+weight = 1
+fix = "Move the setup, defaulting and edge-case handling inside the module so the common case is one call. Keep advanced options optional."
+
+[[questions]]
+id = "special-case-spread"
+type = "score"
+title = "Special cases are handled in few places"
+instructions = "Are exceptional conditions and special cases handled once, or do they spread through the code as repeated checks? Would a different data shape or definition of the operation make many of those checks unnecessary?"
+levels = [
+  "Special-case checks are scattered through most of the logic",
+  "Several checks for the same conditions recur in different functions",
+  "Special cases are mostly handled in one place, with a few strays",
+  "The normal path covers the edge cases naturally, or the file has none",
+]
+weight = 1
+fix = "Handle each special case once, at the edge of the module, or redefine the operation so the normal path covers it, for example by treating a missing list as empty. Preserve outward results."
+
+[[questions]]
+id = "layer-value"
+type = "boolean"
+title = "Every function adds something beyond what it calls"
+instructions = "Does this file contain functions or types that merely forward to another with the same or nearly the same signature, adding no logic of their own?"
+good = false
+weight = 1
+fix = "Remove the forwarding layer and have callers use the target directly, or give the wrapper a real responsibility. Keep any wrapper that exists to adapt an external API."
+
+[[questions]]
+id = "knowledge-grouping"
+type = "score"
+title = "Code is grouped by knowledge, not by execution order"
+instructions = "Is code divided according to what it needs to know, or according to the order steps run in, so that the same format or rule is known by several consecutive functions, such as a read step and a parse step that share a layout?"
+levels = [
+  "Steps split by execution order all depend on the same internal knowledge",
+  "Some functions share knowledge of a format or rule that could live in one place",
+  "Knowledge is mostly in one place, with minor sharing",
+  "Each piece of knowledge has one home, or the file has only one step",
+]
+weight = 1
+fix = "Bring functions that share knowledge of a format or rule together behind one function or type, even if they run at different moments. Leave the sequence of operations unchanged."

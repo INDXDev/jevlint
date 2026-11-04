@@ -1,0 +1,313 @@
+# CLI reference
+
+Running `jevlint` with no command is the same as `jevlint audit`, and `jevlint src` is the same as
+`jevlint audit src`. A command's name wins over a directory's, so write `jevlint audit test` to audit
+a directory called `test`. Every command supports `--help`, and `jevlint --version` prints the version.
+
+Results go to stdout, and progress and notices go to stderr, so pipes stay clean. Colour follows
+`NO_COLOR` and `FORCE_COLOR`.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Success |
+| 1 | The repository score is below `fail_under`, `audit --new` found something new, `hook --staged` found the staged change made something worse, or [`jevlint test`](#jevlint-test-questions) found a fixture that failed or moved |
+| 2 | Usage or config error, a rejected API key, a refused [cache bucket](caching.md#share-the-cache-through-object-storage), or a Node.js without the required security fixes. With `fail_under` or `--new` set, also: no file was scored, every provider request failed, or a key in the environment was never allowed. `hook` also uses it as a gate: an edit made a file worse, which is the code Claude Code feeds back to the agent |
+
+## `jevlint audit [paths...]`
+
+Scores files and ranks them. With `paths`, only those files or directories are audited.
+
+| Flag | Description |
+| --- | --- |
+| `--preset <names>` | Comma-separated presets, replacing the configured ones |
+| `--top <n>` | Rows to show (default 20). `--json` always includes every file |
+| `--json` | Print the [JSON report](json-output.md). The same as `--format json` |
+| `--format <format>` | [Output format](#output-formats): `text` (default), `json`, `sarif` or `github`. `--dry-run` takes only `text` and `json` |
+| `--new` | Show only what is [new or worse than the baseline](#jevlint-baseline-paths), and exit 1 if anything is |
+| `--dry-run` | List files and [estimate tokens and cost](providers.md#cost-estimates), with no provider requests. With `cache.remote` set, it reads the bucket to tell what is cached |
+| `--ast-only` | Use AST analysis only, with no network calls |
+| `--no-cache` | Ignore cached decisions, and do not store new ones |
+| `--ignore-pins` | Score files as if no [`jevlint-score` comment](scoring.md#pinning-scores) existed |
+| `--fail-under <n>` | Exit 1 if the repository score is below `n` |
+| `--concurrency <n>` | Maximum parallel provider requests |
+
+With no usable key for any provider, `audit` prints a notice and runs AST-only. `--dry-run` and `--ast-only` work
+with no key.
+
+### Output formats
+
+`--format` works on `audit`, `pr` and `commits`, and never changes the exit code. Both CI formats list
+AST findings on their line, and weak question answers (compliance below 0.7, not pinned) on line 1 of
+their file, with the question id as the rule. A pinned file has nothing to list. With `pr` and
+`commits`, they list only what the change made worse.
+
+| Format | Prints |
+| --- | --- |
+| `text` | The terminal report |
+| `json` | The [JSON report](json-output.md) |
+| `sarif` | A SARIF 2.1.0 log with one run, for [code scanning](ci.md#show-findings-in-code-scanning) |
+| `github` | One `::warning` [workflow command](ci.md#annotate-a-pull-request) per issue |
+
+Paths are relative to the jevlint root, so run from the top of the repository for tools to place them.
+With `commits`, lines are as of each commit, which may not match your checkout.
+
+## `jevlint baseline [paths...]`
+
+Audits the repository and writes what it finds to `.jevlint/baseline.json`, so that a legacy codebase
+can gate on new problems today. Commit the file. It holds each file's AST findings (`rule`, `symbol`,
+`value`) and weak answers (`id`, `compliance`), sorted, with no timestamps, so it diffs well. Run it
+again to accept the current state.
+
+| Flag | Description |
+| --- | --- |
+| `--ast-only` | Use AST analysis only, with no network |
+
+`jevlint audit --new` then shows only what is new or worse. Findings match by rule and symbol, not by
+line, so code that moves stays matched, and a finding counts only if its value got worse. A weak
+answer counts if the baseline has none for that question or a higher one. These are the rules `pr`
+uses. A renamed file counts as new. A pinned file counts as settled, so gate with `--ignore-pins` if
+that is not enough.
+
+```sh
+jevlint baseline --ast-only
+jevlint audit --new --ast-only --format github
+```
+
+- Create the baseline in the same mode as the gate. An AST-only baseline holds no answers, so a model
+  gate would report every weak answer as new. A model baseline works with `--new --ast-only`.
+- `paths` narrows what is recorded, and the file is replaced, not merged. Anything left out counts as
+  new, so a baseline for the gate should cover at least what the gate audits.
+- `--new` with no baseline is an error, and so is a baseline run where every provider request failed.
+- `--new` also applies `fail_under`, if it is set. The repository score still covers every file.
+
+## `jevlint architecture [paths...]`
+
+Reviews the codebase, each directory and each class, and ranks them worst to best. See
+[Architecture review](architecture-review.md).
+
+| Flag | Meaning |
+| --- | --- |
+| `--perspective <names>` | Review only `codebase`, `directory` or `class`, comma-separated |
+| `--top <n>` | Rows to show (default 20) |
+| `--html <file>` | Write a visual report to this file. The file name is required |
+| `--json` | Print the [JSON report](json-output.md#architecture-report) |
+| `--ast-only` | Use AST analysis only, with no network |
+| `--no-cache` | Ignore cached decisions, and do not store new ones |
+
+## `jevlint pr <number>`
+
+Reviews what a GitHub pull request changes, not the whole repository. Needs the
+[GitHub CLI](https://cli.github.com), signed in. Each changed file is audited at the merge base and
+at the pull request's head, and the output shows its score before and after, the AST findings the
+change introduced or made worse, and the weak question answers (compliance below 0.7) it lowered.
+
+Your working tree stays as it is. Files are read from git into a temporary directory, and the
+config comes from your checkout, so a pull request cannot change the rules it is judged by. The
+commits are fetched from `origin`. If the pull request lives on another remote, fetch them first:
+the command prints how.
+
+| Flag | Description |
+| --- | --- |
+| `--json` | Print the [JSON report](json-output.md#change-reviews). The same as `--format json` |
+| `--format <format>` | [Output format](#output-formats): `text` (default), `json`, `sarif` or `github` |
+| `--ast-only` | Use AST analysis only, with no provider requests |
+| `--no-cache` | Ignore cached decisions, and do not store new ones |
+| `--ignore-pins` | Score files as if no [`jevlint-score` comment](scoring.md#pinning-scores) existed |
+| `--intent` | Also [judge the change](#judging-a-change-with---intent) against its message and the repository's instructions. Cannot be used with `--ast-only`, or with `--format sarif` or `github`, which report per file |
+
+A model run audits each file twice, so it can cost twice what `audit` does for those files. Cached
+answers are free, and model scores vary a little between versions of a file, so read a small change
+in score as noise.
+
+```sh
+jevlint pr 42 --ast-only
+jevlint pr 42 | gh pr comment 42 --body-file -
+```
+
+## `jevlint commits [revision]`
+
+Reviews commits one at a time, each against its parent, from `revision` (default `HEAD`) backwards.
+The output is the same as `pr`, and it takes the same flags. This needs only git, and full history:
+a shallow clone is refused. Merge commits are skipped, as they would review their branch again.
+
+| Flag | Description |
+| --- | --- |
+| `--count <n>` | Commits to review (default 10) |
+
+```sh
+jevlint commits --count 5 --ast-only
+jevlint commits v1.2.0 --count 3
+```
+
+A renamed file counts as new in both commands. Both only report: `fail_under` does not apply, so they
+exit 0 whatever the scores.
+
+### Judging a change with `--intent`
+
+`--intent` on `pr` or `commits` asks one more thing of each change: does it do what it says, and does
+it keep to the repository's own rules? It sends the message, the instructions and the diff to the
+model in one request, with the questions of the built-in `change-intent` preset:
+
+- Does the message describe what the diff does?
+- Does the diff do things the message does not mention?
+- Does the diff break an explicit instruction? Asked only when there are instructions.
+
+The message is the full commit message, or a pull request's title and body. The instructions are
+`AGENTS.md`, or `CLAUDE.md` when that is absent or empty, in the directory jevlint treats as the root.
+They are read from the **base** commit, not the head, so a change cannot rewrite the rules it is judged
+by, and a root commit has none. The diff leaves out every file `audit` would never read:
+[secret files](configuration.md#files-that-are-always-excluded), `.gitignore` matches and `exclude`.
+
+The output gains one line when no answer is weak, or each weak answer (compliance below 0.7) with its
+fix. A diff longer than `max_file_chars` is cut, which the output says. The message comes first, so
+it survives. A long message or instructions leave less room for the diff, so read that warning as
+"the model did not see everything".
+
+With no key for any provider this warns and carries on without it, as the rest of the review does.
+It is off by default, as it costs one more request per change and
+[sends more data](security.md#what-leaves-your-machine). Set a question's
+[weight](presets.md#tuning) to 0 to stop asking it, as in `"change-intent.no-unmentioned-changes" = 0`.
+
+```sh
+jevlint pr 42 --intent
+jevlint commits --count 5 --intent --json
+```
+
+## `jevlint test [questions...]`
+
+Proves that questions work, and warns when a model update moves them. Scores are a model's opinion,
+so a preset author keeps [fixtures](presets.md#testing-a-question): files the question should pass and
+fail. Each fixture is sent with only its own question. A `good-*` file must reach compliance 0.7, and
+a `bad-*` file must stay below it.
+
+With question ids, as `readable-code.naming`, only those are tested. They must be active, and have
+fixtures. Everything else in `.jevlint/fixtures/` that names no active question gets a warning.
+
+| Flag | Description |
+| --- | --- |
+| `--json` | Print the [results as JSON](json-output.md#fixture-results) |
+| `--record` | Write the results to `.jevlint/calibration.json`, to commit. It covers every fixture, so it takes no question ids |
+| `--drift` | Compare with the record, and list fixtures that moved |
+| `--drift-limit <n>` | Compliance change that counts as a move (default 0.1) |
+
+A plain run uses the cache. `--record` and `--drift` ask afresh and store nothing, because a cached
+answer would hide what the model says today. If the record is from another provider or model, `--drift`
+says so on stderr and compares anyway. A fixture added since then gets a warning, and is not compared.
+
+This needs a model: with no key, it stops with exit code 2. It also stops with 2 when a request
+fails, without writing a record, since that proves nothing about a question. It exits 1 if any fixture
+failed or, with `--drift`, moved by the limit or more.
+
+```sh
+jevlint test
+jevlint test readable-code.naming
+jevlint test --record
+jevlint test --drift --drift-limit 0.2
+```
+
+## `jevlint explain <file>`
+
+Shows a file's score, its worst AST findings with line numbers, and every question's compliance,
+worst first. `--json` prints the file's [report](json-output.md).
+
+## `jevlint prompt [files...]`
+
+Prints a Markdown fix prompt. With no files, it uses the highest-priority files.
+
+| Flag | Description |
+| --- | --- |
+| `--top <n>` | Number of files with issues to include (default 1) |
+| `--copy` | Copy to the clipboard instead of printing |
+
+```sh
+jevlint prompt --top 3 --copy
+jevlint prompt | claude -p
+jevlint prompt | codex exec -
+```
+
+## `jevlint fix [files...]`
+
+Runs a coding agent, one file at a time, then re-scores each file. See
+[Coding agents](agents.md).
+
+| Flag | Description |
+| --- | --- |
+| `--agent <name>` | Agent to run. Built-in: `claude`, `codex` |
+| `--top <n>` | Number of files with issues to fix (default 1) |
+| `--yes` | Skip the confirmation. Required when not running in a terminal |
+| `--allow-dirty` | Run even if the git working tree has changes |
+
+## `jevlint hook`
+
+Reports what an edit or a commit is about to make worse, for [agent hooks](agents.md#check-every-edit)
+and [pre-commit](ci.md#check-commits-before-they-are-made). It uses AST metrics only, so it is fast,
+free and sends nothing, unless you pass `--model`.
+
+With no flag it reads JSON on stdin, either Claude Code's `{"tool_input":{"file_path":"..."}}` or a
+flat `{"file_path":"..."}`, and compares that file on disk with `HEAD`. A path relative to the current
+directory works. A new file counts as all new, and problems already in `HEAD` are not reported.
+
+| Result | Exit code | Output |
+| --- | --- | --- |
+| The edit made the file worse | 2 | The findings, on stderr |
+| Nothing got worse | 0 | None |
+| No path, a path outside the root, an excluded or unscorable file, no git repository, or more than 32 MiB of input | 0 | None |
+| Invalid JSON | 2 | An error on stderr |
+
+| Flag | Description |
+| --- | --- |
+| `--staged` | Review the staged change against `HEAD`, not an edit. Exits 1 with the report on stdout if it made anything worse, and 0 with no output if not |
+| `--model` | Also ask the provider. This sends both versions of each file and costs money |
+
+```sh
+echo '{"file_path":"src/orders.ts"}' | jevlint hook
+jevlint hook --staged
+```
+
+Like `pr` and `commits`, `--staged` uses your checkout's config and presets. A renamed file counts as
+new.
+
+## `jevlint init`
+
+Creates a config file interactively.
+
+| Flag | Description |
+| --- | --- |
+| `--user` | Write `~/.config/jevlint/config.toml` instead of `jevlint.toml` |
+| `--yes` | Accept defaults without prompting |
+| `--force` | Replace an existing file |
+| `--pre-commit` | Install a git pre-commit hook that runs `jevlint hook --staged`, and write no config. A different hook stays unless you pass `--force` |
+
+## `jevlint auth`
+
+| Command | Description |
+| --- | --- |
+| `auth set <provider>` | Prompt for a key and store it. Pipe the key in for scripts |
+| `auth list` | Show each provider and where its key comes from. Keys are never printed |
+| `auth remove <provider>` | Delete a stored key |
+| `auth env on\|off` | Allow or refuse keys from environment variables. Off until you allow it |
+
+## `jevlint preset`
+
+| Command | Description |
+| --- | --- |
+| `preset list` | Show available presets and where each one comes from |
+| `preset show <name>` | Print a preset's questions |
+| `preset add <file>` | Install a preset TOML for your user. `--repo` installs into `.jevlint/presets/` |
+| `preset remove <name>` | Remove an installed preset. Built-in presets cannot be removed |
+
+## `jevlint cache`
+
+| Command | Description |
+| --- | --- |
+| `cache info` | Show the location, entry count and size, and the bucket if one is set |
+| `cache clear` | Delete all locally cached decisions. A [bucket](caching.md#share-the-cache-through-object-storage) keeps its own |
+
+## `jevlint config`
+
+| Command | Description |
+| --- | --- |
+| `config show` | Print the merged config as TOML, without secrets |
+| `config path` | Print the config files in use, in the order they apply |

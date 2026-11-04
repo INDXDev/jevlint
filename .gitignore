@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+.claude/
+*.log
+.env*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.swp

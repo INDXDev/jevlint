@@ -1,0 +1,97 @@
+name = "code-smells"
+description = "Surface warning signs that often mean a refactoring would pay off"
+source = "Ideas discussed in Refactoring (Martin Fowler, Addison-Wesley, 1999 and 2018). Independent paraphrase, not affiliated with or endorsed by the author or publisher."
+
+[[questions]]
+id = "parameter-count"
+type = "score"
+title = "Functions take few parameters"
+instructions = "How many parameters do the functions here take? Consider especially positional parameters of the same type and boolean flags that switch behaviour."
+levels = [
+  "Several functions take six or more parameters, or flags that are hard to read at call sites",
+  "A few functions take five or more parameters",
+  "Most functions take up to four, with one or two longer lists",
+  "Parameter lists are short and clear, or the file has no functions",
+]
+weight = 2
+fix = "Group parameters that belong together into a named object or struct, and replace boolean flags with separate functions or named options. Update all call sites in the same change."
+
+[[questions]]
+id = "data-locality"
+type = "score"
+title = "Logic lives beside the data it works on"
+instructions = "Do functions mostly use their own module's data, or do they repeatedly reach into the fields of another object or record to make decisions that seem to belong to it?"
+levels = [
+  "Functions mainly pick apart other objects' fields to compute results",
+  "Several functions work more with another record's fields than with their own",
+  "Mostly local, with a few reaches into other records",
+  "Logic sits with its data, or the file only passes data through without inspecting it",
+]
+weight = 1
+fix = "Move the logic next to the data it reads, as a method or a function in that type's module, and call it from the old location. Results must stay identical."
+
+[[questions]]
+id = "domain-types"
+type = "score"
+title = "Domain concepts have their own types"
+instructions = "Are domain ideas such as money, identifiers, statuses, date ranges and addresses represented by purpose-built types or enums, or by raw strings, numbers and loose maps?"
+levels = [
+  "Domain concepts are raw strings, numbers and untyped maps throughout",
+  "Important concepts are often raw values, with validation repeated at use sites",
+  "Key concepts have types, with some raw values remaining",
+  "Domain concepts have suitable types, or the file has no domain concepts",
+]
+weight = 1
+fix = "Introduce a small type or enum for the concept and move its validation and formatting there. Convert at the edges first, then inward."
+
+[[questions]]
+id = "grouped-values"
+type = "boolean"
+title = "Values that belong together travel as one unit"
+instructions = "Does the same group of three or more values repeatedly appear together, as parameters, fields or locals, in several places in this file without being bundled into one type?"
+good = false
+weight = 1
+fix = "Bundle the recurring values into one named record or struct and pass that instead. Move any behaviour on those values onto the new type."
+
+[[questions]]
+id = "change-locality"
+type = "score"
+title = "One change means one edit"
+instructions = "If one business rule changed, such as a tax rate or a status name, how many places in this file would need editing? Look for rule knowledge copied or spread around."
+levels = [
+  "A single rule change would need many scattered edits",
+  "Several rules appear in two or three separate places",
+  "Most rules live in one place, with an occasional repeat",
+  "Each rule lives in exactly one place, or the file holds no business rules",
+]
+weight = 2
+fix = "Gather each spread-out rule into a single function or constant and point all uses at it. Change the structure before changing any rule."
+
+[[questions]]
+id = "call-chains"
+type = "boolean"
+title = "Code does not navigate long object paths"
+instructions = "Does the code repeatedly walk long paths through other objects to reach something, such as a.getB().getC().getD(), where each step exposes another object's structure? Fluent builders and data pipelines do not count."
+good = false
+weight = 1
+fix = "Add a method to the first object in the path that returns what callers want, and use it in place of the chain."
+
+[[questions]]
+id = "oversized-unit"
+type = "score"
+title = "No function or type has grown too large"
+instructions = "Is there a function, class or module here that has clearly accumulated too much: many fields, many branches, or many screens of code?"
+levels = [
+  "A huge function or type dominates the file, holding most of its logic",
+  "One or more units are clearly too long or have too many members",
+  "Some units are a little large but still manageable",
+  "All units are comfortably small",
+]
+weight = 2
+fix = "Extract cohesive parts of the large unit into named functions or types, one at a time, running tests between steps. Start with the part that has the fewest inputs."
+
+[[patterns]]
+id = "ts-as-any"
+language = "typescript"
+pattern = "$X as any"
+message = "Casting to any turns off type checking for this value"

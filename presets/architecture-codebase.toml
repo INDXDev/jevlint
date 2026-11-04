@@ -1,0 +1,45 @@
+name = "architecture-codebase"
+description = "The codebase as a whole: a visible shape, sensible layers and a clear way in. Used by `jevlint architecture`, not by file audits"
+source = "Common software architecture guidance. Independent paraphrase."
+
+[[questions]]
+id = "shape"
+type = "score"
+title = "The structure shows what the system does"
+instructions = "You are given an outline of a whole codebase: its directories with sizes and layers, and the dependencies between them. Can a newcomer see from this structure what the system does and where each concern lives?"
+levels = [
+  "The structure says nothing about the system, and concerns are scattered",
+  "A few areas are recognisable, but most concerns have no clear home",
+  "Most concerns have a clear home, with some mixed areas",
+  "Every concern has an obvious home, and the structure explains the system",
+]
+weight = 2
+fix = "Group code by what it does, and give each concern one home. Start with the largest mixed directory."
+
+[[questions]]
+id = "layering"
+type = "score"
+title = "Dependencies flow in one direction"
+instructions = "Given the outline, do the dependencies between directories form clear layers, with high-level code using low-level code and not the reverse?"
+levels = [
+  "Everything depends on everything, and no layers are visible",
+  "Layers exist, but many dependencies cross them in both directions",
+  "Dependencies mostly flow one way, with a few exceptions",
+  "Dependencies flow one way throughout, and the layers are obvious",
+]
+weight = 2
+fix = "Pick the intended layers, then remove or invert the dependencies that point upward."
+
+[[questions]]
+id = "balance"
+type = "score"
+title = "Size is spread sensibly"
+instructions = "Given the outline, is code spread sensibly across directories, or does one area hold most of the system while others are fragments?"
+levels = [
+  "One directory is the whole system, or the code is shattered into tiny pieces",
+  "Size is lopsided, and at least one directory clearly holds too much",
+  "Size is mostly reasonable, with one area that could be split or merged",
+  "Each directory has a size that fits its role",
+]
+weight = 1
+fix = "Split the directory that holds too much along its concerns, and merge fragments that serve one purpose."

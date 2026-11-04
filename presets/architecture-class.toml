@@ -1,0 +1,45 @@
+name = "architecture-class"
+description = "Class structure: one responsibility, a clear interface and fitting relationships. Used by `jevlint architecture`, not by file audits"
+source = "Common object-oriented design guidance. Independent paraphrase."
+
+[[questions]]
+id = "responsibility"
+type = "score"
+title = "The class has one responsibility"
+instructions = "You are given an outline of one class: its name, method names, and the classes it inherits from, uses and is used by. Do the methods serve one responsibility?"
+levels = [
+  "The methods cover unrelated jobs, and the class does everything",
+  "There are several responsibilities that could be separate classes",
+  "There is one main responsibility, with a few methods that belong elsewhere",
+  "Every method clearly serves the one responsibility its name states",
+]
+weight = 2
+fix = "Extract each separate responsibility into its own class, and leave the original with the one its name states."
+
+[[questions]]
+id = "relationships"
+type = "score"
+title = "Relationships to other classes fit"
+instructions = "Given the outline, do the class's inheritance and use of other classes make sense? Consider inheritance used only to share code, and classes that know about too many others."
+levels = [
+  "Relationships are tangled, or inheritance is clearly misused",
+  "Several relationships look unnecessary or backwards",
+  "Most relationships fit, with one or two that look out of place",
+  "Every relationship fits, and each is the simplest one that works",
+]
+weight = 1
+fix = "Prefer composition to inheritance that only shares code, and remove links the class does not need."
+
+[[questions]]
+id = "naming"
+type = "score"
+title = "The name and methods describe a clear concept"
+instructions = "Given the outline, do the class and method names describe one clear concept? Names such as Manager, Helper, Util or Processor usually hide what a class is."
+levels = [
+  "The class name says nothing, and the methods are generic",
+  "The class name is vague, or several method names are",
+  "The names are mostly clear, with one or two vague ones",
+  "The names state a clear concept and what can be done with it",
+]
+weight = 1
+fix = "Rename the class after the concept it represents. If no single name fits, split it first."

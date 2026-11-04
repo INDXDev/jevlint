@@ -1,0 +1,101 @@
+name = "readable-code"
+description = "Code a newcomer can understand quickly: informative names, useful comments, plain control flow"
+source = "Ideas discussed in The Art of Readable Code (Boswell and Foucher, O'Reilly, 2011). Independent paraphrase, not affiliated with or endorsed by the authors or publisher."
+
+[[questions]]
+id = "naming"
+type = "score"
+title = "Names say what things are and what they hold"
+instructions = "Look at the names of variables, parameters, functions and types in this file. How much does each name tell a reader about the value's content, unit or role, without reading the surrounding code?"
+levels = [
+  "Most names are vague or cryptic, such as d, tmp, data2, x1, doStuff",
+  "Many names are generic, such as data, info, result, handle, and need the code around them to make sense",
+  "Most names are informative, with some generic names outside tiny scopes",
+  "Names are specific throughout; short names appear only in very small scopes such as loop counters",
+]
+weight = 2
+fix = "Rename vague identifiers so each states its content, unit or role, for example `d` to `daysUntilExpiry`. Change names only, and update every reference in the same step."
+
+[[questions]]
+id = "unambiguous-names"
+type = "score"
+title = "Names cannot be taken to mean something else"
+instructions = "Does any name suggest behaviour or a meaning the code does not have? Consider functions that do more or other than their name states, booleans that do not read as yes or no, ranges with unclear ends, and getters that change state."
+levels = [
+  "Several names actively mislead: the code does something different from what the name says",
+  "At least one name misleads, or several can reasonably be read two ways",
+  "A few names are slightly ambiguous, but none states something false",
+  "Every name matches what the code does, and no name has a plausible second reading",
+]
+weight = 2
+fix = "Rename each misleading identifier to describe what the code actually does, such as `getTotal` to `recalculateAndSaveTotal`. If a function does more than its name says, rename it first and leave the behaviour unchanged."
+
+[[questions]]
+id = "comments"
+type = "score"
+title = "Comments add what the code cannot say"
+instructions = "Read the comments and compare them with the code beside them. Do they supply reasons, constraints and warnings the code cannot express, or do they repeat, contradict or trail behind it? Code that is clear without comments deserves the top level."
+levels = [
+  "Comments contradict the code, are out of date, or are commented-out code",
+  "Most comments repeat what the next line plainly does",
+  "Comments are harmless, but non-obvious decisions, limits or workarounds go unexplained",
+  "Comments give reasons and constraints wherever needed, or the code is clear enough to need none",
+]
+weight = 2
+fix = "Delete comments that restate the code, delete commented-out code, and correct any comment that disagrees with the code. Add a one-line reason beside any surprising constant or workaround."
+
+[[questions]]
+id = "control-flow"
+type = "score"
+title = "Control flow can be followed from top to bottom"
+instructions = "How easy is it to trace the path of execution through this file? Consider nesting depth, chained conditionals, jumps, flags that steer later branches, and conditions written in an awkward or negated form."
+levels = [
+  "Logic is nested four or more levels deep, or flags and jumps make the path hard to trace",
+  "Some functions need careful tracing because of nesting or tangled branches",
+  "Mostly straightforward, with one or two awkward conditionals",
+  "Paths are flat and direct, with early exits for special cases, or the file has almost no branching",
+]
+weight = 2
+fix = "Flatten nesting by handling error and edge cases first with early returns, and by inverting negated conditions. Keep the set of branches and their outcomes the same."
+
+[[questions]]
+id = "named-subexpressions"
+type = "score"
+title = "Large expressions are split into named parts"
+instructions = "Look for long conditions, arithmetic, chained calls and nested ternaries. Are the pieces given named intermediate values so a reader can take them in one at a time?"
+levels = [
+  "Several long expressions must be decoded piece by piece, with no intermediate names",
+  "A few big expressions remain where a named value would clearly help",
+  "Large expressions are rare and mostly broken up",
+  "Each expression can be read at a glance, or the file has no complex expressions",
+]
+fix = "Pull parts of long expressions into local variables whose names state the meaning, such as `isEligibleForFreeShipping`. Keep evaluation order the same where a part has side effects."
+weight = 1
+
+[[questions]]
+id = "focused-blocks"
+type = "score"
+title = "Each block of code works on a single job"
+instructions = "Within a function or top-level script, does a stretch of code work on one job, or are separate jobs such as parsing, validating, computing, formatting and saving interleaved line by line?"
+levels = [
+  "Unrelated jobs are mixed together line by line, so none can be read alone",
+  "Some functions interleave two or three jobs",
+  "Jobs are mostly separated, with occasional mixing",
+  "Each block does one job and the next begins cleanly, or the file is too small for this to matter",
+]
+weight = 1
+fix = "Reorder statements so each job sits together, then move self-contained jobs into small named helpers. Preserve the order of side effects."
+
+[[questions]]
+id = "time-to-understand"
+type = "score"
+title = "A newcomer can grasp this file in minutes"
+instructions = "Imagine a competent engineer who has never seen this project. Judging the file as a whole, how long would they need to understand it well enough to change it safely?"
+levels = [
+  "Hours: it would need study, experiment or asking the author",
+  "Well over half an hour, with several puzzling parts",
+  "Some minutes of focused reading, with one or two spots to reread",
+  "A quick read is enough; purpose and flow are obvious on the first pass",
+]
+weight = 3
+fix = "Start with the hardest part to follow: name its concepts, flatten it, and extract its steps into well-named functions. Make one behaviour-preserving change at a time."

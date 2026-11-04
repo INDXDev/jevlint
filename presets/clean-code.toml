@@ -1,0 +1,113 @@
+name = "clean-code"
+description = "Small focused functions, consistent abstraction levels and honest error handling"
+source = "Ideas discussed in Clean Code (Robert C. Martin, Prentice Hall, 2008). Independent paraphrase, not affiliated with or endorsed by the author or publisher."
+
+[[questions]]
+id = "function-focus"
+type = "score"
+title = "Each function has a single clear purpose"
+instructions = "For each function or method in this file, could you describe its purpose in one short sentence without using 'and'? Judge the file by its typical and its worst function."
+levels = [
+  "The main functions each handle many unrelated concerns",
+  "Several functions do two or three separate things",
+  "Most functions are focused, with one or two exceptions",
+  "Every function has one clear purpose, or the file contains no functions",
+]
+weight = 2
+fix = "Split each multi-purpose function by extracting its separate concerns into named functions, leaving a short coordinating function. Keep inputs and outputs of the original function the same."
+
+[[questions]]
+id = "abstraction-level"
+type = "score"
+title = "A function stays at one level of detail"
+instructions = "Inside a function, do the statements sit at a similar level of detail, or do high-level business steps appear beside low-level work such as string slicing, byte handling or raw SQL?"
+levels = [
+  "High-level policy and low-level detail are mixed throughout",
+  "Several functions jump between levels of detail",
+  "Mostly consistent, with occasional low-level detail in a high-level function",
+  "Each function reads at one level of detail, or the file is too simple for this to matter",
+]
+weight = 1
+fix = "Move low-level detail out of high-level functions into helpers named for what they achieve. The caller should then read as a list of steps."
+
+[[questions]]
+id = "side-effects"
+type = "score"
+title = "Functions have no surprising side effects"
+instructions = "Do functions change things a caller would not expect from their name and signature, such as modifying arguments, writing to shared state, or doing I/O inside something that looks like a query?"
+levels = [
+  "Many functions hide state changes or I/O behind harmless-looking names",
+  "A few functions have hidden effects that could catch a caller out",
+  "Effects are mostly visible from the signature or name, with minor exceptions",
+  "All effects are clear from names and signatures, or functions here are pure",
+]
+weight = 2
+fix = "Separate functions that compute a value from functions that change state, and return new values rather than altering arguments. Update callers so the same effects still occur in the same order."
+
+[[questions]]
+id = "error-handling"
+type = "score"
+title = "Failures are handled or passed on, never hidden"
+instructions = "When something can fail here, such as I/O, parsing or a network call, what happens to the failure? Look for swallowed errors, ignored return values, generic catch-alls and sentinel values such as -1 or null with no explanation."
+levels = [
+  "Errors are routinely swallowed or ignored",
+  "Failures are often lost or reduced to a sentinel value that callers can miss",
+  "Most failures are handled, with some vague catch-alls or lost context",
+  "Every failure is handled or passed up with context, or nothing here can fail",
+]
+weight = 2
+fix = "Replace empty or catch-all handlers with handling of the specific failure, or propagate it with context using the language's normal mechanism. Do not change the success path."
+
+[[questions]]
+id = "error-path-separation"
+type = "score"
+title = "Error handling does not bury the main logic"
+instructions = "Can the normal path of the code be read without wading through error handling, or do checks and recovery code dominate and obscure it?"
+levels = [
+  "The main logic is lost among checks and recovery code",
+  "Error handling often interrupts the main logic",
+  "The main logic is visible, with some clutter",
+  "The main path reads clearly with errors handled to one side, or the file has little error handling",
+]
+weight = 1
+fix = "Move validation to guard clauses at the top of the function, and move recovery logic into a dedicated helper. Keep the same failures reported."
+
+[[questions]]
+id = "magic-values"
+type = "score"
+title = "Literal values with meaning have names"
+instructions = "Are unexplained numbers and strings used directly in logic, such as thresholds, rates, status codes and timeouts? Ignore obvious values such as 0, 1, empty strings and literals in test data."
+levels = [
+  "Unexplained literals appear throughout the logic",
+  "Several important literals are unnamed or repeated",
+  "Only a few unnamed literals remain",
+  "Meaningful literals all have named constants, or the file has none",
+]
+weight = 1
+fix = "Replace each meaningful literal with a named constant that states its purpose and unit, and reuse that constant wherever the same value recurs for the same reason."
+
+[[questions]]
+id = "dead-code"
+type = "boolean"
+title = "No dead or abandoned code"
+instructions = "Does this file contain code that clearly cannot run or is no longer used, such as commented-out blocks, unreachable statements, or unused private functions and variables?"
+good = false
+weight = 1
+fix = "Delete the dead code outright, since version control keeps the history. Confirm first that nothing in the file refers to it."
+
+[[patterns]]
+id = "empty-catch-ts"
+language = "typescript"
+pattern = "try { $$$BODY } catch ($E) { }"
+message = "Empty catch block hides failures"
+
+[[patterns]]
+id = "bare-except-pass"
+language = "python"
+pattern = """
+try:
+    $$$BODY
+except:
+    pass
+"""
+message = "Bare except with pass hides every failure"

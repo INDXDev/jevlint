@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 320" width="900" height="320" role="img" aria-labelledby="t d">
+  <title id="t">jevlint</title>
+  <desc id="d">A shuffled list of source files sorts itself by score, and the worst file is marked as the one to refactor first.</desc>
+  <style>
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .name { font-size: 15px; fill: #cdd6f4; }
+    .score { font-size: 16px; font-weight: 700; }
+    .a, .b, .c, .e { animation: 9s cubic-bezier(.65, 0, .35, 1) infinite; }
+    .a { animation-name: a; } .b { animation-name: b; } .c { animation-name: c; } .e { animation-name: e; }
+    .tag { animation: tag 9s ease infinite; }
+    @keyframes a { 0%, 14% { transform: translateY(84px); } 34%, 92% { transform: none; } 100% { transform: translateY(84px); } }
+    @keyframes b { 0%, 14% { transform: translateY(126px); } 34%, 92% { transform: none; } 100% { transform: translateY(126px); } }
+    @keyframes c { 0%, 14% { transform: translateY(-42px); } 34%, 92% { transform: none; } 100% { transform: translateY(-42px); } }
+    @keyframes e { 0%, 14% { transform: translateY(-168px); } 34%, 92% { transform: none; } 100% { transform: translateY(-168px); } }
+    @keyframes tag { 0%, 36% { opacity: 0; } 44%, 88% { opacity: 1; } 94%, 100% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .a, .b, .c, .e, .tag { animation: none; } }
+  </style>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1e1e2e"/><stop offset="1" stop-color="#11111b"/></linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f38ba8"/><stop offset=".5" stop-color="#f9e2af"/><stop offset="1" stop-color="#a6e3a1"/></linearGradient>
+  </defs>
+  <rect width="900" height="320" rx="16" fill="url(#bg)"/>
+
+  <text x="48" y="146" font-size="60" font-weight="700" fill="url(#brand)">jevlint</text>
+  <text x="50" y="186" font-size="18" fill="#cdd6f4">Know what to refactor first.</text>
+  <text x="50" y="214" font-size="14" fill="#7f849c">AST metrics + decision models</text>
+
+  <g transform="translate(400 56)">
+    <g><g class="a">
+      <rect width="452" height="36" rx="8" fill="#f38ba8" fill-opacity=".14"/>
+      <text x="16" y="24" class="score" fill="#f38ba8">21</text><text x="58" y="23" class="name">orders/process.ts</text>
+      <text x="436" y="23" text-anchor="end" font-size="13" font-weight="700" fill="#f38ba8" class="tag">refactor first</text>
+    </g></g>
+    <g transform="translate(0 42)"><g class="b">
+      <rect width="452" height="36" rx="8" fill="#313244" fill-opacity=".6"/>
+      <text x="16" y="24" class="score" fill="#f38ba8">34</text><text x="58" y="23" class="name">utils/helpers.ts</text>
+    </g></g>
+    <g transform="translate(0 84)"><g class="c">
+      <rect width="452" height="36" rx="8" fill="#313244" fill-opacity=".6"/>
+      <text x="16" y="24" class="score" fill="#f38ba8">47</text><text x="58" y="23" class="name">payments/retry.py</text>
+    </g></g>
+    <g transform="translate(0 126)">
+      <rect width="452" height="36" rx="8" fill="#313244" fill-opacity=".6"/>
+      <text x="16" y="24" class="score" fill="#f9e2af">72</text><text x="58" y="23" class="name">cart/totals.go</text>
+    </g>
+    <g transform="translate(0 168)"><g class="e">
+      <rect width="452" height="36" rx="8" fill="#313244" fill-opacity=".6"/>
+      <text x="16" y="24" class="score" fill="#a6e3a1">96</text><text x="58" y="23" class="name">billing/money.rs</text>
+    </g></g>
+  </g>
+</svg>

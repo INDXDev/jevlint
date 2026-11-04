@@ -1,0 +1,45 @@
+name = "architecture-directory"
+description = "Directory structure: one purpose per directory, and dependencies that make sense. Used by `jevlint architecture`, not by file audits"
+source = "Common software design guidance on cohesion and coupling. Independent paraphrase."
+
+[[questions]]
+id = "cohesion"
+type = "score"
+title = "The directory has one clear purpose"
+instructions = "You are given an outline of one source directory: its modules, the names they declare, and what they depend on. Do the modules belong together around one purpose?"
+levels = [
+  "The modules are unrelated, and the directory is a dumping ground",
+  "There are several separate concerns, with no clear reason to share a directory",
+  "There is one main purpose, with a few modules that belong elsewhere",
+  "Every module clearly serves one purpose that the directory's name suggests",
+]
+weight = 2
+fix = "Move modules that serve a different purpose to where that purpose lives, or split the directory by concern."
+
+[[questions]]
+id = "boundaries"
+type = "score"
+title = "Dependencies match the directory's role"
+instructions = "Given the outline, do the directory's dependencies and its users fit what it does? Consider low-level code that depends on high-level code, and modules that reach into many unrelated areas."
+levels = [
+  "Dependencies run in surprising directions, and the directory is tangled with many unrelated areas",
+  "Several dependencies do not fit the directory's role",
+  "Most dependencies fit, with one or two that look out of place",
+  "Every dependency fits the directory's role, and the direction of use is obvious",
+]
+weight = 2
+fix = "Invert or remove dependencies that point the wrong way, for example by moving shared types to a lower layer."
+
+[[questions]]
+id = "naming"
+type = "score"
+title = "Names show the design"
+instructions = "Given the outline, do the directory, module and symbol names tell a reader what this part of the system does, in terms of its domain?"
+levels = [
+  "Names like utils, helpers, misc or common hide what the code does",
+  "Several names are generic and need the code to make sense",
+  "Most names are specific, with a few generic ones",
+  "Names throughout state the purpose of each part",
+]
+weight = 1
+fix = "Rename generic modules after what they do, and split any that have no single name."

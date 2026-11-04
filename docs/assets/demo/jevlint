@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Stand-in for jevlint in demo.tape: canned output for a fictional repository, in the real CLI's
+# layout, so the recording needs no API key or agent. Keep it in step with src/report.ts.
+set -eu
+state="${JEVLINT_DEMO_STATE:?run this from demo.tape}"
+R=$'\e[31m' Y=$'\e[33m' G=$'\e[32m' B=$'\e[1m' D=$'\e[2m' X=$'\e[0m'
+
+spin() {
+  for frame in ◒ ◐ ◓ ◑ ◒ ◐ ◓ ◑ ◒ ◐; do
+    printf '\r%s %s' "$frame" "$1" >&2
+    sleep 0.15
+  done
+  printf '\r\e[K' >&2
+}
+
+audit() {
+  spin 'Scoring 14 files'
+  echo " ${B}jevlint${X}  ~/shop-api  ·  typesafe/jev-latest  ·  readable-code"
+  if [ -e "$state" ]; then
+    echo " Repository score ${Y}63${X}/100  ·  14 files  ·  2 below 50"
+    echo
+    echo "${D}  #  Score  File                      Worst issue${X}"
+    echo "  1  ${R}   34${X}  src/utils/helpers.ts      Names say what things are and what they hold"
+    echo "  2  ${R}   47${X}  src/payments/retry.py:40  nesting depth 6 (max 4) in charge"
+    echo "  3  ${Y}   63${X}  src/cart/totals.go:71     parameters 7 (max 4) in Apply"
+    echo
+    echo " 11 more. Show them with --top 14"
+    echo
+    echo " Next: jevlint explain src/utils/helpers.ts"
+  else
+    echo " Repository score ${Y}58${X}/100  ·  14 files  ·  3 below 50"
+    echo
+    echo "${D}  #  Score  File                      Worst issue${X}"
+    echo "  1  ${R}   21${X}  src/orders/process.ts:12  cognitive complexity 38 (max 15) in handleOrder"
+    echo "  2  ${R}   34${X}  src/utils/helpers.ts      Names say what things are and what they hold"
+    echo "  3  ${R}   47${X}  src/payments/retry.py:40  nesting depth 6 (max 4) in charge"
+    echo
+    echo " 11 more. Show them with --top 14"
+    echo
+    echo " Next: jevlint explain src/orders/process.ts"
+  fi
+  echo "       jevlint prompt --top 3 --copy"
+}
+
+explain() {
+  spin 'Scoring 1 file'
+  echo " ${B}$1${X}  ·  typescript  ·  312 lines  ·  47 commits"
+  echo " Score ${R}21${X}/100  ·  AST 0.18  ·  Model 0.26"
+  echo
+  echo " ${B}AST findings, worst first${X}"
+  echo "  line  12  cognitive complexity 38 (max 15) in handleOrder"
+  echo "  line  88  nesting depth 6 (max 4) in applyDiscounts"
+  echo "  line 201  parameters 6 (max 4) in buildInvoice"
+  echo
+  echo " ${B}Questions, worst first${X}"
+  echo "  ${R}0.25${X}  Names say what things are and what they hold ${D}(readable-code.naming)${X}"
+  echo "  ${R}0.33${X}  Names cannot be taken to mean something else ${D}(readable-code.unambiguous-names)${X}"
+  echo "  ${Y}0.67${X}  Comments add what the code cannot say ${D}(readable-code.comments)${X}"
+}
+
+fix() {
+  spin 'Scoring 14 files'
+  echo 'Running claude on src/orders/process.ts' >&2
+  sleep 0.8
+  echo '  Split handleOrder into validateOrder, priceOrder and saveOrder'
+  sleep 0.8
+  echo '  Renamed d, tmp and flag2 to discountCents, draftOrder and isGift'
+  sleep 0.8
+  echo '  Tests pass: 212 of 212'
+  spin 'Re-scoring src/orders/process.ts'
+  echo "src/orders/process.ts 21 -> ${G}84${X}"
+  : > "$state"
+}
+
+case "${1:-audit}" in
+  audit) audit ;;
+  explain) explain "$2" ;;
+  fix) fix ;;
+  *) echo "demo stand-in: unknown command $1" >&2; exit 1 ;;
+esac

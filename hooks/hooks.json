@@ -1,0 +1,16 @@
+{
+  "description": "Tells the agent what an edit made worse. Off until the plugin's edit_hook option is on.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$CLAUDE_PLUGIN_OPTION_EDIT_HOOK\" = true ] && command -v jevlint >/dev/null && exec jevlint hook || exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

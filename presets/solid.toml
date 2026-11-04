@@ -1,0 +1,73 @@
+name = "solid"
+description = "Single responsibility, open/closed, substitution, interface segregation and dependency inversion"
+source = "Ideas from the SOLID design principles as popularised by Robert C. Martin. Independent paraphrase, not affiliated with or endorsed by the author."
+
+[[questions]]
+id = "single-responsibility"
+type = "score"
+title = "The file serves one purpose and one audience"
+instructions = "Would changes to this file come from one kind of concern, or from several unrelated ones, such as pricing rules, report layout and database schema? Treat each class, struct or module in the file as a unit, and judge the worst unit."
+levels = [
+  "The unit mixes many unrelated concerns: business rules, storage, presentation and more",
+  "The unit mixes two or three concerns that could change independently",
+  "One main concern, with a minor unrelated addition",
+  "All code here relates to a single concern",
+]
+weight = 2
+fix = "Identify the separate concerns and move each into its own module or type, keeping a thin entry point if callers need one. Move code without changing its logic."
+
+[[questions]]
+id = "open-closed"
+type = "score"
+title = "New variants need no edits to existing logic"
+instructions = "When the code handles variants such as payment types, formats or user roles, would adding a new variant mean editing existing branches, or could it be added alongside them? Look for repeated switch, match or if-else chains over a kind or type value."
+levels = [
+  "The same variant checks are repeated in several places, and each new variant means editing all of them",
+  "Each new variant means editing one long branching block that also holds the logic",
+  "Variants are selected in one place only, with their logic kept apart",
+  "New variants are added without touching existing logic, or the code has no variants to extend",
+]
+weight = 1
+fix = "Gather repeated variant checks into a single dispatch point, then give each variant its own function, implementation or table entry. Keep every variant's current behaviour."
+
+[[questions]]
+id = "substitution"
+type = "score"
+title = "Implementations honour the contract they claim"
+instructions = "Where this file implements or overrides an interface, trait, protocol or base type, does each implementation behave as that contract promises? Look for overrides that throw 'not supported', ignore arguments, tighten input rules, or checks on the concrete type of something that should be interchangeable."
+levels = [
+  "Implementations break the contract, or callers must check concrete types to avoid failures",
+  "At least one implementation refuses or ignores part of the contract",
+  "Implementations mostly conform, with small differences in edge cases",
+  "Implementations are fully interchangeable, or the file implements no shared contract",
+]
+weight = 1
+fix = "Make the implementation fulfil the whole contract, or stop claiming it and narrow the contract to what every implementation can honour. Remove the concrete type checks from callers once that holds."
+
+[[questions]]
+id = "interface-segregation"
+type = "score"
+title = "Consumers see only the operations they use"
+instructions = "Consider the interfaces, traits, protocols, abstract types and parameter types defined or required here. Are they small and shaped for what each consumer needs, or broad, with many operations that a given consumer ignores or stubs out?"
+levels = [
+  "Large catch-all contracts force consumers to accept or stub many unrelated operations",
+  "Some contracts bundle unrelated operations, or functions take a whole object for one field",
+  "Contracts are mostly narrow, with one a little too wide",
+  "Each contract is small and focused, or the file defines and requires none",
+]
+weight = 1
+fix = "Split wide contracts into smaller role-based ones and have each consumer depend on only the role it uses. Existing implementations can satisfy several roles, so their code need not change."
+
+[[questions]]
+id = "dependency-inversion"
+type = "score"
+title = "Business logic does not depend on concrete infrastructure"
+instructions = "Does logic that makes business decisions here directly create or call concrete infrastructure, such as database clients, HTTP clients, the clock or the file system, or does it receive those through parameters or small abstractions?"
+levels = [
+  "Decision logic creates and calls concrete infrastructure directly throughout",
+  "Decision logic reaches concrete infrastructure directly in several places",
+  "Infrastructure is mostly passed in, with one or two direct uses",
+  "Infrastructure is always passed in through abstractions, or this file has no such mix: it is pure logic or is itself the infrastructure adapter",
+]
+weight = 2
+fix = "Define a small abstraction in terms the business logic needs, pass it in as a parameter or constructor argument, and move the concrete client into an adapter. Wire the concrete adapter at the entry point so behaviour stays the same."

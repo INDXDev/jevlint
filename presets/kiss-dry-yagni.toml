@@ -1,0 +1,85 @@
+name = "kiss-dry-yagni"
+description = "Simple solutions, no needless repetition, nothing built ahead of need"
+source = "Common engineering maxims: keep things simple, avoid repetition, build only what is needed. Independent paraphrase of widely shared ideas."
+
+[[questions]]
+id = "simplest-solution"
+type = "score"
+title = "The solution is as simple as the problem allows"
+instructions = "Compare the code with the problem it evidently solves. Is there machinery beyond what the task needs, such as elaborate indirection, clever tricks, or hand-written versions of what the language already provides?"
+levels = [
+  "A simple job is done in a convoluted way",
+  "Noticeably more elaborate than needed in several places",
+  "Mostly simple, with one spot that could be plainer",
+  "A straightforward solution suited to the problem, or the file is too small to overbuild",
+]
+weight = 2
+fix = "Replace the convoluted section with the most direct code that gives the same results, using standard library features where they fit."
+
+[[questions]]
+id = "no-duplication"
+type = "score"
+title = "Logic appears once"
+instructions = "Are there blocks of code in this file that are copied, or nearly copied, with small changes such as different names or constants? Short idiomatic repetition, such as Go error checks, does not count."
+levels = [
+  "Large blocks are copied several times",
+  "Noticeable copy-paste, with blocks differing only in small details",
+  "Minor repetition of a few lines",
+  "No meaningful duplication",
+]
+weight = 3
+fix = "Extract the shared logic into one function, passing the differences as parameters, and replace every copy with a call. Check first that the copies have not diverged by accident."
+
+[[questions]]
+id = "single-source-of-rules"
+type = "boolean"
+title = "Each value or rule is defined once"
+instructions = "Does the same business value or rule, such as a rate, limit, or status list, appear defined separately in more than one place in this file?"
+good = false
+weight = 1
+fix = "Define the value or rule once as a named constant or function and reference it everywhere it is used."
+
+[[questions]]
+id = "no-speculative-features"
+type = "score"
+title = "Nothing is built before it is needed"
+instructions = "Is there code that serves no visible current need, such as options never used, parameters always given the same value, hooks with no users, or plugin systems with a single implementation?"
+levels = [
+  "Much of the file is unused flexibility or future-proofing",
+  "Several options or extension points have no apparent use",
+  "One small unused option or hook",
+  "Everything here serves a visible current need",
+]
+weight = 2
+fix = "Delete unused options, parameters and hooks, and inline abstractions with one implementation. Do not remove anything that is part of a published API without checking its users."
+
+[[questions]]
+id = "no-needless-abstraction"
+type = "score"
+title = "Abstractions pay for themselves"
+instructions = "Do the layers, wrappers, factories and generic helpers in this file each remove more complexity than they add? A file with no such constructs earns the top level."
+levels = [
+  "Layers of abstraction hide trivial logic",
+  "Several wrappers or helpers add indirection with little benefit",
+  "Abstractions mostly help, with one that could go",
+  "Every abstraction clearly earns its place, or there are none",
+]
+weight = 1
+fix = "Inline wrappers and single-use helpers that add no meaning, so the reader sees the real operation in one place."
+
+[[patterns]]
+id = "if-return-bool-ts"
+language = "typescript"
+pattern = "if ($COND) { return true; } else { return false; }"
+message = "Return the condition directly instead of branching to true and false"
+
+[[patterns]]
+id = "if-return-bool-py"
+language = "python"
+pattern = """
+if $COND:
+    return True
+else:
+    return False
+"""
+message = "Return the condition directly instead of branching to True and False"

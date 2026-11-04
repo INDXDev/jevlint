@@ -1,0 +1,28 @@
+name: Bug report
+description: jevlint crashed, or gave a wrong score or finding
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The command you ran and the smallest code that shows the problem. Remove anything confidential.
+      render: shell
+    validations: { required: true }
+  - type: input
+    id: versions
+    attributes:
+      label: jevlint, Node.js and OS versions
+      placeholder: jevlint 0.1.0, Node.js 24.1.0, macOS 15
+    validations: { required: true }
+  - type: input
+    id: provider
+    attributes:
+      label: Provider and model
+      description: Leave empty for --ast-only.
+      placeholder: typesafe/jev-latest

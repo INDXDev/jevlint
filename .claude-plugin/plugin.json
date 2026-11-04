@@ -1,0 +1,16 @@
+{
+  "name": "jevlint",
+  "description": "Rank what to refactor first with jevlint, and review what a change made worse.",
+  "author": { "name": "INDX", "url": "https://github.com/INDXDev" },
+  "homepage": "https://github.com/INDXDev/jevlint",
+  "repository": "https://github.com/INDXDev/jevlint",
+  "license": "MIT",
+  "userConfig": {
+    "edit_hook": {
+      "type": "boolean",
+      "title": "Check every edit",
+      "description": "After each Edit, Write or MultiEdit, run jevlint hook and tell the agent what the edit made worse. Needs jevlint on your PATH. AST only: nothing leaves your machine.",
+      "default": false
+    }
+  }
+}
