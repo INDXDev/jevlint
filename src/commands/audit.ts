@@ -2,7 +2,7 @@
 import { defineCommand } from 'citty';
 import { planAudit } from '../audit.ts';
 import { newIssues, readBaseline } from '../baseline.ts';
-import { type ConfigOverrides, UserError } from '../config.ts';
+import { type Config, type ConfigOverrides, UserError } from '../config.ts';
 import { configuredTarget, createDecisionModel } from '../decision/providers.ts';
 import { auditIssues, formatIssues, type OutputFormat } from '../formats.ts';
 import { presetsInArgs } from '../presets.ts';
@@ -31,6 +31,38 @@ import {
 
 const DEFAULT_TOP = 20;
 
+interface AuditScope {
+  astOnly: boolean;
+  ignorePins: boolean;
+  noCache: boolean;
+}
+
+/** Tells preset names from paths, and stops on a near miss of a preset name. */
+async function splitPositionals(positionals: string[]) {
+  const { root } = await projectConfig();
+  const {
+    presets: named,
+    paths,
+    shadowed,
+    typos,
+  } = await presetsInArgs(positionals, {
+    root,
+    cwd: process.cwd(),
+  });
+  const [typo, meant] = Object.entries(typos)[0] ?? [];
+  if (typo !== undefined) {
+    throw new UserError(`No file or preset named "${typo}". Did you mean the preset "${meant}"?`);
+  }
+  for (const name of shadowed) {
+    console.error(
+      withoutControlCharacters(
+        `${name} is both a path and a preset, so it is audited as a path. For the preset, use --preset ${name}.`,
+      ),
+    );
+  }
+  return { named, paths };
+}
+
 function parseOverrides(flags: {
   preset?: string;
   named: string[];
@@ -57,6 +89,33 @@ function printReport(
   if (format !== 'text') return console.log(formatIssues(auditIssues(report), format));
   const nothingNew = onlyNew && report.files.length === 0;
   console.log(nothingNew ? 'No new issues.' : formatReport(report, { top }));
+}
+
+async function printDryRun(
+  config: Config,
+  format: OutputFormat,
+  paths: string[],
+  { astOnly, ignorePins, noCache }: AuditScope,
+): Promise<void> {
+  if (format !== 'text' && format !== 'json') {
+    throw new UserError(`--dry-run has no findings to print as ${format}.`);
+  }
+  await warnAboutScope(config, resolvePaths(paths));
+  const target = astOnly ? null : ((await createDecisionModel(config)) ?? configuredTarget(config));
+  const plan = await planAudit(config, { paths: resolvePaths(paths), ignorePins, noCache, target });
+  if (format === 'json') return printJson(plan);
+  console.log(formatPlan(plan, target?.provider ?? null));
+}
+
+/** A gate must not pass on a report that holds no score to compare. */
+function refuseUncheckableReport(report: AuditReport, failUnder: number): void {
+  const consequence =
+    failUnder > 0 ? `the score cannot be checked against ${failUnder}` : 'nothing can be compared';
+  const anyFileScored = report.files.some(({ ast, model, pin }) => ast || model || pin);
+  if (!anyFileScored) throw new UserError(`No file was scored, so ${consequence}.`);
+  if (everyProviderCallFailed(report)) {
+    throw new UserError(`Every provider request failed, so ${consequence}.`);
+  }
 }
 
 /** The `audit` command, which also runs when no command is given. */
@@ -110,65 +169,25 @@ export const auditCommand = defineCommand({
   async run({ args }) {
     const top = parseCount('--top', args.top) ?? DEFAULT_TOP;
     const format = parseFormat(args);
-    const cwd = process.cwd();
-    const { root } = await projectConfig();
-    const { presets: named, paths, shadowed, typos } = await presetsInArgs(args._, { root, cwd });
-    const [typo, meant] = Object.entries(typos)[0] ?? [];
-    if (typo !== undefined) {
-      throw new UserError(`No file or preset named "${typo}". Did you mean the preset "${meant}"?`);
-    }
-    for (const name of shadowed) {
-      console.error(
-        withoutControlCharacters(
-          `${name} is both a path and a preset, so it is audited as a path. For the preset, use --preset ${name}.`,
-        ),
-      );
-    }
+    const { named, paths } = await splitPositionals(args._);
     const overrides = parseOverrides({ ...args, named, failUnder: args['fail-under'] });
     const config = await projectConfig(overrides);
-    const astOnly = Boolean(args['ast-only']);
-    const ignorePins = Boolean(args['ignore-pins']);
-    if (args['dry-run']) {
-      if (format !== 'text' && format !== 'json') {
-        throw new UserError(`--dry-run has no findings to print as ${format}.`);
-      }
-      await warnAboutScope(config, resolvePaths(paths));
-      const target = astOnly
-        ? null
-        : ((await createDecisionModel(config)) ?? configuredTarget(config));
-      const plan = await planAudit(config, {
-        paths: resolvePaths(paths),
-        ignorePins,
-        noCache: !args.cache,
-        target,
-      });
-      if (format === 'json') return printJson(plan);
-      return console.log(formatPlan(plan, target?.provider ?? null));
-    }
+    const scope: AuditScope = {
+      astOnly: Boolean(args['ast-only']),
+      ignorePins: Boolean(args['ignore-pins']),
+      noCache: !args.cache,
+    };
+    if (args['dry-run']) return printDryRun(config, format, paths, scope);
 
     const failUnder = config.scoring.fail_under;
     const gated = failUnder > 0 || Boolean(args.new);
-    if (gated && !astOnly) await refuseUnansweredEnvKey(config);
+    if (gated && !scope.astOnly) await refuseUnansweredEnvKey(config);
     const baseline = args.new ? await readBaseline(config.root) : null;
-    const report = await auditProject(config, {
-      paths,
-      astOnly,
-      ignorePins,
-      noCache: !args.cache,
-    });
+    const report = await auditProject(config, { paths, ...scope });
     const shown = baseline ? newIssues(report, baseline) : report;
     printReport(shown, format, { top, onlyNew: baseline !== null });
 
-    const check =
-      failUnder > 0
-        ? `the score cannot be checked against ${failUnder}`
-        : 'nothing can be compared';
-    if (gated && !report.files.some(({ ast, model, pin }) => ast || model || pin)) {
-      throw new UserError(`No file was scored, so ${check}.`);
-    }
-    if (gated && everyProviderCallFailed(report)) {
-      throw new UserError(`Every provider request failed, so ${check}.`);
-    }
+    if (gated) refuseUncheckableReport(report, failUnder);
     if (report.score < failUnder) {
       console.error(`Repository score ${formatScore(report.score)} is below ${failUnder}.`);
       process.exitCode = 1;
