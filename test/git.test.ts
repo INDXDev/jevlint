@@ -11,6 +11,7 @@ import {
   commitsFrom,
   isClean,
   pullRequestChange,
+  pullRequestOfRef,
   touchedFiles,
 } from '../src/git.ts';
 
@@ -287,6 +288,17 @@ describe('changes to review', () => {
     });
   });
 
+  describe('pullRequestOfRef', () => {
+    it.each([
+      ['refs/pull/7/merge', '7'],
+      ['refs/heads/pull/7/merge', undefined],
+      ['refs/heads/main', undefined],
+      [undefined, undefined],
+    ])('reads %s', (ref, number) => {
+      expect(pullRequestOfRef(ref)).toBe(number);
+    });
+  });
+
   describe('pullRequestChange', () => {
     /** Puts a fake `gh` first on the PATH. */
     function fakeGh(script: string) {
@@ -307,6 +319,7 @@ describe('changes to review', () => {
       run(dir, 'checkout', '-q', 'main');
       const baseTip = commitFiles({ 'b.ts': CLEAN });
       const json = {
+        number: 7,
         title: 'T',
         body: 'Why',
         baseRefName: 'main',
@@ -330,6 +343,19 @@ describe('changes to review', () => {
         message: 'T\n\nWhy',
       });
       expect(run(clone, 'status', '--porcelain') + run(clone, 'rev-parse', 'HEAD')).toBe(before);
+    });
+
+    it("lets gh pick the current branch's pull request when no number is given", async () => {
+      const { clone, head } = pullRequest();
+      const change = await pullRequestChange(clone);
+      expect(change).toMatchObject({ title: 'Pull request #7: T', head });
+    });
+
+    it('names the branch, not a number, when gh finds no pull request for it', async () => {
+      fakeGh('echo "no pull requests found" >&2; exit 1');
+      await expect(pullRequestChange(dir)).rejects.toThrow(
+        "this branch's pull request: no pull requests found",
+      );
     });
 
     it('says how to fetch when the commits cannot be found', async () => {

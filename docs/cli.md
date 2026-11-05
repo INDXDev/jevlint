@@ -99,12 +99,15 @@ Reviews the codebase, each directory and each class, and ranks them worst to bes
 | `--ast-only` | Use AST analysis only, with no network |
 | `--no-cache` | Ignore cached decisions, and do not store new ones |
 
-## `jevlint pr <number>`
+## `jevlint pr [number]`
 
 Reviews what a GitHub pull request changes, not the whole repository. Needs the
 [GitHub CLI](https://cli.github.com), signed in. Each changed file is audited at the merge base and
 at the pull request's head, and the output shows its score before and after, the AST findings the
 change introduced or made worse, and the weak question answers (compliance below 0.7) it lowered.
+
+With no `number`, it takes the one in `GITHUB_REF` when that is `refs/pull/<number>/merge`, as in a
+GitHub Actions `pull_request` run, and otherwise the pull request of the current branch.
 
 Your working tree stays as it is. Files are read from git into a temporary directory, and the
 config comes from your checkout, so a pull request cannot change the rules it is judged by. The
@@ -125,6 +128,7 @@ answers are free, and model scores vary a little between versions of a file, so 
 in score as noise.
 
 ```sh
+jevlint pr --ast-only      # this branch's pull request
 jevlint pr 42 --ast-only
 jevlint pr 42 | gh pr comment 42 --body-file -
 ```

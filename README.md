@@ -152,14 +152,16 @@ jevlint test --drift    # ask again, and list what moved
 ## Review a change
 
 ```sh
-jevlint pr 42 --ast-only             # what this pull request made worse
+jevlint pr --ast-only                # what this branch's pull request made worse
+jevlint pr 42 --ast-only             # the same, by number
 jevlint commits --count 5 --ast-only # the same, commit by commit
 jevlint commits --count 5 --intent   # also check each message and AGENTS.md against the diff
 ```
 
 Your working tree stays as it is, and your own config applies, not the change's. `--intent` reads
 the repository's instructions from the base commit, so a change cannot rewrite what it is judged by.
-See the [CLI reference](docs/cli.md#jevlint-pr-number).
+See the [CLI reference](docs/cli.md#jevlint-pr-number), and
+[Continuous integration](docs/ci.md#review-what-a-pull-request-changes) to run it on every pull request.
 
 Catch a regression before it is committed, with no key and no network:
 
@@ -212,7 +214,7 @@ first two projects above. jevlint, jev-lint and @hazymoon/jevlint all use
 | `jevlint audit [paths...]` | Score files and rank them. Also the default command. |
 | `jevlint explain <file>` | Show every finding and score for one file. |
 | `jevlint architecture [paths...]` | Review the codebase, directories and classes, and rank them worst to best. |
-| `jevlint pr <number>` | Review what a GitHub pull request changes: scores before and after, and what got worse. |
+| `jevlint pr [number]` | Review what a GitHub pull request changes: scores before and after, and what got worse. |
 | `jevlint commits [revision]` | Review commits the same way, one by one, from `HEAD` backwards. |
 | `jevlint baseline [paths...]` | Record today's issues, so `audit --new` reports only what is new. |
 | `jevlint test [questions...]` | Run preset fixtures, record their answers, and detect drift. |

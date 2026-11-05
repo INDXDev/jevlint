@@ -177,22 +177,34 @@ export async function commitsFrom(
   });
 }
 
-function ghFailure(number: number, error: NodeJS.ErrnoException & { stderr?: string }): UserError {
+function ghFailure(
+  number: number | undefined,
+  error: NodeJS.ErrnoException & { stderr?: string },
+): UserError {
   if (error.code === 'ENOENT') {
     return new UserError('jevlint pr needs the GitHub CLI: https://cli.github.com');
   }
-  return new UserError(`gh could not read pull request #${number}: ${error.stderr?.trim()}`);
+  const subject = number ? `pull request #${number}` : "this branch's pull request";
+  return new UserError(`gh could not read ${subject}: ${error.stderr?.trim()}`);
 }
 
-/** Finds what a pull request changes, as GitHub shows it: from the merge base to its head. */
-export async function pullRequestChange(root: string, number: number): Promise<Change> {
-  const fields = 'title,body,baseRefName,baseRefOid,headRefOid';
-  const { stdout } = await execFileAsync('gh', ['pr', 'view', String(number), '--json', fields], {
+/** Reads the pull request number from a ref such as `refs/pull/7/merge`, as CI runs have. */
+export const pullRequestOfRef = (ref: string | undefined): string | undefined =>
+  ref?.match(/^refs\/pull\/(\d+)\//)?.[1];
+
+/**
+ * Finds what a pull request changes, as GitHub shows it: from the merge base to its head. With no
+ * number, `gh` picks the pull request of the current branch.
+ */
+export async function pullRequestChange(root: string, requested?: number): Promise<Change> {
+  const fields = 'number,title,body,baseRefName,baseRefOid,headRefOid';
+  const target = requested === undefined ? [] : [String(requested)];
+  const { stdout } = await execFileAsync('gh', ['pr', 'view', ...target, '--json', fields], {
     cwd: root,
   }).catch((error) => {
-    throw ghFailure(number, error);
+    throw ghFailure(requested, error);
   });
-  const { title, body, baseRefName, baseRefOid, headRefOid } = JSON.parse(stdout);
+  const { number, title, body, baseRefName, baseRefOid, headRefOid } = JSON.parse(stdout);
   await git(root, [
     'fetch',
     '--quiet',
