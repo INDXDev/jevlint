@@ -140,7 +140,9 @@ FileReport[] ─ rank ─► AuditReport ─ formatReport ─► terminal
 | `loadPresets(names, root)` | Resolves names in repository, user, built-in order |
 | `activeQuestions(presets, weights)` | Applies weights and produces full `<preset>.<id>` ids |
 | `parsePreset(toml)` | Validates a preset |
-| `listPresets`, `installPreset`, `removePreset` | Back the `preset` command |
+| `listPresets`, `installPreset`, `removePreset`, `createPreset`, `editablePreset` | Back the `preset` command |
+| `presetsInArgs(args, { root, cwd })` | Sorts `audit` arguments into presets and paths |
+| `closestName(name, names)` | The name a typo most likely meant, for suggestions |
 
 ### Engines
 

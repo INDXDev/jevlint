@@ -77,8 +77,14 @@ jevlint also guards against what a repository contains:
   does.
 - `.jevlint/baseline.json` is validated before use. A symlink to it, or from `.jevlint`, that leads
   outside the repository is an error, for reading and for writing.
-- `--html`, `init`, `baseline` and `preset add --repo` replace a symlink at their destination rather than
-  writing through it.
+- `--html`, `init`, `baseline`, `preset add --repo`, `preset new`, `preset edit` and `preset default`
+  replace a symlink at their destination rather than writing through it, and `--repo` refuses a
+  `.jevlint/presets/` that links outside the repository.
+- `preset new` and `preset edit` start `$VISUAL` or `$EDITOR` without a shell, passing the preset's path
+  as one argument, so a crafted file name cannot become a command. Editing a repository's preset opens
+  repository text in your editor, so keep modelines and similar features off.
+- `jevlint audit <name>` treats a name as a preset only when no such path exists, so a repository's
+  preset cannot take the place of a directory you meant to audit.
 - `init --pre-commit` writes fixed text with nothing from the repository in it, and refuses a
   `core.hooksPath` that leads out of the repository, even through a symlink.
 - `hook` resolves links in the path it is given, and passes any file outside the root unread. The

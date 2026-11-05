@@ -5,10 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { paths, UserError } from '../src/config.ts';
 import {
   activeQuestions,
+  closestName,
+  createPreset,
+  editablePreset,
   installPreset,
   listPresets,
   loadPresets,
   parsePreset,
+  presetsInArgs,
   removePreset,
 } from '../src/presets.ts';
 import type { Preset } from '../src/types.ts';
@@ -129,6 +133,12 @@ describe('loading', () => {
     expect(loaded?.description).toBe('repo');
     const listed = (await listPresets(root)).filter(({ name }) => name === 'house');
     expect(listed).toMatchObject([{ origin: 'repo', description: 'repo' }]);
+  });
+
+  it('suggests the preset a typo most likely meant', async () => {
+    await expect(loadPresets(['secruity'], root)).rejects.toThrow(
+      'Unknown preset "secruity". Did you mean "security"?',
+    );
   });
 
   it('lists what is available when a name is unknown', async () => {
@@ -286,5 +296,130 @@ describe('activeQuestions', () => {
 
   it('drops weight 0', () => {
     expect(activeQuestions(presets, { 'a.q': 0 }).map(({ id }) => id)).toEqual(['a.s']);
+  });
+});
+
+describe('createPreset', () => {
+  it('writes a valid blank preset to the user directory, or the repository with repo', async () => {
+    const user = await createPreset('house', { repo: false, root });
+    expect(user).toBe(join(paths.presetsDir(), 'house.toml'));
+    expect(parsePreset(await readFile(user, 'utf8')).name).toBe('house');
+    const repo = await createPreset('team', { repo: true, root });
+    expect(repo).toBe(join(repoDir(), 'team.toml'));
+  });
+
+  it('copies another preset under the new name, keeping its comments', async () => {
+    await writePreset(paths.presetsDir(), 'base', `# kept\n${preset('base', 'from base')}`);
+    const path = await createPreset('derived', { repo: false, root, from: 'base' });
+    const toml = await readFile(path, 'utf8');
+    expect(toml).toContain('# kept');
+    expect(parsePreset(toml)).toMatchObject({ name: 'derived', description: 'from base' });
+  });
+
+  it('copies a built-in', async () => {
+    const path = await createPreset('my-security', { repo: false, root, from: 'security' });
+    expect(parsePreset(await readFile(path, 'utf8')).name).toBe('my-security');
+  });
+
+  it('refuses a name a user or repository preset already has', async () => {
+    await writePreset(repoDir(), 'house', preset('house'));
+    await expect(createPreset('house', { repo: false, root })).rejects.toThrow(/preset edit house/);
+  });
+
+  it('refuses a name that is not a safe file name', async () => {
+    await expect(createPreset('../evil', { repo: false, root })).rejects.toThrow(UserError);
+    await expect(readdir(home)).resolves.not.toContain('evil.toml');
+  });
+
+  it('refuses an unknown base', async () => {
+    const create = createPreset('x', { repo: false, root, from: 'nope' });
+    await expect(create).rejects.toThrow(/Unknown preset "nope"/);
+  });
+});
+
+describe('editablePreset', () => {
+  it('copies a built-in, which then overrides it', async () => {
+    const { path, copied } = await editablePreset('solid', { repo: false, root });
+    expect(copied).toBe(true);
+    expect(path).toBe(join(paths.presetsDir(), 'solid.toml'));
+    expect((await listPresets(root)).find(({ name }) => name === 'solid')?.origin).toBe('user');
+  });
+
+  it('returns an installed preset where it is', async () => {
+    await writePreset(repoDir(), 'house', preset('house'));
+    const edited = await editablePreset('house', { repo: false, root });
+    expect(edited).toEqual({ path: join(repoDir(), 'house.toml'), copied: false });
+  });
+
+  it('refuses an unknown name', async () => {
+    await expect(editablePreset('nope', { repo: false, root })).rejects.toThrow(/Unknown preset/);
+  });
+});
+
+describe('presetsInArgs', () => {
+  it('picks out preset names and leaves everything else as paths', async () => {
+    await mkdir(join(root, 'src'));
+    const split = await presetsInArgs(['security', 'src', 'missing.ts', 'solid'], {
+      root,
+      cwd: root,
+    });
+    expect(split).toEqual({
+      presets: ['security', 'solid'],
+      paths: ['src', 'missing.ts'],
+      shadowed: [],
+      typos: {},
+    });
+  });
+
+  it('keeps an existing path a path, from the current directory or the root', async () => {
+    await mkdir(join(root, 'solid'));
+    await mkdir(join(root, 'sub', 'security'), { recursive: true });
+    const split = await presetsInArgs(['solid', 'security'], { root, cwd: join(root, 'sub') });
+    expect(split).toEqual({
+      presets: [],
+      paths: ['solid', 'security'],
+      shadowed: ['solid', 'security'],
+      typos: {},
+    });
+  });
+
+  it('notes the preset a missing path most likely meant', async () => {
+    const split = await presetsInArgs(['secruity', 'src'], { root, cwd: root });
+    expect(split).toMatchObject({ paths: ['secruity', 'src'], typos: { secruity: 'security' } });
+  });
+});
+
+describe('closestName', () => {
+  const names = ['security', 'solid', 'clean-code', 'clean-architecture'];
+
+  it.each([
+    ['secruity', 'security'],
+    ['solidd', 'solid'],
+    ['clean-cod', 'clean-code'],
+    ['sec', 'security'],
+  ])('suggests %s -> %s', (typo, expected) => {
+    expect(closestName(typo, names)).toBe(expected);
+  });
+
+  it.each(['src', 'lib', 's', 'something-else'])('suggests nothing for %s', (name) => {
+    expect(closestName(name, names)).toBeUndefined();
+  });
+});
+
+describe('used_by', () => {
+  it('defaults to audit, and marks the presets other commands use', async () => {
+    expect(parsePreset(preset('house')).used_by).toBe('audit');
+    const listed = await listPresets(root);
+    const use = (name: string) => listed.find((entry) => entry.name === name)?.used_by;
+    expect([use('security'), use('architecture-class'), use('change-intent')]).toEqual([
+      'audit',
+      'architecture',
+      'intent',
+    ]);
+  });
+
+  it('refuses an unknown command', () => {
+    const toml = preset('house').replace('source = "s"', 'source = "s"\nused_by = "lint"');
+    expect(() => parsePreset(toml)).toThrow(/used_by/);
   });
 });

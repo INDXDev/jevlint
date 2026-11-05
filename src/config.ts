@@ -1,7 +1,7 @@
 /** Paths, config schema, layered loading and repository restrictions. */
 // jevlint-score 79 -- Reviewed; the remaining gap is within model noise
 import { randomUUID } from 'node:crypto';
-import { access, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parse, stringify, TomlError } from 'smol-toml';
@@ -361,4 +361,41 @@ export async function loadConfig(options: {
 export function renderConfigToml(config: Config): string {
   const { root, sources, ...settings } = config;
   return stringify(settings);
+}
+
+/**
+ * Sets the top-level `presets` key in config TOML, keeping every other line and comment. The key
+ * goes where top-level keys may appear: in place of the old one, or before the first table.
+ */
+export function withPresets(toml: string, presets: string[], file: string): string {
+  parseToml(toml, file);
+  const line = `presets = ${JSON.stringify(presets)}`;
+  const firstTable = toml.search(/^[ \t]*\[/m);
+  const topLevel = firstTable === -1 ? toml : toml.slice(0, firstTable);
+  const rest = firstTable === -1 ? '' : toml.slice(firstTable);
+  // Preset names cannot contain `]`, so the first one closes the array, even across lines.
+  const existing = /^[ \t]*presets[ \t]*=[ \t]*\[[^\]]*\][^\n]*$/m;
+  const updated = existing.test(topLevel)
+    ? topLevel.replace(existing, line)
+    : `${topLevel}${topLevel === '' || topLevel.endsWith('\n') ? '' : '\n'}${line}\n${rest === '' ? '' : '\n'}`;
+  const result = `${updated}${rest}`;
+  const parsed = parseToml(result, file);
+  if (JSON.stringify(parsed.presets) !== JSON.stringify(presets)) {
+    throw new UserError(`${file}: could not set presets. Edit the file by hand.`);
+  }
+  return result;
+}
+
+/** Writes the default presets to the user config, or with `repo` to `jevlint.toml`, and returns the file. */
+export async function saveDefaultPresets(
+  presets: string[],
+  options: { repo: boolean; root: string },
+): Promise<string> {
+  const file = options.repo ? join(options.root, REPO_CONFIG) : paths.configFile();
+  const text = (await ifExists(readRegularFile(file))) ?? '';
+  const updated = withPresets(text, presets, file);
+  await mkdir(dirname(file), { recursive: true });
+  // Atomic, so a symlink the repository planted here is replaced, not written through.
+  await writeFileAtomic(file, updated);
+  return file;
 }

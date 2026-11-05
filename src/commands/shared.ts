@@ -51,6 +51,16 @@ function parseNumber(
   return parsed;
 }
 
+/** Parses comma-separated preset names, as `--preset` takes them. */
+export function parsePresetList(value: string): string[] {
+  const presets = value
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean);
+  if (presets.length === 0) throw new UserError('--preset needs at least one preset name.');
+  return presets;
+}
+
 /** Parses a flag that must be a positive integer. */
 export function parseCount(flag: string, value: string | undefined): number | undefined {
   if (value === undefined) return undefined;

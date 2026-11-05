@@ -17,7 +17,10 @@ Results go to stdout, and progress and notices go to stderr, so pipes stay clean
 
 ## `jevlint audit [paths...]`
 
-Scores files and ranks them. With `paths`, only those files or directories are audited.
+Scores files and ranks them. With `paths`, only those files or directories are audited. An argument
+that names a preset and no existing path selects that preset, so `jevlint audit security` runs with
+only the `security` preset, and adds to any `--preset`. A name that is neither, but close to a preset,
+stops with a suggestion rather than auditing nothing. See [Choosing presets](presets.md#choosing-presets).
 
 | Flag | Description |
 | --- | --- |
@@ -278,6 +281,7 @@ Creates a config file interactively.
 | `--user` | Write `~/.config/jevlint/config.toml` instead of `jevlint.toml` |
 | `--yes` | Accept defaults without prompting |
 | `--force` | Replace an existing file |
+| `--preset <names>` | Comma-separated default presets to write. In a terminal, they start selected in the prompt |
 | `--pre-commit` | Install a git pre-commit hook that runs `jevlint hook --staged`, and write no config. A different hook stays unless you pass `--force` |
 
 ## `jevlint auth`
@@ -291,12 +295,20 @@ Creates a config file interactively.
 
 ## `jevlint preset`
 
+Run alone in a terminal, `jevlint preset` lets you pick a preset and then show it, edit it, add it to
+or remove it from the defaults, copy it into a new preset, or remove it. In a pipe, it prints
+`preset list`. `show`, `edit` and `remove` also let you pick when you leave out the name.
+`jevlint audit --help`, `jevlint init --help` and `jevlint preset --help` list the presets with examples.
+
 | Command | Description |
 | --- | --- |
-| `preset list` | Show available presets and where each one comes from |
-| `preset show <name>` | Print a preset's questions |
+| `preset list` | Show available presets, grouped by the command they serve, and where each comes from. `*` marks the default ones |
+| `preset show [name]` | Print a preset's questions. `--toml` prints its file instead |
+| `preset default [names...]` | Set the presets every audit uses, in your user config or with `--repo` in `jevlint.toml`. With no names, pick them in a terminal, or print them in a pipe |
+| `preset new <name>` | Write a new preset to your user presets and open it in `$VISUAL` or `$EDITOR`. `--from <preset>` copies another, `--repo` writes into `.jevlint/presets/`, `--no-edit` skips the editor |
+| `preset edit [name]` | Open a preset in your editor, then check it. A built-in one is copied first, to your user presets or with `--repo` to `.jevlint/presets/`, and the copy overrides it. `--path` prints the file instead |
 | `preset add <file>` | Install a preset TOML for your user. `--repo` installs into `.jevlint/presets/` |
-| `preset remove <name>` | Remove an installed preset. Built-in presets cannot be removed |
+| `preset remove [name]` | Remove an installed preset. Built-in presets cannot be removed |
 
 ## `jevlint cache`
 

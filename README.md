@@ -221,7 +221,7 @@ first two projects above. jevlint, jev-lint and @hazymoon/jevlint all use
 | `jevlint fix [files...] --agent <name>` | Run an agent on the worst files, then re-score them. |
 | `jevlint init` | Create a repository or user config. |
 | `jevlint auth set\|list\|remove\|env` | Manage API keys. |
-| `jevlint preset list\|show\|add\|remove` | Manage principle presets. |
+| `jevlint preset [list\|show\|default\|new\|edit\|add\|remove]` | Choose, view, write and manage principle presets. Alone, it opens a menu. |
 | `jevlint cache info\|clear` | Inspect or empty the result cache. |
 | `jevlint config show\|path` | Show the merged config and where it came from. |
 

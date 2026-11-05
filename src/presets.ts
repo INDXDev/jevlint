@@ -1,6 +1,7 @@
 /** Loads and validates presets from the repository, the user and the built-in set. */
+import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, realpath, rm } from 'node:fs/promises';
-import { dirname, join, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import {
@@ -14,7 +15,7 @@ import {
   UserError,
   writeFileAtomic,
 } from './config.ts';
-import type { Preset, Question } from './types.ts';
+import type { Preset, PresetUse, Question } from './types.ts';
 
 // One level below the package root from both src/ and dist/.
 const BUILT_IN_DIR = fileURLToPath(new URL('../presets/', import.meta.url));
@@ -40,6 +41,9 @@ const presetSchema = z.strictObject({
   name: idSchema,
   description: z.string(),
   source: z.string(),
+  used_by: z
+    .enum(['audit', 'architecture', 'intent'] as const satisfies PresetUse[])
+    .default('audit'),
   questions: z
     .array(questionSchema)
     .refine((questions) => new Set(questions.map(({ id }) => id)).size === questions.length, {
@@ -49,7 +53,8 @@ const presetSchema = z.strictObject({
   rules: astRulesSchema.default([]),
 });
 
-type PresetOrigin = 'repo' | 'user' | 'built-in';
+/** Where a preset was found, in order of preference. */
+export type PresetOrigin = 'repo' | 'user' | 'built-in';
 
 const repoPresetsDir = (root: string) => join(root, '.jevlint', 'presets');
 
@@ -86,30 +91,105 @@ async function discoverPresets(root: string) {
   return found;
 }
 
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const substitution = (previous[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1);
+      current[j] = Math.min(
+        (previous[j] as number) + 1,
+        (current[j - 1] as number) + 1,
+        substitution,
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length] as number;
+}
+
+/** The known name a typo most likely meant: within two edits, or one that starts with it. */
+export function closestName(name: string, names: Iterable<string>): string | undefined {
+  let best: { name: string; distance: number } | undefined;
+  for (const candidate of names) {
+    const prefix = name.length >= 3 && candidate.startsWith(name);
+    const distance = prefix ? 1 : editDistance(name, candidate);
+    if (distance <= 2 && (!best || distance < best.distance)) best = { name: candidate, distance };
+  }
+  return best?.name;
+}
+
+function unknownPreset(name: string, names: Iterable<string>): UserError {
+  const suggestion = closestName(name, names);
+  const hint = suggestion ? `Did you mean "${suggestion}"?` : 'Run: jevlint preset list';
+  return new UserError(`Unknown preset "${name}". ${hint}`);
+}
+
 /** Resolves preset names, preferring repository, then user, then built-in. */
 export async function loadPresets(names: string[], root: string): Promise<Preset[]> {
   const found = await discoverPresets(root);
   return [...new Set(names)].map((name) => {
     const entry = found.get(name);
     if (entry) return entry.preset;
-    const available = [...found.keys()].sort().join(', ');
-    throw new UserError(`Unknown preset "${name}". Available: ${available}`);
+    const suggestion = closestName(name, found.keys());
+    const hint = suggestion
+      ? `Did you mean "${suggestion}"?`
+      : `Available: ${[...found.keys()].sort().join(', ')}`;
+    throw new UserError(`Unknown preset "${name}". ${hint}`);
   });
 }
 
 /** Lists the presets that can be used from `root`, sorted by name. */
 export async function listPresets(
   root: string,
-): Promise<{ name: string; description: string; origin: PresetOrigin; path: string }[]> {
+): Promise<
+  { name: string; description: string; used_by: PresetUse; origin: PresetOrigin; path: string }[]
+> {
   const found = await discoverPresets(root);
   return [...found.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, { preset, origin, path }]) => ({
       name,
       description: preset.description,
+      used_by: preset.used_by,
       origin,
       path,
     }));
+}
+
+/** `audit` arguments sorted into presets and paths. */
+export interface PresetArgs {
+  presets: string[];
+  paths: string[];
+  /** Existing paths that also name a preset, and so stay paths. */
+  shadowed: string[];
+  /** Arguments that are neither, mapped to the preset they most likely meant. */
+  typos: Record<string, string>;
+}
+
+/**
+ * Splits `audit` arguments into preset names and paths, so `jevlint audit security` picks a preset.
+ * An existing path always stays a path.
+ */
+export async function presetsInArgs(
+  args: string[],
+  { root, cwd }: { root: string; cwd: string },
+): Promise<PresetArgs> {
+  const names = new Set((await discoverPresets(root)).keys());
+  const isPath = (arg: string) => existsSync(resolve(cwd, arg)) || existsSync(resolve(root, arg));
+  const result: PresetArgs = { presets: [], paths: [], shadowed: [], typos: {} };
+  for (const arg of args) {
+    if (isPath(arg)) {
+      result.paths.push(arg);
+      if (names.has(arg)) result.shadowed.push(arg);
+    } else if (names.has(arg)) result.presets.push(arg);
+    else {
+      result.paths.push(arg);
+      const suggestion = closestName(arg, names);
+      if (suggestion !== undefined) result.typos[arg] = suggestion;
+    }
+  }
+  return result;
 }
 
 /** Validates a preset file and copies it into place, returning the new path. */
@@ -119,8 +199,49 @@ export async function installPreset(
 ): Promise<string> {
   const toml = await ifExists(readFile(file, 'utf8'));
   if (toml === undefined) throw new UserError(`Preset file not found: ${file}`);
-  const { name } = parsePreset(toml, file);
-  const dir = options.repo ? repoPresetsDir(options.root) : paths.presetsDir();
+  parsePreset(toml, file);
+  return writePresetFile(toml, options);
+}
+
+/** A starting point for `preset new`, valid as written so the user edits rather than repairs it. */
+function scaffold(name: string): string {
+  return `name = "${name}"
+description = "What this preset checks, in one line"
+source = "Where these principles come from"
+
+# Add one [[questions]] block per principle. See docs/presets.md#writing-a-preset
+
+[[questions]]
+id = "example"
+type = "score"
+title = "A short statement of the good state"
+instructions = "The question the model answers about each file."
+levels = [
+  "The worst case",
+  "Partly there",
+  "The best case, or the question does not apply",
+]
+weight = 1
+fix = "Advice for a coding agent that fixes a low score."
+`;
+}
+
+/** Points an existing preset's TOML at a new name, keeping its comments and layout. */
+function renamed(toml: string, name: string, source: string): string {
+  const pattern = /^name\s*=\s*(["']).*?\1[ \t]*$/m;
+  if (!pattern.test(toml)) throw new UserError(`${source}: no top-level name line to rename`);
+  return toml.replace(pattern, `name = "${name}"`);
+}
+
+const editableDir = (options: { repo: boolean; root: string }) =>
+  options.repo ? repoPresetsDir(options.root) : paths.presetsDir();
+
+async function writePresetFile(
+  toml: string,
+  options: { repo: boolean; root: string },
+): Promise<string> {
+  const { name } = parsePreset(toml);
+  const dir = editableDir(options);
   // Checked first as well, so that a linked `.jevlint` gets no directory outside the repository.
   if (options.repo) await ifExists(assertInRepo(dirname(dir), options.root));
   await mkdir(dir, { recursive: true });
@@ -129,6 +250,47 @@ export async function installPreset(
   // Atomic, so a symlink planted at the destination is replaced rather than written through.
   await writeFileAtomic(destination, toml);
   return destination;
+}
+
+/**
+ * Creates a user or repository preset, blank or copied from `from`, and returns its path.
+ * Refuses a name that already names a user or repository preset.
+ */
+export async function createPreset(
+  name: string,
+  options: { repo: boolean; root: string; from?: string },
+): Promise<string> {
+  const valid = idSchema.safeParse(name);
+  if (!valid.success)
+    throw new UserError(`Invalid preset name "${name}": ${valid.error.issues[0]?.message}`);
+  const found = await discoverPresets(options.root);
+  const existing = found.get(name);
+  if (existing && existing.origin !== 'built-in') {
+    throw new UserError(
+      `A ${existing.origin} preset named "${name}" exists. Run: jevlint preset edit ${name}`,
+    );
+  }
+  if (options.from === undefined) return writePresetFile(scaffold(name), options);
+  const base = found.get(options.from);
+  if (!base) throw unknownPreset(options.from, found.keys());
+  const toml = await readFile(base.path, 'utf8');
+  return writePresetFile(renamed(toml, name, base.path), options);
+}
+
+/**
+ * Returns the file to edit for a preset. A built-in is first copied to the user's presets, or the
+ * repository's with `repo`, where it then takes precedence; `copied` says so.
+ */
+export async function editablePreset(
+  name: string,
+  options: { repo: boolean; root: string },
+): Promise<{ path: string; copied: boolean }> {
+  const found = await discoverPresets(options.root);
+  const entry = found.get(name);
+  if (!entry) throw unknownPreset(name, found.keys());
+  if (entry.origin !== 'built-in') return { path: entry.path, copied: false };
+  const toml = await readFile(entry.path, 'utf8');
+  return { path: await writePresetFile(toml, options), copied: true };
 }
 
 /** Removes an installed preset, returning whether it existed. Built-ins cannot be removed. */

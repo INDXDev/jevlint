@@ -406,6 +406,118 @@ describe('preset show', () => {
   });
 });
 
+describe('choosing presets', () => {
+  it('audits with a preset named in place of a path', () => {
+    const cwd = project({ 'a.ts': MESSY });
+    const { status, stdout } = jevlint(cwd, 'audit', 'security', '--ast-only');
+    expect(status).toBe(0);
+    expect(stdout).toMatch(/AST only {2}· {2}security\n/);
+  });
+
+  it('audits a path that shares a preset name, and says so', () => {
+    const cwd = project({ 'solid/a.ts': MESSY });
+    const { status, stdout, stderr } = jevlint(cwd, 'audit', 'solid', '--ast-only');
+    expect(status).toBe(0);
+    expect(stdout).toContain('solid/a.ts');
+    expect(stdout).toContain('readable-code');
+    expect(stderr).toContain('use --preset solid');
+  });
+
+  it('sets, marks and prints the default presets', () => {
+    const home = tempDir();
+    const cwd = project({ 'a.ts': MESSY });
+    expect(jevlintAt(home, cwd, 'preset', 'default', 'security,solid').status).toBe(0);
+    expect(readFileSync(join(home, 'jevlint', 'config.toml'), 'utf8')).toContain(
+      'presets = ["security","solid"]',
+    );
+    expect(jevlintAt(home, cwd, 'preset', 'default').stdout).toBe('security\nsolid\n');
+    expect(jevlintAt(home, cwd, 'preset', 'list').stdout).toMatch(/^\* security /m);
+    expect(jevlintAt(home, cwd, 'audit', '--ast-only').stdout).toContain('security, solid');
+  });
+
+  it('refuses an unknown default preset and writes nothing', () => {
+    const home = tempDir();
+    const { status, stderr } = jevlintAt(home, project(), 'preset', 'default', 'nope');
+    expect(status).toBe(2);
+    expect(stderr).toContain('Unknown preset "nope"');
+    expect(existsSync(join(home, 'jevlint', 'config.toml'))).toBe(false);
+  });
+
+  it('lets init choose the default presets', () => {
+    const cwd = project();
+    expect(jevlint(cwd, 'init', '--yes', '--preset', 'security').status).toBe(0);
+    expect(readFileSync(join(cwd, 'jevlint.toml'), 'utf8')).toContain('presets = ["security"]');
+  });
+
+  it('creates a preset from another, and edits a built-in through a copy', () => {
+    const home = tempDir();
+    const cwd = project();
+    const created = jevlintAt(home, cwd, 'preset', 'new', 'mine', '--from', 'solid', '--no-edit');
+    expect(created.status).toBe(0);
+    expect(jevlintAt(home, cwd, 'preset', 'show', 'mine').stdout).toContain('mine.open-closed');
+    const edited = jevlintAt(home, cwd, 'preset', 'edit', 'security', '--path');
+    expect(edited.stdout.trim()).toBe(join(home, 'jevlint', 'presets', 'security.toml'));
+    expect(edited.stderr).toContain('now overrides it');
+    expect(jevlintAt(home, cwd, 'preset', 'show', 'security', '--toml').stdout).toMatch(
+      /^name = "security"/,
+    );
+  });
+
+  it('stops on a preset name with a typo instead of auditing nothing', () => {
+    const { status, stderr } = jevlint(
+      project({ 'a.ts': MESSY }),
+      'audit',
+      'secruity',
+      '--ast-only',
+    );
+    expect(status).toBe(2);
+    expect(stderr).toContain('Did you mean the preset "security"?');
+  });
+
+  it('groups presets by the command they serve', () => {
+    const { stdout } = jevlint(project(), 'preset', 'list');
+    const groups = stdout.split('\n\n');
+    expect(groups[0]).toMatch(/^For audits/);
+    expect(groups[0]).toContain('documentation');
+    expect(groups[0]).not.toContain('architecture-class');
+    expect(groups[1]).toMatch(/^For jevlint architecture:\n {2}architecture-class/);
+  });
+
+  it('lists the same presets in a pipe when run with no subcommand', () => {
+    const cwd = project();
+    expect(jevlint(cwd, 'preset').stdout).toBe(jevlint(cwd, 'preset', 'list').stdout);
+  });
+
+  it.each([['audit'], ['preset'], ['init']])('lists presets and examples in %s --help', (name) => {
+    const { status, stdout } = jevlint(project(), name, '--help');
+    expect(status).toBe(0);
+    expect(stdout).toContain('* readable-code');
+    expect(stdout).toContain('jevlint audit security');
+  });
+
+  it('still prints help where the config is broken', () => {
+    const { status, stdout } = jevlint(
+      project({ 'jevlint.toml': 'presets = [' }),
+      'audit',
+      '--help',
+    );
+    expect(status).toBe(0);
+    expect(stdout).toContain('Run jevlint preset list to see them.');
+  });
+
+  it.each([['show'], ['edit'], ['remove']])('asks for a name to %s in a pipe', (action) => {
+    const { status, stderr } = jevlint(project(), 'preset', action);
+    expect(status).toBe(2);
+    expect(stderr).toContain('Name a preset. Run: jevlint preset list');
+  });
+
+  it('refuses to open an editor with no terminal', () => {
+    const { status, stderr } = jevlint(project(), 'preset', 'edit', 'solid');
+    expect(status).toBe(2);
+    expect(stderr).toContain('No terminal to edit in');
+  });
+});
+
 describe('multi-line text from a preset', () => {
   it('keeps its line breaks, but not its escape sequences', () => {
     const cwd = project({

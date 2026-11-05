@@ -1,6 +1,7 @@
 name = "change-intent"
-description = "Whether a change does what it says and keeps to the repository's instructions. Used by `--intent` on `jevlint pr` and `jevlint commits`, not by file audits"
+description = "Whether a change does what it says and keeps to the repository's instructions"
 source = "Common code review practice. Independent paraphrase."
+used_by = "intent"
 
 [[questions]]
 id = "message-matches-diff"

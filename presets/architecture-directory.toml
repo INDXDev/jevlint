@@ -1,6 +1,7 @@
 name = "architecture-directory"
-description = "Directory structure: one purpose per directory, and dependencies that make sense. Used by `jevlint architecture`, not by file audits"
+description = "Directory structure: one purpose per directory, and dependencies that make sense"
 source = "Common software design guidance on cohesion and coupling. Independent paraphrase."
+used_by = "architecture"
 
 [[questions]]
 id = "cohesion"

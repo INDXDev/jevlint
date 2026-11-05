@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'smol-toml';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadConfig, paths, renderConfigToml, UserError } from '../src/config.ts';
+import {
+  loadConfig,
+  paths,
+  renderConfigToml,
+  saveDefaultPresets,
+  UserError,
+  withPresets,
+} from '../src/config.ts';
 
 let home: string;
 let repo: string;
@@ -256,5 +263,52 @@ describe('renderConfigToml', () => {
     expect(rendered.concurrency).toBe(8);
     expect(rendered).not.toHaveProperty('root');
     expect(rendered).not.toHaveProperty('sources');
+  });
+});
+
+describe('withPresets', () => {
+  const set = (toml: string) => withPresets(toml, ['security', 'solid'], 'c.toml');
+
+  it('replaces the existing key, keeping comments and tables', () => {
+    const toml = '# top\npresets = ["readable-code"] # why\n\n[scoring]\nscale = 10\n';
+    expect(set(toml)).toBe('# top\npresets = ["security","solid"]\n\n[scoring]\nscale = 10\n');
+  });
+
+  it('replaces a key that spans lines', () => {
+    const toml = 'presets = [\n  "a",\n  "b",\n]\nconcurrency = 2\n';
+    expect(set(toml)).toBe('presets = ["security","solid"]\nconcurrency = 2\n');
+  });
+
+  it('adds the key before the first table, where top-level keys belong', () => {
+    const result = set('# top\nconcurrency = 2\n[provider]\nname = "openai"\n');
+    expect(result).toBe(
+      '# top\nconcurrency = 2\npresets = ["security","solid"]\n\n[provider]\nname = "openai"\n',
+    );
+    expect(parse(result)).toMatchObject({ presets: ['security', 'solid'], concurrency: 2 });
+  });
+
+  it('writes an empty or missing file', () => {
+    expect(set('')).toBe('presets = ["security","solid"]\n');
+  });
+
+  it('ignores a commented-out key and a presets key inside a table', () => {
+    const result = set('# presets = ["x"]\n[weights]\npresets = 1\n');
+    expect(parse(result)).toMatchObject({
+      presets: ['security', 'solid'],
+      weights: { presets: 1 },
+    });
+  });
+
+  it('refuses invalid TOML rather than guess', () => {
+    expect(() => set('presets = [')).toThrow(UserError);
+  });
+});
+
+describe('saveDefaultPresets', () => {
+  it('writes the user config, or jevlint.toml with repo, and both load', async () => {
+    await saveDefaultPresets(['solid'], { repo: false, root: repo });
+    expect((await loadConfig({ cwd: repo })).presets).toEqual(['solid']);
+    await saveDefaultPresets(['security'], { repo: true, root: repo });
+    expect((await loadConfig({ cwd: repo })).presets).toEqual(['security']);
   });
 });

@@ -30,6 +30,7 @@ vi.mock('../src/presets.ts', async (original) => ({
 const preset: Preset = {
   name: 'p',
   description: '',
+  used_by: 'audit',
   source: 'test',
   questions: [
     { id: 'q', title: 'T', instructions: 'I', weight: 1, fix: 'F', type: 'boolean', good: true },
