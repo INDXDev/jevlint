@@ -4,6 +4,11 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- Installing jevlint with pnpm no longer warns "Ignored build scripts: @ast-grep/lang-go, ...". The
+  Go, Python and Rust parsers now ship inside the package instead of coming from packages with an
+  install script. Analysis is unchanged. On a platform with no prebuilt parser, those languages now
+  get approximate metrics instead of an error.
+
 ## 0.2.0 - 2026-11-05
 
 - `--format <text|json|sarif|github>` on `audit`, `pr` and `commits` gives SARIF 2.1.0 for code

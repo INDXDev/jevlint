@@ -1,12 +1,55 @@
 /** Per-language parsers and node-kind tables that drive the AST walker. */
-import { extname } from 'node:path';
-import go from '@ast-grep/lang-go';
-import python from '@ast-grep/lang-python';
-import rust from '@ast-grep/lang-rust';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, extname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Lang, registerDynamicLanguage } from '@ast-grep/napi';
 import type { Language } from '../types.ts';
 
-registerDynamicLanguage({ python, go, rust });
+type GrammarName = 'python' | 'go' | 'rust';
+
+const GRAMMARS: Record<GrammarName, { extensions: string[]; languageSymbol: string }> = {
+  python: { extensions: ['py'], languageSymbol: 'tree_sitter_python' },
+  go: { extensions: ['go'], languageSymbol: 'tree_sitter_go' },
+  rust: { extensions: ['rs'], languageSymbol: 'tree_sitter_rust' },
+};
+
+const PLATFORMS: Partial<Record<NodeJS.Platform, string>> = {
+  darwin: 'macOS',
+  linux: 'Linux',
+  win32: 'Windows',
+};
+const ARCHES: Partial<Record<string, string>> = { x64: 'X64', arm64: 'ARM64' };
+
+/**
+ * The build copies each grammar's prebuilt parsers next to the bundle, so an install has no
+ * `@ast-grep/lang-*` package, whose install script pnpm would warn about. From source, they are
+ * devDependencies.
+ */
+function prebuildsDir(grammar: GrammarName): string {
+  const bundled = fileURLToPath(new URL(`./parsers/${grammar}/prebuilds/`, import.meta.url));
+  if (existsSync(bundled)) return bundled;
+  const require = createRequire(import.meta.url);
+  return join(dirname(require.resolve(`@ast-grep/lang-${grammar}/package.json`)), 'prebuilds');
+}
+
+function parserPath(grammar: GrammarName): string | undefined {
+  const platform = PLATFORMS[process.platform];
+  const arch = ARCHES[process.arch];
+  if (!platform || !arch) return undefined;
+  const path = join(prebuildsDir(grammar), `prebuild-${platform}-${arch}`, 'parser.so');
+  return existsSync(path) ? path : undefined;
+}
+
+/** Grammars with a parser for this platform. Files in the others get the lexical fallback. */
+const registered = new Set<GrammarName>();
+const available = Object.entries(GRAMMARS).flatMap(([name, grammar]) => {
+  const libraryPath = parserPath(name as GrammarName);
+  if (libraryPath === undefined) return [];
+  registered.add(name as GrammarName);
+  return [[name, { ...grammar, libraryPath, expandoChar: 'µ' }] as const];
+});
+registerDynamicLanguage(Object.fromEntries(available));
 
 /** The node kinds that give one language its metrics. */
 export interface LanguageSpec {
@@ -115,5 +158,7 @@ const EXTENSIONS: Record<string, Language> = {
 
 /** Returns the AST language for a path, or null when only the model can read it. */
 export function languageOf(path: string): Language | null {
-  return EXTENSIONS[extname(path)] ?? null;
+  const language = EXTENSIONS[extname(path)] ?? null;
+  if (language === null || !Object.hasOwn(GRAMMARS, language)) return language;
+  return registered.has(language as GrammarName) ? language : null;
 }
