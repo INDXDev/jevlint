@@ -273,7 +273,11 @@ export async function planAudit(
     // With no target the run stays local, and rules need a model.
     const ruled =
       target && !filePin
-        ? await plannedRuleChars(source, languageOf(path), rules, target, config, noCache)
+        ? await plannedRuleChars(source, languageOf(path), target, {
+            config,
+            options: { noCache },
+            rules,
+          })
         : { chars: 0, questionChars: 0 };
     return {
       path,

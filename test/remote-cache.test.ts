@@ -57,7 +57,12 @@ describe('signedHeaders', () => {
     const url = new URL(
       'https://s3.eu-west-1.amazonaws.com/my.bucket/team/ci/decisions/ab/abc.json',
     );
-    const { authorization } = signedHeaders('GET', url, '', credentials, 'eu-west-1', now);
+    const { authorization } = signedHeaders(
+      { method: 'GET', url, body: '' },
+      credentials,
+      'eu-west-1',
+      now,
+    );
     expect(authorization).toBe(
       'AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20261105/eu-west-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=9fb5bb77781f7b5e7c585a8c1e6194e2c862dab5041be16d3f90ca2f29621fdf',
     );
@@ -66,7 +71,12 @@ describe('signedHeaders', () => {
   it('signs a PUT with a session token and a port as AWS does', () => {
     const url = new URL('http://127.0.0.1:9000/b/decisions/ab/abc.json');
     const session = { ...credentials, sessionToken: 'tok/en+==' };
-    const headers = signedHeaders('PUT', url, '{"answers":{}}', session, 'auto', now);
+    const headers = signedHeaders(
+      { method: 'PUT', url, body: '{"answers":{}}' },
+      session,
+      'auto',
+      now,
+    );
     expect(headers.authorization).toContain(
       'Signature=76be32db56b2f9edca0f3ffbe0e178fd7016cec6c65cd2a22fa7b36b3f38f118',
     );

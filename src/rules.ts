@@ -72,6 +72,24 @@ function ruleRequests(
   return { requests, warnings };
 }
 
+function withDecision(
+  usage: RuleUsage | undefined,
+  { cached, inputTokens }: { cached?: boolean; inputTokens: number },
+): RuleUsage {
+  return {
+    inputTokens: (usage?.inputTokens ?? 0) + (cached ? 0 : inputTokens),
+    cacheHits: (usage?.cacheHits ?? 0) + (cached ? 1 : 0),
+    modelCalls: (usage?.modelCalls ?? 0) + (cached ? 0 : 1),
+  };
+}
+
+/** A provider failure costs one match, so it only warns. A `UserError` stops the run. */
+function providerWarning(error: unknown): string {
+  if (error instanceof UserError) throw error;
+  const reason = error instanceof Error ? error.message : String(error);
+  return `${PROVIDER_ERROR} ${reason}`;
+}
+
 /**
  * Asks about each match in turn, so a file holds one provider call at a time and `concurrency`
  * stays the limit for the whole run. Hits join the AST findings, so everything downstream works.
@@ -91,13 +109,8 @@ export async function judgeRules(
       const { noCache } = options;
       const questions = [ruleQuestion(rule)];
       const decision = await decideFile({ resolved, questions, source: text, config, noCache });
-      const { cached, inputTokens, truncated } = decision;
-      usage = {
-        inputTokens: (usage?.inputTokens ?? 0) + (cached ? 0 : inputTokens),
-        cacheHits: (usage?.cacheHits ?? 0) + (cached ? 1 : 0),
-        modelCalls: (usage?.modelCalls ?? 0) + (cached ? 0 : 1),
-      };
-      if (truncated) {
+      usage = withDecision(usage, decision);
+      if (decision.truncated) {
         warnings.push(
           `Rule ${rule.id}: the model saw only the first ${config.max_file_chars} characters of a match.`,
         );
@@ -107,9 +120,7 @@ export async function judgeRules(
         hits.push({ rule: rule.id, message: rule.message, line, probability, fix: rule.fix });
       }
     } catch (error) {
-      if (error instanceof UserError) throw error;
-      const reason = error instanceof Error ? error.message : String(error);
-      warnings.push(`${PROVIDER_ERROR} ${reason}`);
+      warnings.push(providerWarning(error));
     }
   }
   const findings = [...ast.findings, ...hits];
@@ -124,15 +135,13 @@ export async function judgeRules(
 export async function plannedRuleChars(
   source: string,
   language: Language | null,
-  rules: AstRule[],
   target: ModelTarget,
-  config: Config,
-  noCache?: boolean,
+  { config, options, rules }: Omit<RuleRun, 'resolved'>,
 ): Promise<{ chars: number; questionChars: number }> {
   const planned = { chars: 0, questionChars: 0 };
   for (const { rule, text } of ruleRequests(source, language, rules, config).requests) {
     const questions = [ruleQuestion(rule)];
-    if (!noCache && (await isDecisionCached(target, questions, text, config))) continue;
+    if (!options.noCache && (await isDecisionCached(target, questions, text, config))) continue;
     planned.chars += Math.min(text.length, config.max_file_chars);
     planned.questionChars += JSON.stringify(decisionRequest(questions)).length;
   }
