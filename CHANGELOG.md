@@ -4,6 +4,10 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+## 0.2.1 - 2026-11-05
+
+- `jevlint pr` no longer needs a number. It finds it from `GITHUB_REF` in a GitHub Actions
+  `pull_request` run, and otherwise uses the pull request of the current branch.
 - Installing jevlint with pnpm no longer warns "Ignored build scripts: @ast-grep/lang-go, ...". The
   Go, Python and Rust parsers now ship inside the package instead of coming from packages with an
   install script. Analysis is unchanged. On a platform with no prebuilt parser, those languages now

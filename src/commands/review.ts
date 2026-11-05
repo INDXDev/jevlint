@@ -2,7 +2,7 @@
 import { defineCommand } from 'citty';
 import { type Config, UserError } from '../config.ts';
 import { formatIssues, type OutputFormat, reviewIssues } from '../formats.ts';
-import { changedFiles, commitsFrom, pullRequestChange } from '../git.ts';
+import { changedFiles, commitsFrom, pullRequestChange, pullRequestOfRef } from '../git.ts';
 import { formatReview } from '../report.ts';
 import { reviewChange } from '../review.ts';
 import type { Change, ChangeReview } from '../types.ts';
@@ -100,13 +100,20 @@ async function printReviews(
 export const prCommand = defineCommand({
   meta: { name: 'jevlint pr', description: 'Review what a GitHub pull request changes' },
   args: {
-    number: { type: 'positional', required: true, description: 'Pull request number' },
+    number: {
+      type: 'positional',
+      required: false,
+      description: "Pull request number. Default: the CI run's, or the current branch's",
+    },
     ...REVIEW_ARGS,
   },
   async run({ args }) {
     const format = parseFormat(args);
     assertUsableFlags(args, format);
-    const number = parseCount('The pull request number', args.number) as number;
+    const number = parseCount(
+      'The pull request number',
+      args.number ?? pullRequestOfRef(process.env.GITHUB_REF),
+    );
     const config = await projectConfig();
     await printReviews(config, [await pullRequestChange(config.root, number)], args, format);
   },

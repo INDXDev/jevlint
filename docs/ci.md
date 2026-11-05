@@ -83,17 +83,45 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24 }
       - run: npm install --global @indxjp/jevlint
-      - run: jevlint pr ${{ github.event.pull_request.number }} --ast-only >> "$GITHUB_STEP_SUMMARY"
+      - run: jevlint pr --ast-only >> "$GITHUB_STEP_SUMMARY"
         env:
           GH_TOKEN: ${{ github.token }}
 ```
 
+`jevlint pr` takes the number from `GITHUB_REF`, which a `pull_request` run sets to
+`refs/pull/<number>/merge`. On `pull_request_target`, pass it yourself.
+
 `--ast-only` needs no secrets, so this is safe for pull requests from forks. The step only reports,
 and a low score does not fail it. To gate, use `jevlint audit` as above.
 
-[`--intent`](cli.md#judging-a-change-with---intent) replaces `--ast-only` here to judge the pull
-request against its description and your `AGENTS.md`. It needs a provider key, so keep it away from
-pull requests from forks, and it reports without failing the step.
+### Review with a model
+
+Replace the last step with these two. Use the variable of [your provider](providers.md#storing-keys):
+
+```yaml
+      - run: jevlint auth env on   # CI cannot answer the first-run question
+      - run: jevlint pr >> "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TYPESAFE_AI_API_KEY: ${{ secrets.TYPESAFE_AI_API_KEY }}
+```
+
+- Keys come from the step's environment, so store them as repository secrets. jevlint does not read
+  a `.env` file.
+- Without `jevlint auth env on`, the key is ignored: `pr` prints a notice on stderr, runs AST-only and
+  still exits 0. Check the run's log the first time.
+- Pull requests from forks get no secrets, so they run AST-only too.
+- A model run audits each changed file twice, so it can cost twice what `audit` does for those files.
+
+[`--intent`](cli.md#judging-a-change-with---intent) on this step also judges the pull request against
+its description and your `AGENTS.md`. It reports without failing the step, and cannot be used with
+`--format github`.
+
+To annotate the changed lines as well, add `--format github`, without redirecting to the summary:
+
+```yaml
+      - run: jevlint pr --format github
+```
 
 ## Gate only on new problems
 
