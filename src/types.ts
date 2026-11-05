@@ -52,10 +52,15 @@ export interface AstRule extends AstPattern {
   threshold: number;
 }
 
+/** The command a preset's questions are written for. */
+export type PresetUse = 'audit' | 'architecture' | 'intent';
+
 export interface Preset {
   name: string;
   description: string;
   source: string;
+  /** `audit` unless the questions only make sense to `jevlint architecture` or `--intent`. */
+  used_by: PresetUse;
   questions: Question[];
   patterns: AstPattern[];
   rules: AstRule[];

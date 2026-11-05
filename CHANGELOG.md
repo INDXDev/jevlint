@@ -4,6 +4,28 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- Installing jevlint with pnpm no longer warns "Ignored build scripts: @ast-grep/lang-go, ...". The
+  Go, Python and Rust parsers now ship inside the package instead of coming from packages with an
+  install script. Analysis is unchanged. On a platform with no prebuilt parser, those languages now
+  get approximate metrics instead of an error.
+- Two built-in presets: `security` (input validation, injection, secrets in source, access checks,
+  safe failure, cryptography, and patterns for `eval`, `innerHTML` and `shell=True`) and
+  `documentation` (file purpose, doc comments on exported code, stated contracts, stale doc comments,
+  TODOs without a reason).
+- `jevlint audit security` picks presets by name for one run, alongside `--preset`. An existing path
+  of the same name is still audited as a path, with a note on stderr, and a near miss such as
+  `secruity` stops with a suggestion. Unknown preset names everywhere suggest the closest one.
+- `jevlint preset` on its own opens a menu: pick a preset, then show, edit, copy or remove it, or make
+  it a default. `preset show`, `edit` and `remove` let you pick when the name is left out.
+- `jevlint preset default` shows or sets the default presets, in your user config or with `--repo` in
+  `jevlint.toml`, keeping the file's comments. `jevlint init --preset` chooses them up front.
+- `jevlint preset new` writes a preset, blank or `--from` another, and `jevlint preset edit` opens one
+  in `$VISUAL` or `$EDITOR`, copying a built-in first. A save that is not a valid preset is never
+  written, and you can edit again. `preset show --toml` prints a preset's file.
+- `preset list` and `--help` on `audit`, `init` and `preset` group presets by the command they serve,
+  mark the defaults with `*`, and show examples. A new optional `used_by` key in a preset says which
+  command it serves.
+
 ## 0.2.0 - 2026-11-05
 
 - `--format <text|json|sarif|github>` on `audit`, `pr` and `commits` gives SARIF 2.1.0 for code

@@ -15,7 +15,7 @@ import { explainCommand } from './commands/explain.ts';
 import { fixCommand } from './commands/fix.ts';
 import { hookCommand } from './commands/hook.ts';
 import { initCommand } from './commands/init.ts';
-import { presetCommand } from './commands/preset.ts';
+import { formatPresetList, presetCommand } from './commands/preset.ts';
 import { promptCommand } from './commands/prompt.ts';
 import { commitsCommand, prCommand } from './commands/review.ts';
 import { testCommand } from './commands/test.ts';
@@ -128,6 +128,25 @@ function asUsageError(error: Error, command: CommandDef): Error {
   return new UserError(`${sentence}. Run: ${commandName(command)} --help`);
 }
 
+const PRESET_EXAMPLES = `Examples:
+  jevlint audit security            Audit with one preset
+  jevlint audit security solid src  Two presets, on src only
+  jevlint preset                    Pick a preset, then show, edit or make it a default
+  jevlint preset default            Choose the presets every audit uses
+  jevlint preset new house-style    Write your own preset`;
+
+/** Extra help for commands that take presets: what is available, and how to use it. */
+async function helpFooter(command: CommandDef): Promise<string> {
+  const name = commandName(command);
+  if (name === 'jevlint') {
+    return 'Presets choose what an audit checks. See them with: jevlint preset list';
+  }
+  if (!['jevlint audit', 'jevlint init', 'jevlint preset'].includes(name)) return '';
+  // Help must still work in a directory whose config is broken.
+  const list = await formatPresetList().catch(() => 'Run jevlint preset list to see them.');
+  return `Presets:\n\n${list}\n\n${PRESET_EXAMPLES}`;
+}
+
 const isVersionRequest = (args: string[]) =>
   args.length === 1 && VERSION_FLAGS.includes(args[0] as string);
 
@@ -141,7 +160,10 @@ async function run(rawArgs: string[]): Promise<void> {
   const argv = withDefaultCommand(rawArgs);
   const { command, commandArgs } = resolveCommand(argv);
   const wantsHelp = argv.some((arg) => HELP_FLAGS.includes(arg));
-  if (wantsHelp) return console.log(await renderUsage(command));
+  if (wantsHelp) {
+    const footer = await helpFooter(command);
+    return console.log([await renderUsage(command), footer].filter(Boolean).join('\n'));
+  }
   rejectUnknownCommand(command, commandArgs);
   rejectUnknownFlags(command, commandArgs);
   if (usesProviderKey(commandName(command), commandArgs)) await askAboutEnvKeys();

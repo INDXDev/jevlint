@@ -93,7 +93,7 @@ dir = "~/.cache/jevlint"
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `presets` | string[] | Presets to apply |
+| `presets` | string[] | Presets to apply. `jevlint preset default` sets it for you, and `jevlint audit <preset>` overrides it for one run |
 | `include` | string[] | Globs to audit, relative to the root |
 | `exclude` | string[] | Globs to skip |
 | `concurrency` | integer | Maximum parallel provider requests |

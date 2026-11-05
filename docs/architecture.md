@@ -143,6 +143,12 @@ prebuilt parsers, so the default install keeps only the grammars it has. Every o
 `src/ast/generic.ts`, which needs no dependency. It reads keywords and indentation, runs in one pass
 because the file is hostile, and stays silent when it cannot place code in a function.
 
+**Grammars ship as files, not dependencies.** Each `@ast-grep/lang-*` package has an install script
+that only builds a parser where no prebuilt one exists, and pnpm warns about every such script. So
+they are devDependencies, the build copies their prebuilt parsers and licenses into `dist/parsers/`,
+and `src/ast/languages.ts` registers them from there, or from `node_modules` when running from
+source. On a platform with no prebuilt parser, that language gets the lexical fallback.
+
 **The cache bucket is plain signed HTTP.** `src/remote-cache.ts` signs its GET and PUT with SigV4 from
 `node:crypto`, which every S3-compatible store accepts, so no SDK is needed.
 
@@ -179,7 +185,7 @@ message goes before the diff because `max_file_chars` cuts from the end.
 | Package | Purpose |
 | --- | --- |
 | `ai`, `@ai-sdk/*` | Decision models |
-| `@ast-grep/napi`, `@ast-grep/lang-*` | Parsing |
+| `@ast-grep/napi` | Parsing. Grammars from `@ast-grep/lang-*` are copied into the build |
 | `citty` | Command parsing |
 | `@clack/prompts` | Interactive prompts |
 | `picocolors` | Colour |

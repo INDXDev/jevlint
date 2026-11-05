@@ -1,6 +1,7 @@
 name = "architecture-codebase"
-description = "The codebase as a whole: a visible shape, sensible layers and a clear way in. Used by `jevlint architecture`, not by file audits"
+description = "The codebase as a whole: a visible shape, sensible layers and a clear way in"
 source = "Common software architecture guidance. Independent paraphrase."
+used_by = "architecture"
 
 [[questions]]
 id = "shape"

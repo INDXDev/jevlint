@@ -7,11 +7,35 @@ complies with the presets you selected.
 presets = ["readable-code", "solid"]
 ```
 
-Try one without changing config:
+## Choosing presets
+
+Run `jevlint preset` on its own to pick a preset from a list, then show its questions, edit it, make it
+a default or start a new preset from it. `jevlint audit --help` and `jevlint preset --help` list every
+preset with examples, and `jevlint preset list` prints them grouped by the command they serve.
+
+Pick presets for one run by naming them after `audit`, or with `--preset`. Either replaces the
+configured presets for that run only:
 
 ```sh
+jevlint audit security            # just the security preset
+jevlint audit security solid src  # two presets, on src only
 jevlint audit --preset clean-code
 ```
+
+A name after `audit` counts as a preset only when no file or directory of that name exists, so
+`jevlint audit solid` still audits a directory called `solid` and prints a note saying so.
+
+Set the presets every audit uses with `jevlint preset default`, which writes `presets` in your user
+config, or in `jevlint.toml` with `--repo`. With no names, it lets you pick in a terminal, and in a
+pipe it prints the current ones. `jevlint preset list` marks them with `*`.
+
+```sh
+jevlint preset default security,readable-code
+jevlint preset default --repo solid
+jevlint init --preset security    # choose them when creating the config
+```
+
+The `presets` key in `jevlint.toml` wins over your user config, as every repository setting does.
 
 ## Built-in presets
 
@@ -24,6 +48,8 @@ jevlint audit --preset clean-code
 | `code-smells` | _Refactoring_, Martin Fowler | Long parameter lists, feature envy, primitive obsession, shotgun surgery signals |
 | `clean-architecture` | _Clean Architecture_, Robert C. Martin | Dependency direction, boundaries, framework independence |
 | `kiss-dry-yagni` | Common engineering maxims | Simplicity, duplication, speculative generality |
+| `documentation` | Common API documentation practice | A purpose for each file, doc comments on exported code, stated contracts, doc comments that match the code, TODOs with a reason |
+| `security` | Common secure coding guidance | Input validation, injection, secrets in source, access checks, safe failure, cryptography. Patterns flag `eval`, `innerHTML` and `shell=True` |
 | `architecture-codebase`, `architecture-directory`, `architecture-class` | Common design guidance | One preset per perspective. Used only by [`jevlint architecture`](architecture-review.md) |
 | `change-intent` | Common code review practice | Whether a change does what its message says and keeps to the repository's instructions. Used only by [`--intent`](cli.md#judging-a-change-with---intent) |
 
@@ -42,7 +68,18 @@ Use `[weights]` to change a question's importance. `0` disables it.
 
 ## Writing a preset
 
-Create `house-style.toml`:
+`jevlint preset new house-style` writes a valid starting file to your user presets and opens it in
+`$VISUAL` or `$EDITOR`. `--from security` starts from a copy of another preset, `--repo` writes into
+`.jevlint/presets/` for the team, and `--no-edit` only writes the file. When the editor closes, the
+file is checked, and a mistake is reported with its key.
+
+`jevlint preset edit <name>` opens an existing preset the same way. A built-in one is copied to your
+user presets first, or to `.jevlint/presets/` with `--repo`, and the copy then takes its place
+everywhere. Remove the copy with `jevlint preset remove` to go back to the built-in.
+`--path` prints the file instead of opening it, and `jevlint preset show <name> --toml` prints its TOML.
+Leave out the name, as in `jevlint preset edit`, to pick it from a list.
+
+Or write the file by hand. Create `house-style.toml`:
 
 ```toml
 name = "house-style"
@@ -85,6 +122,10 @@ question = "Does this catch block swallow a failure the caller needed to know ab
 message = "This catch hides a failure"
 fix = "Rethrow it, or return an error the caller must handle."
 ```
+
+The top-level `used_by` key says which command the questions are written for: `audit` (the default),
+`architecture` or `intent`. It only decides where `preset list`, `--help` and the pickers show the
+preset, so a preset for `jevlint architecture` does not appear among the choices for audits.
 
 ### Question fields
 
@@ -191,5 +232,6 @@ When names collide, the order of preference is repository, user, built-in.
 ```sh
 jevlint preset list
 jevlint preset show house-style
+jevlint preset edit house-style
 jevlint preset remove house-style
 ```

@@ -5,7 +5,14 @@ import { newIssues, readBaseline } from '../baseline.ts';
 import { type ConfigOverrides, UserError } from '../config.ts';
 import { configuredTarget, createDecisionModel } from '../decision/providers.ts';
 import { auditIssues, formatIssues, type OutputFormat } from '../formats.ts';
-import { formatPlan, formatReport, formatScore, plural } from '../report.ts';
+import { presetsInArgs } from '../presets.ts';
+import {
+  formatPlan,
+  formatReport,
+  formatScore,
+  plural,
+  withoutControlCharacters,
+} from '../report.ts';
 import type { AuditReport } from '../types.ts';
 import {
   auditProject,
@@ -13,6 +20,7 @@ import {
   FORMAT_ARG,
   parseCount,
   parseFormat,
+  parsePresetList,
   parseThreshold,
   printJson,
   projectConfig,
@@ -23,24 +31,18 @@ import {
 
 const DEFAULT_TOP = 20;
 
-function parsePresets(value: string): string[] {
-  const presets = value
-    .split(',')
-    .map((name) => name.trim())
-    .filter(Boolean);
-  if (presets.length === 0) throw new UserError('--preset needs at least one preset name.');
-  return presets;
-}
-
 function parseOverrides(flags: {
   preset?: string;
+  named: string[];
   concurrency?: string;
   failUnder?: string;
 }): ConfigOverrides {
   const concurrency = parseCount('--concurrency', flags.concurrency);
   const failUnder = parseThreshold('--fail-under', flags.failUnder);
+  const flagged = flags.preset === undefined ? [] : parsePresetList(flags.preset);
+  const presets = [...new Set([...flagged, ...flags.named])];
   return {
-    ...(flags.preset !== undefined && { presets: parsePresets(flags.preset) }),
+    ...(presets.length > 0 && { presets }),
     ...(concurrency !== undefined && { concurrency }),
     ...(failUnder !== undefined && { scoring: { fail_under: failUnder } }),
   };
@@ -64,7 +66,8 @@ export const auditCommand = defineCommand({
     paths: {
       type: 'positional',
       required: false,
-      description: 'Files or directories to audit (default: the whole repository)',
+      description:
+        'Files or directories to audit (default: the whole repository). A preset name, as in `audit security`, works like --preset',
     },
     preset: {
       type: 'string',
@@ -107,9 +110,22 @@ export const auditCommand = defineCommand({
   async run({ args }) {
     const top = parseCount('--top', args.top) ?? DEFAULT_TOP;
     const format = parseFormat(args);
-    const overrides = parseOverrides({ ...args, failUnder: args['fail-under'] });
+    const cwd = process.cwd();
+    const { root } = await projectConfig();
+    const { presets: named, paths, shadowed, typos } = await presetsInArgs(args._, { root, cwd });
+    const [typo, meant] = Object.entries(typos)[0] ?? [];
+    if (typo !== undefined) {
+      throw new UserError(`No file or preset named "${typo}". Did you mean the preset "${meant}"?`);
+    }
+    for (const name of shadowed) {
+      console.error(
+        withoutControlCharacters(
+          `${name} is both a path and a preset, so it is audited as a path. For the preset, use --preset ${name}.`,
+        ),
+      );
+    }
+    const overrides = parseOverrides({ ...args, named, failUnder: args['fail-under'] });
     const config = await projectConfig(overrides);
-    const paths = args._;
     const astOnly = Boolean(args['ast-only']);
     const ignorePins = Boolean(args['ignore-pins']);
     if (args['dry-run']) {

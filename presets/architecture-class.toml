@@ -1,6 +1,7 @@
 name = "architecture-class"
-description = "Class structure: one responsibility, a clear interface and fitting relationships. Used by `jevlint architecture`, not by file audits"
+description = "Class structure: one responsibility, a clear interface and fitting relationships"
 source = "Common object-oriented design guidance. Independent paraphrase."
+used_by = "architecture"
 
 [[questions]]
 id = "responsibility"

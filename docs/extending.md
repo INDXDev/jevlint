@@ -50,8 +50,11 @@ Every source file already gets [approximate metrics](scoring.md#languages-withou
 model, so a language needs only its extension in `SOURCE_EXTENSIONS` in `src/files.ts`. A grammar
 adds exact metrics, `[[patterns]]`, `[[rules]]` and the architecture review, at about 11 MB of install size each:
 
-1. Add the `@ast-grep/lang-*` package.
-2. Add its extensions and node kinds to `src/ast/languages.ts`, including its `classes`.
+1. Add the `@ast-grep/lang-*` package as a devDependency, list it in `pnpm.ignoredBuiltDependencies`
+   in `package.json`, and add its name to `grammars` in `tsdown.config.ts`, which copies its parsers
+   into the build.
+2. Add it to `GRAMMARS`, and its extensions and node kinds to `LANGUAGES`, in `src/ast/languages.ts`,
+   including its `classes`.
    For the architecture review, add an import reader to `src/architecture/extract.ts` and its
    candidates to `src/architecture/resolve.ts`.
 3. Add a fixture to the AST tests with known metric values.

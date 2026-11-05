@@ -14,10 +14,10 @@ import {
 } from '../config.ts';
 import { KEY_ENV, keySource } from '../credentials.ts';
 import { installPreCommitHook } from '../hook.ts';
-import { listPresets } from '../presets.ts';
+import { listPresets, loadPresets } from '../presets.ts';
 import { withoutControlCharacters } from '../report.ts';
 import type { ProviderName } from '../types.ts';
-import { answered, PROMPT_IO, projectConfig } from './shared.ts';
+import { answered, PROMPT_IO, parsePresetList, projectConfig } from './shared.ts';
 
 interface Choices {
   provider: ProviderName;
@@ -41,7 +41,7 @@ fail_under = 0    # exit 1 below this, for CI
 `;
 }
 
-async function askChoices(config: Config): Promise<Choices> {
+async function askChoices(config: Config, initial: string[]): Promise<Choices> {
   const provider = answered(
     await select<ProviderName>({
       message: 'Which provider runs the decision model?',
@@ -58,7 +58,8 @@ async function askChoices(config: Config): Promise<Choices> {
         value: name,
         hint: description,
       })),
-      initialValues: config.presets,
+      initialValues: initial,
+      required: true,
       ...PROMPT_IO,
     }),
   );
@@ -72,6 +73,11 @@ export const initCommand = defineCommand({
     user: { type: 'boolean', description: 'Write your user config instead of jevlint.toml' },
     yes: { type: 'boolean', description: 'Accept defaults without prompting' },
     force: { type: 'boolean', description: 'Replace an existing file' },
+    preset: {
+      type: 'string',
+      valueHint: 'names',
+      description: 'Comma-separated default presets. In a terminal, preselects them in the prompt',
+    },
     'pre-commit': {
       type: 'boolean',
       description: 'Only install a git pre-commit hook that runs jevlint hook --staged',
@@ -91,9 +97,11 @@ export const initCommand = defineCommand({
       throw new UserError(`${target} already exists. Pass --force to replace it.`);
     }
 
+    const presets = args.preset === undefined ? config.presets : parsePresetList(args.preset);
+    if (args.preset !== undefined) await loadPresets(presets, config.root);
     const interactive = process.stdin.isTTY && !args.yes;
-    const defaults = { provider: config.provider.name, presets: config.presets };
-    const choices = interactive ? await askChoices(config) : defaults;
+    const defaults = { provider: config.provider.name, presets };
+    const choices = interactive ? await askChoices(config, presets) : defaults;
     await mkdir(dirname(target), { recursive: true });
     // Atomic, so a symlink the repository planted here is replaced, not written through.
     await writeFileAtomic(target, renderConfig(choices));

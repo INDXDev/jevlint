@@ -221,7 +221,7 @@ first two projects above. jevlint, jev-lint and @hazymoon/jevlint all use
 | `jevlint fix [files...] --agent <name>` | Run an agent on the worst files, then re-score them. |
 | `jevlint init` | Create a repository or user config. |
 | `jevlint auth set\|list\|remove\|env` | Manage API keys. |
-| `jevlint preset list\|show\|add\|remove` | Manage principle presets. |
+| `jevlint preset [list\|show\|default\|new\|edit\|add\|remove]` | Choose, view, write and manage principle presets. Alone, it opens a menu. |
 | `jevlint cache info\|clear` | Inspect or empty the result cache. |
 | `jevlint config show\|path` | Show the merged config and where it came from. |
 
@@ -263,6 +263,8 @@ fail_under = 60    # exit 1 below this, for CI
 | `code-smells` | Classic refactoring smells |
 | `clean-architecture` | Dependency direction, boundaries, framework independence |
 | `kiss-dry-yagni` | Simplicity, duplication, speculative code |
+| `security` | Input validation, injection, secrets, access checks, safe failure |
+| `documentation` | File purpose, doc comments on public code, stated contracts, accurate docs |
 
 Presets paraphrase publicly discussed principles in our own words. They are not affiliated with or
 endorsed by the original authors or publishers. See [docs/presets.md](docs/presets.md).
