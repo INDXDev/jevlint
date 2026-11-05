@@ -1,0 +1,63 @@
+name = "documentation"
+description = "Public code explains its purpose, contract and caveats in doc comments that match the code"
+source = "Common API documentation practice. Independent paraphrase of widely shared ideas."
+
+[[questions]]
+id = "module-purpose"
+type = "boolean"
+title = "The file says what it is for"
+instructions = "Is this file large or central enough to need an introduction, yet has no comment or docstring near the top saying what it is for or what belongs in it? Short, self-explanatory files do not need one."
+good = false
+weight = 1
+fix = "Add one or two sentences at the top of the file saying what it is responsible for and, if useful, what does not belong in it."
+
+[[questions]]
+id = "public-api-documented"
+type = "score"
+title = "Exported code has doc comments"
+instructions = "Look at what this file exports or makes public: functions, classes, types, constants and methods. Does each one have a doc comment or docstring that says what it is for, beyond restating its name? Private helpers do not count."
+levels = [
+  "Public code has no doc comments, or only ones that repeat the name",
+  "Some public items are explained, but important ones are not",
+  "Nearly all public items are explained, with a small gap",
+  "Every public item says what it is for, or the file exports nothing",
+]
+weight = 3
+fix = "Add a short doc comment to each exported item that says what it is for and when to use it. Do not restate the name or the type signature."
+
+[[questions]]
+id = "contracts-stated"
+type = "score"
+title = "Doc comments state what a caller must know"
+instructions = "Where a public function or type has rules a caller cannot see from the signature, such as units, valid ranges, what an empty or missing value means, side effects, or which errors it raises, does its documentation say so?"
+levels = [
+  "Callers must read the implementation to learn units, limits, side effects or errors",
+  "Some of these rules are documented, but others a caller would trip over are not",
+  "The contract is documented, with one rule missing",
+  "Every non-obvious rule is documented, or the public code has none",
+]
+weight = 2
+fix = "For each public item with hidden rules, document the units, the valid range, what an empty or missing value means, any side effect, and the errors it raises."
+
+[[questions]]
+id = "docs-match-code"
+type = "score"
+title = "Doc comments agree with the code"
+instructions = "Compare each doc comment or docstring with the code it describes. Do parameter names, return values, defaults and described behaviour still match, or has the code moved on?"
+levels = [
+  "Several doc comments describe parameters or behaviour the code no longer has",
+  "One doc comment is clearly out of date",
+  "Doc comments match, with a small imprecision",
+  "Every doc comment matches the code, or there are none",
+]
+weight = 2
+fix = "Update each stale doc comment to describe the current parameters, defaults, return value and behaviour, or delete it if the name now says enough."
+
+[[questions]]
+id = "actionable-todos"
+type = "boolean"
+title = "Every TODO says what is left and why"
+instructions = "Does this file contain a TODO, FIXME, HACK or XXX comment that gives no reason, no condition for removing it, and no issue or owner to follow up?"
+good = false
+weight = 1
+fix = "Give each TODO the missing work, the reason it was deferred and a link to an issue, or do the work and delete the comment."

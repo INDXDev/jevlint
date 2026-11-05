@@ -24,6 +24,8 @@ jevlint audit --preset clean-code
 | `code-smells` | _Refactoring_, Martin Fowler | Long parameter lists, feature envy, primitive obsession, shotgun surgery signals |
 | `clean-architecture` | _Clean Architecture_, Robert C. Martin | Dependency direction, boundaries, framework independence |
 | `kiss-dry-yagni` | Common engineering maxims | Simplicity, duplication, speculative generality |
+| `documentation` | Common API documentation practice | A purpose for each file, doc comments on exported code, stated contracts, doc comments that match the code, TODOs with a reason |
+| `security` | Common secure coding guidance | Input validation, injection, secrets in source, access checks, safe failure, cryptography. Patterns flag `eval`, `innerHTML` and `shell=True` |
 | `architecture-codebase`, `architecture-directory`, `architecture-class` | Common design guidance | One preset per perspective. Used only by [`jevlint architecture`](architecture-review.md) |
 | `change-intent` | Common code review practice | Whether a change does what its message says and keeps to the repository's instructions. Used only by [`--intent`](cli.md#judging-a-change-with---intent) |
 

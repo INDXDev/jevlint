@@ -8,6 +8,10 @@ This project follows [Semantic Versioning](https://semver.org).
   Go, Python and Rust parsers now ship inside the package instead of coming from packages with an
   install script. Analysis is unchanged. On a platform with no prebuilt parser, those languages now
   get approximate metrics instead of an error.
+- Two built-in presets: `security` (input validation, injection, secrets in source, access checks,
+  safe failure, cryptography, and patterns for `eval`, `innerHTML` and `shell=True`) and
+  `documentation` (file purpose, doc comments on exported code, stated contracts, stale doc comments,
+  TODOs without a reason).
 
 ## 0.2.0 - 2026-11-05
 

@@ -1,0 +1,112 @@
+name = "security"
+description = "Untrusted input, injection, secrets, access checks and safe failure"
+source = "Common secure coding guidance shared across the industry. Independent paraphrase, not affiliated with or endorsed by any standards body."
+
+[[questions]]
+id = "input-validation"
+type = "score"
+title = "Untrusted input is checked before it is used"
+instructions = "Find data that arrives from outside the process, such as request bodies, query strings, headers, files, environment variables or messages. Is it checked for type, size and allowed values before the code relies on it?"
+levels = [
+  "Outside data flows straight into logic, storage or output with no checks",
+  "Some inputs are checked, but others that matter are trusted as they arrive",
+  "Almost all inputs are checked, with a small gap",
+  "Every outside input is checked where it enters, or no outside data reaches this file",
+]
+weight = 3
+fix = "Check each outside value once, where it enters, against an explicit schema of allowed types, sizes and values. Reject anything else with a clear error instead of repairing it."
+
+[[questions]]
+id = "no-injection"
+type = "score"
+title = "Data never becomes code, queries or commands"
+instructions = "Is untrusted text joined into SQL, shell commands, file paths, HTML, regular expressions, templates or code passed to eval? Parameterised queries, argument arrays and escaping by a well-known library are safe."
+levels = [
+  "Untrusted text is concatenated into queries, commands or markup",
+  "One place builds a query, command or markup from untrusted text",
+  "Untrusted text is mostly kept apart, with one doubtful spot",
+  "Data is always passed separately from code, or the file builds no queries, commands or markup",
+]
+weight = 3
+fix = "Pass untrusted values as parameters: bound query parameters, argument arrays without a shell, and escaping from the output library. Remove eval and dynamic code built from data."
+
+[[questions]]
+id = "no-embedded-secrets"
+type = "boolean"
+title = "No secrets in the source"
+instructions = "Does this file contain a literal password, API key, token, private key or connection string with credentials? Obvious placeholders and test values that unlock nothing do not count."
+good = false
+weight = 3
+fix = "Move the secret to the environment or a secret manager, read it at startup, and rotate the exposed value, since it is already in version history."
+
+[[questions]]
+id = "access-control"
+type = "score"
+title = "Every sensitive action checks who is asking"
+instructions = "Where this file reads or changes data that belongs to someone, or performs an administrative action, does it confirm that the caller is allowed to? Look for handlers that trust an id from the request without checking ownership."
+levels = [
+  "Sensitive actions run for any caller",
+  "Some sensitive actions skip the permission check",
+  "Checks are present, but one is weak or in an easily missed place",
+  "Every sensitive action is checked, or the file performs none",
+]
+weight = 2
+fix = "Check the caller's permission in one place before each sensitive action, using the authenticated identity rather than ids sent by the client. Deny by default."
+
+[[questions]]
+id = "safe-failure"
+type = "score"
+title = "Failures stay closed and quiet"
+instructions = "When something goes wrong, does the code deny the action, and keep stack traces, queries, secrets and internal paths out of what the caller sees? Look for broad catches that continue as if authorised, and errors echoed to the client."
+levels = [
+  "Errors grant access or expose internals to the caller",
+  "Some failures continue unsafely or leak details",
+  "Failures are mostly safe, with one leak or permissive fallback",
+  "Every failure denies the action and reveals nothing internal, or nothing here can fail that way",
+]
+weight = 2
+fix = "Make every error path refuse the action. Log the details on the server and return a generic message to the caller."
+
+[[questions]]
+id = "sound-crypto"
+type = "score"
+title = "Cryptography and randomness come from vetted sources"
+instructions = "Where this file hashes passwords, encrypts, signs, compares secrets or makes tokens, does it use a current, well-reviewed library and algorithm? Warning signs are MD5 or SHA-1 for passwords, home-made ciphers, fixed keys or IVs, non-cryptographic random numbers for tokens and plain equality for secret comparison."
+levels = [
+  "Broken or home-made cryptography protects real secrets",
+  "A weak algorithm, fixed key or predictable random value is used for security",
+  "Sound choices with one questionable detail",
+  "Vetted algorithms and libraries are used correctly, or the file does no cryptography",
+]
+weight = 1
+fix = "Use the platform's cryptography library with a current algorithm: a slow password hash, authenticated encryption, a cryptographic random source and a constant-time comparison."
+
+[[patterns]]
+id = "eval-call-ts"
+language = "typescript"
+pattern = "eval($CODE)"
+message = "eval runs a string as code"
+
+[[patterns]]
+id = "eval-call-js"
+language = "javascript"
+pattern = "eval($CODE)"
+message = "eval runs a string as code"
+
+[[patterns]]
+id = "inner-html-ts"
+language = "typescript"
+pattern = "$EL.innerHTML = $VALUE"
+message = "Assigning innerHTML can run injected markup"
+
+[[patterns]]
+id = "eval-call-py"
+language = "python"
+pattern = "eval($CODE)"
+message = "eval runs a string as code"
+
+[[patterns]]
+id = "shell-true-py"
+language = "python"
+pattern = "subprocess.$RUN($$$ARGS, shell=True)"
+message = "shell=True passes the command through a shell, where data can become code"
