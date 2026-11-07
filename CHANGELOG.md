@@ -4,6 +4,8 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+## 0.2.4 - 2026-11-08
+
 - **`jevlint spec`, for spec-driven development.** A spec is a checklist in YAML, kept in
   `.jevlint/spec/`: a project checklist in `index.yaml` and one file per feature. `spec compile`
   prints a prompt that has a coding agent write or update it from your documents. `spec check` routes
@@ -22,6 +24,8 @@ This project follows [Semantic Versioning](https://semver.org).
 - `jevlint baseline` and `jevlint architecture --html` print their `Wrote …` line to stderr, like
   every other command, so stdout carries only results.
 - In languages without a grammar, the `while` that closes a `do` loop no longer adds complexity.
+- The README shows a before-and-after diff of a file jevlint cleaned up, and is now also in
+  [Japanese](README.ja.md) and [Simplified Chinese](README.zh-CN.md).
 
 ## 0.2.3 - 2026-11-07
 

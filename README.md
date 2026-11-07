@@ -1,4 +1,8 @@
 <p align="center">
+  <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <b>English</b>
+</p>
+
+<p align="center">
   <a href="#try-it-now"><img src="docs/assets/hero.svg" alt="jevlint: know what to refactor first" width="820"></a>
 </p>
 
@@ -25,6 +29,12 @@
 ESLint tells you a line broke a rule. jevlint reads every file in your repository, scores how
 clean it is against principles you choose, and hands you a ranked list: messiest and most-changed
 files first. Then it writes the prompt that gets Claude Code or Codex to fix them.
+
+<p align="center">
+  <img src="docs/assets/before-after.svg" alt="A diff of a fictional file, src/orders/total.ts. A deeply nested function named proc, with one-letter names, an any type and a magic number 0.9, becomes orderTotal, which uses filter, reduce and a named MEMBER_DISCOUNT constant. Its score rises from 18 to 92, nesting from 4 to 1 and complexity from 5 to 2." width="820">
+</p>
+
+<p align="center"><sub>Illustrative example on a fictional file.</sub></p>
 
 ## Try it now
 
