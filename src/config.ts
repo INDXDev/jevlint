@@ -106,6 +106,8 @@ const cache = z.strictObject({
   region: z.string().optional(),
 });
 
+const spec = z.strictObject({ dir: z.string().min(1), docs: z.array(z.string()) });
+
 const configSchema = z.strictObject({
   presets: z.array(z.string()),
   include: z.array(z.string()),
@@ -126,6 +128,7 @@ const configSchema = z.strictObject({
   rules: astRulesSchema,
   agents: z.record(z.string(), z.strictObject({ command: z.array(z.string()).min(1) })),
   cache,
+  spec,
 });
 
 const layerSchema = configSchema
@@ -136,6 +139,7 @@ const layerSchema = configSchema
     ast: ast.partial(),
     architecture: architecture.partial(),
     cache: cache.partial(),
+    spec: spec.partial(),
   })
   .partial();
 
@@ -182,6 +186,7 @@ const DEFAULTS = {
     claude: { command: ['claude', '-p', '--permission-mode', 'acceptEdits'] },
     codex: { command: ['codex', 'exec', '--sandbox', 'workspace-write', '-'] },
   },
+  spec: { dir: '.jevlint/spec', docs: ['README.md', 'docs/**/*.md'] },
 };
 
 const xdgDir = (variable: string, fallback: string) =>
