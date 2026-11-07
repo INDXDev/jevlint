@@ -12,6 +12,8 @@ This project follows [Semantic Versioning](https://semver.org).
   4.6 KB file went from 2,435 to 12,438 billed input tokens on Jev, about $0.0001 to $0.0005.
   `presets = ["readable-code"]` in `jevlint.toml` keeps the old behaviour. A baseline recorded under
   the old default should be recorded again.
+- `jevlint init` and `jevlint preset default` list only presets that work in an audit, with `full`
+  first, so you choose the default when you set up.
 - Presets can name others in `includes`. Each included preset keeps its own question ids and scores.
 - On Cloudflare, more than 64 questions no longer stops the run. They are split over several requests,
   each billing the file again, and `--dry-run` counts that.

@@ -169,6 +169,13 @@ export async function listPresets(
     }));
 }
 
+/** The presets a person can pick for audits, with `full` first as it covers the rest. */
+export function auditChoices<T extends { name: string; used_by: PresetUse }>(presets: T[]): T[] {
+  return presets
+    .filter(({ used_by }) => used_by === 'audit')
+    .sort((a, b) => Number(b.name === 'full') - Number(a.name === 'full'));
+}
+
 /** `audit` arguments sorted into presets and paths. */
 export interface PresetArgs {
   presets: string[];

@@ -6,6 +6,7 @@ import { patternMatches } from '../src/ast/analyze.ts';
 import { paths, UserError } from '../src/config.ts';
 import {
   activeQuestions,
+  auditChoices,
   closestName,
   createPreset,
   editablePreset,
@@ -287,6 +288,14 @@ describe('loading', () => {
       'name = "broken"\ndescription = "d"\nsource = "s"\nincludes = ["nope"]\nquestions = []\n';
     await writePreset(paths.presetsDir(), 'broken', toml);
     await expect(loadPresets(['broken'], root)).rejects.toThrow(/Unknown preset "nope"/);
+  });
+
+  it('offers audit presets for picking, with full first', async () => {
+    const names = auditChoices(await listPresets(root)).map(({ name }) => name);
+    expect(names[0]).toBe('full');
+    expect(names).toContain('security');
+    expect(names).not.toContain('architecture-class');
+    expect(names).not.toContain('change-intent');
   });
 
   it('keeps full to every audit built-in, within a 200-question budget', async () => {

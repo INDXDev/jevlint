@@ -14,7 +14,7 @@ import {
 } from '../config.ts';
 import { KEY_ENV, keySource } from '../credentials.ts';
 import { installPreCommitHook } from '../hook.ts';
-import { listPresets, loadPresets } from '../presets.ts';
+import { auditChoices, listPresets, loadPresets } from '../presets.ts';
 import { withoutControlCharacters } from '../report.ts';
 import type { ProviderName } from '../types.ts';
 import { answered, PROMPT_IO, parsePresetList, projectConfig } from './shared.ts';
@@ -50,10 +50,10 @@ async function askChoices(config: Config, initial: string[]): Promise<Choices> {
       ...PROMPT_IO,
     }),
   );
-  const available = await listPresets(config.root);
+  const available = auditChoices(await listPresets(config.root));
   const presets = answered(
     await multiselect<string>({
-      message: 'Which presets should files be audited against?',
+      message: 'Which presets should files be audited against? full runs them all',
       options: withoutControlCharacters(available).map(({ name, description }) => ({
         value: name,
         hint: description,

@@ -7,6 +7,7 @@ import { confirm, multiselect, select, text } from '@clack/prompts';
 import { defineCommand } from 'citty';
 import { saveDefaultPresets, UserError, writeFileAtomic } from '../config.ts';
 import {
+  auditChoices,
   createPreset,
   editablePreset,
   installPreset,
@@ -241,7 +242,7 @@ function parseNames(values: string[]): string[] {
 
 async function pickDefaults(): Promise<string[]> {
   const { defaults, presets } = await presetTable();
-  const forAudits = presets.filter(({ used_by }) => used_by === 'audit');
+  const forAudits = auditChoices(presets);
   return answered(
     await multiselect<string>({
       message: 'Which presets should files be audited against by default?',
