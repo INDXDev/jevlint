@@ -107,7 +107,8 @@ Unimplemented: no file satisfies these items.
 Add `--copy` to also copy a prompt that asks a coding agent to fix the code, then paste it into the
 agent. Or fix it by hand. Name paths to check only
 part of the repository: `jevlint spec check src/auth`. A narrowed run cannot know what is
-unimplemented, so it leaves that list out.
+unimplemented, so it leaves that list out. The report lists every file checked, with its verdict
+counts, and `--verbose` shows every item's verdict and confidence.
 
 ### 4. Check the documents against the spec
 
@@ -120,9 +121,15 @@ This finds four kinds of drift:
 | Drift | Meaning | Usual fix |
 | --- | --- | --- |
 | Contradiction | A document says something different from an item | Fix whichever is wrong, then recompile |
-| Uncovered | A document states a requirement the checklist does not have | Recompile, so the item is added |
+| Uncovered | A document states a requirement no checklist in the spec has | Recompile, so the item is added. For an overview with no rules of its own, [accept it](spec-reference.md#accepting-an-uncovered-document) |
 | Unbacked | No document states an item | Document it, or delete the item |
 | Undocumented | No document describes a feature | Document the feature, or delete it |
+
+The report lists every document, even when nothing drifted: the checklist it was compared with, how
+sure the routing was, how many items it agrees with, leaves out or contradicts, and its uncovered
+score. A clean run that compared a document with the wrong checklist, or found nothing in it, shows
+here. Add `--verbose` to see every item's verdict and confidence, so you can spot answers the model
+was unsure of.
 
 `jevlint spec drift --copy` also copies a prompt that asks a coding agent to resolve each one.
 
@@ -142,9 +149,9 @@ Both exit with 1 when they find a problem, so either can gate a pull request.
 
 | Command | Exit codes |
 | --- | --- |
-| `jevlint spec compile [docs...] [--copy]` | 0, or 2 if the spec does not load |
-| `jevlint spec check [paths...] [--copy] [--json] [--no-cache]` | 0 clean, 1 a violation or an unimplemented item, 2 usage, config or spec error |
-| `jevlint spec drift [docs...] [--copy] [--json] [--no-cache]` | 0 clean, 1 any drift, 2 usage, config or spec error |
+| `jevlint spec compile [docs...] [--copy]` | 0, even when the existing spec does not load: the prompt then says why |
+| `jevlint spec check [paths...] [--copy] [--verbose] [--json] [--no-cache]` | 0 clean, 1 a violation or an unimplemented item, 2 usage, config or spec error |
+| `jevlint spec drift [docs...] [--copy] [--verbose] [--json] [--no-cache]` | 0 clean, 1 any drift, 2 usage, config or spec error |
 | `jevlint spec list [--json]` | 0 if the spec loads, 2 if it does not |
 
 `check` and `drift` need a decision model: there is no AST-only fallback, because every answer comes
@@ -154,9 +161,10 @@ jevlint answer, so a second run over unchanged files is free.
 ## What leaves your machine
 
 `spec check` sends each code file, as `audit` does. `spec drift` sends each document together with
-the checklist it is compared against. Both send the item texts and feature summaries as questions.
-The same exclusions apply as for an audit: `.gitignore`, `exclude` and the built-in list of secret
-files. See [Security and privacy](security.md).
+the checklist it is compared against and every other checklist item, as context. Both send the item texts and feature summaries as questions.
+Both apply `.gitignore`, `exclude` and the built-in list of secret files, as an audit does.
+`spec check` reads the files `include` selects. `spec drift` reads the files matching `spec.docs`
+instead, without `include` or the source-extension filter, so Markdown and HTML are read. See [Security and privacy](security.md).
 
 ## Tips for a good spec
 

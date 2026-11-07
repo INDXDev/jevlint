@@ -87,18 +87,24 @@ export function driftRequest(items: SpecItemRef[]): Record<string, DecisionQuest
   const uncovered: DecisionQuestion = {
     type: 'boolean',
     instructions:
-      'Does the document state a specific, checkable requirement that no item in the checklist covers?',
+      'Does the document state a specific, checkable requirement that no item in the checklist, and no item listed as covered elsewhere, covers?',
   };
   return Object.fromEntries([...questions, [UNCOVERED, uncovered]]);
 }
 
-/** The checklist comes first, so truncation cuts the document, never the checklist. */
+const lines = (items: SpecItemRef[]) => items.map(({ id, text }) => `- ${id}: ${text}`).join('\n');
+
+/**
+ * The checklists come first, so truncation cuts the document, never them. Items of the other
+ * checklists are context, so a document that also restates other features is not uncovered.
+ */
 export function driftState(
   feature: SpecFeature | null,
   items: SpecItemRef[],
+  others: SpecItemRef[],
   path: string,
   document: string,
 ): string {
-  const checklist = items.map(({ id, text }) => `- ${id}: ${text}`).join('\n');
-  return `===== Checklist: ${scopeOf(feature)} =====\n${checklist}\n\n===== Document: ${path} =====\n${document}`;
+  const elsewhere = others.length > 0 ? `===== Covered elsewhere =====\n${lines(others)}\n\n` : '';
+  return `===== Checklist: ${scopeOf(feature)} =====\n${lines(items)}\n\n${elsewhere}===== Document: ${path} =====\n${document}`;
 }

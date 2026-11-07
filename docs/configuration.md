@@ -43,7 +43,7 @@ scale = 100
 precision = 0           # decimal places shown, 0 to 100
 ast_weight = 0.4        # at least one of the two weights must be above 0
 model_weight = 0.6
-fail_under = 0          # 0 disables the check
+fail_under = 0          # audit exits 1 below this score; 0 disables the check
 
 [priority]
 churn = 0.5
@@ -118,6 +118,9 @@ max_class_lines = 300
 max_inheritance_depth = 3
 ```
 
+A file's hub links are the lower of its import count and its user count, so only a file that both
+imports and is imported widely is a hub.
+
 ## Spec
 
 Used by [`jevlint spec`](spec-driven-development.md). These are the defaults:
@@ -126,6 +129,7 @@ Used by [`jevlint spec`](spec-driven-development.md). These are the defaults:
 [spec]
 dir = ".jevlint/spec"                  # where the checklist YAML lives, inside the root
 docs = ["README.md", "docs/**/*.md", "docs/**/*.html"]   # documents the spec is compiled from and compared with
+threshold = 0                          # a violation or contradiction counts only at or above this confidence
 ```
 
 `docs` is not limited by `include` or by source extensions, but `.gitignore`, `exclude` and the

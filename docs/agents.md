@@ -36,7 +36,8 @@ jevlint fix --top 3 --agent claude --yes
 For each file, `fix`:
 
 1. Checks the git working tree is clean, unless you pass `--allow-dirty`.
-2. Shows the plan and asks for confirmation, unless you pass `--yes`.
+2. Shows the plan and asks for confirmation, unless you pass `--yes`. Outside a terminal, `--yes` is
+   required.
 3. Runs the agent with the prompt on stdin.
 4. Re-audits the file and prints the score before and after.
 

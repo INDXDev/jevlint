@@ -11,7 +11,7 @@ jevlint uses plain functions and data. It has one class of its own.
 ### `UserError`
 
 Defined in `src/config.ts`. Marks a problem the user can fix, such as a bad config value or a missing
-file. `src/cli.ts` prints its message without a stack trace and exits with code 2. Any other error
+file. `src/cli.ts` prints its message to stderr without a stack trace and exits with code 2. Any other error
 is treated as a bug.
 
 ```ts

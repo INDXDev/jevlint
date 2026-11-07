@@ -20,6 +20,7 @@ const spec: Spec = {
     name: 'Shop',
     description: 'An online shop.',
     checklist: [{ id: 'no-secrets', text: 'Logs hold no secrets.' }],
+    accept_uncovered: [],
   },
   features: [
     {
@@ -124,6 +125,21 @@ describe('checkSpec', () => {
       model: 'm',
       usage: { inputTokens: 15, cacheHits: 0, modelCalls: 3 },
     });
+  });
+
+  it('drops violations less confident than spec.threshold', async () => {
+    useModel(
+      { auth: 'login' },
+      { 'auth:login.lockout': 'violates', 'auth:login.hashing': 'satisfies' },
+    );
+    const strict = { ...config, spec: { ...config.spec, threshold: 0.85 } };
+    const report = await checkSpec(strict, spec, { paths: ['src/auth.ts'] });
+    expect(report.violations).toBe(0);
+    expect(report.files[0]?.items.map(({ id }) => id)).toEqual([
+      'global.no-secrets',
+      'login.hashing',
+    ]);
+    expect(report.files[0]?.score).toBe(100);
   });
 
   it('leaves unimplemented empty for a narrowed run, and scores no applicable item as null', async () => {

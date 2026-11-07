@@ -9,11 +9,19 @@ This project follows [Semantic Versioning](https://semver.org).
   prints a prompt that has a coding agent write or update it from your documents. `spec check` routes
   each code file to a feature with one choice question, then judges it against that feature's items,
   and lists the items nothing implements. `spec drift` does the same for documents, and finds
-  contradictions, requirements the checklist misses, and items no document states. With `--copy`,
-  both also copy a prompt that asks a coding agent to fix what they found. `[spec] dir` and
-  `docs` in `jevlint.toml` set where the spec and the documents are. By default the documents are
+  contradictions, requirements the spec misses, and items no document states. Both list every file or document with its verdict counts, and `--verbose` every item's verdict.
+  `accept_uncovered` in `index.yaml` names documents, each with a reason, that may state requirements
+  the spec leaves out, such as an index of links.
+  With `--copy`, both also copy a prompt that asks a coding agent to fix what they found. `[spec] dir` and
+  `docs` in `jevlint.toml` set where the spec and the documents are, and `[spec] threshold` drops
+  violations and contradictions the model is less sure of, so false alarms do not push a file up the list. By default the documents are
   `README.md` and the Markdown and HTML files under `docs/`. See
   [Spec-driven development](docs/spec-driven-development.md).
+- `AWS_REGION` is now only the default for `cache.region`, so a region set in config, such as
+  `"auto"` for R2, wins over it. `JEVLINT_CACHE_REGION` still overrides both.
+- `jevlint baseline` and `jevlint architecture --html` print their `Wrote …` line to stderr, like
+  every other command, so stdout carries only results.
+- In languages without a grammar, the `while` that closes a `do` loop no longer adds complexity.
 
 ## 0.2.3 - 2026-11-07
 

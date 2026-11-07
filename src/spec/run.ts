@@ -95,15 +95,19 @@ export function eachPath<T>(
   );
 }
 
-/** The verdicts on items the model answered. */
+// Only failures are held to the threshold: dropping an unsure `satisfies` would invent unimplemented items.
+const FAILING = new Set(['violates', 'contradicts']);
+
+/** The verdicts on items the model answered, without failures less confident than `threshold`. */
 export function verdicts<V extends string>(
   answers: Record<string, RawAnswer>,
   items: SpecItemRef[],
+  threshold: number,
 ): SpecItemResult<V>[] {
   return items.flatMap((item) => {
     const answer = answers[item.id];
-    return answer?.choice
-      ? [{ ...item, verdict: answer.choice as V, confidence: answer.value }]
-      : [];
+    if (!answer?.choice) return [];
+    if (FAILING.has(answer.choice) && answer.value < threshold) return [];
+    return [{ ...item, verdict: answer.choice as V, confidence: answer.value }];
   });
 }

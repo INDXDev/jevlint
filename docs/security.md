@@ -12,7 +12,7 @@
 | `test` | Fixture contents, up to `max_file_chars`, and one question each | Your configured provider |
 | `pr` | The pull request number, through `gh` | GitHub |
 | `spec check` | File contents, up to `max_file_chars`, the project description, feature summaries and checklist items | Your configured provider |
-| `spec drift` | Document contents and the checklist they are compared with, up to `max_file_chars` | Your configured provider |
+| `spec drift` | Document contents, the checklist they are compared with and every other checklist item, up to `max_file_chars` | Your configured provider |
 | `spec compile`, `spec list` | Nothing | |
 | `architecture` | Paths, line counts, top-level names and internal dependencies, but no file contents | Your configured provider |
 | `fix` | The prompt, plus whatever the agent reads | The agent's provider |

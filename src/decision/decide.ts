@@ -93,6 +93,7 @@ function isComplete(
 ): hit is Answers {
   return (
     Boolean(hit?.answers) &&
+    Number.isFinite(hit?.inputTokens) &&
     Object.entries(request).every(([id, { type }]) => {
       const answer = hit?.answers[id];
       return (

@@ -26,6 +26,7 @@ const spec: Spec = {
     name: 'Shop',
     description: 'An online shop.',
     checklist: [{ id: 'no-secrets', text: 'no-secrets holds.' }],
+    accept_uncovered: [],
   },
   features: [feature('admin', ['audit-log']), feature('login', ['lockout', 'hashing'])],
 };
@@ -122,6 +123,27 @@ describe('driftSpec', () => {
       undocumented: ['admin'],
       usage: { inputTokens: 12, modelCalls: 4, cacheHits: 0 },
     });
+  });
+
+  it('does not count a document in accept_uncovered, and warns about a stale entry', async () => {
+    useModel({ auth: 'login', readme: 'global' }, {}, { auth: 0.7 });
+    const accepting: Spec = {
+      ...spec,
+      index: {
+        ...spec.index,
+        accept_uncovered: [
+          { path: 'docs/auth.md', reason: 'An overview.' },
+          { path: 'docs/gone.md', reason: 'Removed.' },
+        ],
+      },
+    };
+    const report = await driftSpec(config, accepting);
+    expect(report.docs[1]).toMatchObject({ uncovered: 0.7, uncoveredAccepted: 'An overview.' });
+    expect(report.docs[0]?.uncoveredAccepted).toBeUndefined();
+    expect(report.uncovered).toEqual([]);
+    expect(report.warnings).toEqual([
+      'accept_uncovered names docs/gone.md, which is not a document',
+    ]);
   });
 
   it('skips unbacked and undocumented for a narrowed run', async () => {

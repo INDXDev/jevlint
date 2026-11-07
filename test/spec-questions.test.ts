@@ -21,6 +21,7 @@ const spec: Spec = {
     name: 'Shop',
     description: 'An online shop.\n',
     checklist: [{ id: 'no-secrets', text: 'Logs hold no secrets.' }],
+    accept_uncovered: [],
   },
   features: [login],
 };
@@ -81,14 +82,23 @@ describe('spec questions', () => {
       uncovered: {
         type: 'boolean',
         instructions:
-          'Does the document state a specific, checkable requirement that no item in the checklist covers?',
+          'Does the document state a specific, checkable requirement that no item in the checklist, and no item listed as covered elsewhere, covers?',
       },
     });
   });
 
   it('puts the checklist before the document', () => {
-    expect(driftState(login, itemRefs(login, login.checklist), 'docs/auth.md', 'Body')).toBe(
+    expect(driftState(login, itemRefs(login, login.checklist), [], 'docs/auth.md', 'Body')).toBe(
       '===== Checklist: the Login feature =====\n- login.lockout: Five failures lock the account.\n\n===== Document: docs/auth.md =====\nBody',
+    );
+  });
+
+  it('lists the other checklists between the checklist and the document', () => {
+    const others = [{ id: 'global.logs', text: 'Logs hold no secrets.' }];
+    expect(
+      driftState(login, itemRefs(login, login.checklist), others, 'docs/auth.md', 'Body'),
+    ).toBe(
+      '===== Checklist: the Login feature =====\n- login.lockout: Five failures lock the account.\n\n===== Covered elsewhere =====\n- global.logs: Logs hold no secrets.\n\n===== Document: docs/auth.md =====\nBody',
     );
   });
 });

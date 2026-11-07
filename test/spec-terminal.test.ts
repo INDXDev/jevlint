@@ -82,9 +82,12 @@ describe('formatSpecCheck', () => {
     expect(text).toContain(
       'Spec check: 1 violation in 1 file, 1 unimplemented item (.jevlint/spec)',
     );
-    expect(text).toMatch(/src\/auth\/session\.ts {2}login {2}\(0\.91\) {2}score 50/);
+    expect(text).toMatch(
+      /src\/auth\/session\.ts {2}login {3}\(0\.91\) {2}1 satisfy, 1 violate, 0 n\/a {2}score 50/,
+    );
     expect(text).toContain('✗ login.lockout  Five failed');
     expect(text).not.toContain('login.hashing');
+    expect(text).toMatch(/src\/ok\.ts .*0 satisfy, 0 violate, 0 n\/a {2}score 100/);
     expect(text).toContain('checkout.receipt  A receipt is sent.');
     expect(text).toContain('src/ok.ts: Provider error: timeout');
   });
@@ -94,6 +97,12 @@ describe('formatSpecCheck', () => {
     expect(plain(formatSpecCheck(report))).toBe(
       'Spec check: no problems in 0 files (.jevlint/spec)',
     );
+  });
+
+  it('lists every item with its confidence when verbose', () => {
+    const text = plain(formatSpecCheck(check(), true));
+    expect(text).toContain('✗ login.lockout  (0.84)  Five failed');
+    expect(text).toContain('✓ login.hashing  (0.90)  Argon2id.');
   });
 
   it('says a narrowed run skipped unimplemented items', () => {
@@ -114,14 +123,61 @@ describe('formatSpecDrift', () => {
     expect(text).toContain(
       'Spec drift: 1 contradiction, 1 uncovered, 1 unbacked item, 1 undocumented feature',
     );
-    expect(text).toContain('docs/auth.md  login  (0.95)  uncovered 0.70');
-    expect(text).toContain('✗ login.lockout');
-    expect(text).not.toMatch(/^ {2}README\.md/m);
+    expect(text).toContain(
+      'docs/auth.md  login   (0.95)  0 agree, 0 absent, 1 contradict  uncovered 0.70',
+    );
+    expect(text).toContain('✗ login.lockout  Five failed');
+    expect(text).toContain(
+      'README.md     global  (0.90)  0 agree, 0 absent, 0 contradict  uncovered 0.10',
+    );
     expect(text).toContain('login.hashing  Argon2id.');
     expect(text).toMatch(/Undocumented.*\n {2}admin/);
   });
 
-  it('prints one line for a clean run', () => {
+  it('marks an accepted document', () => {
+    const report = drift({
+      docs: [
+        {
+          path: 'docs/README.md',
+          feature: 'global',
+          featureConfidence: 0.9,
+          items: [],
+          uncovered: 0.6,
+          uncoveredAccepted: 'Links only.',
+          warnings: [],
+        },
+      ],
+      contradictions: 0,
+      uncovered: [],
+      unbacked: [],
+      undocumented: [],
+    });
+    expect(plain(formatSpecDrift(report))).toContain('uncovered 0.60  accepted');
+  });
+
+  it('lists every item with its confidence when verbose', () => {
+    const report = drift({
+      docs: [
+        {
+          path: 'docs/auth.md',
+          feature: 'login',
+          featureConfidence: 0.95,
+          items: [
+            { ...lockout, verdict: 'agrees', confidence: 0.61 },
+            { id: 'login.hashing', text: 'Argon2id.', verdict: 'absent', confidence: 0.9 },
+          ],
+          uncovered: 0.1,
+          warnings: [],
+        },
+      ],
+    });
+    const text = plain(formatSpecDrift(report, true));
+    expect(text).toContain('✓ login.lockout  (0.61)  Five failed');
+    expect(text).toContain('· login.hashing  (0.90)  Argon2id.');
+    expect(plain(formatSpecDrift(report))).not.toContain('login.lockout  (0.61)');
+  });
+
+  it('prints only the header for a clean run with no documents', () => {
     const report = drift({
       docs: [],
       contradictions: 0,
@@ -144,6 +200,7 @@ describe('formatSpecList', () => {
         name: 'Shop',
         description: 'A shop.',
         checklist: [{ id: 'no-secrets', text: 'No secrets in logs.' }],
+        accept_uncovered: [],
       },
       features: [
         {

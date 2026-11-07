@@ -41,11 +41,16 @@ const checklistSchema = z.array(itemSchema).superRefine((items, context) => {
   });
 });
 
+const acceptedSchema = z.array(
+  z.strictObject({ path: z.string().min(1), reason: z.string().min(1) }),
+);
+
 const indexSchema = z.strictObject({
   version: z.literal(1),
   name: z.string().min(1),
   description: z.string().min(1),
   checklist: checklistSchema.default([]),
+  accept_uncovered: acceptedSchema.default([]),
 });
 
 const featureSchema = (fileId: string) =>

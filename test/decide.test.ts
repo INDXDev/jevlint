@@ -156,6 +156,7 @@ describe('decideFile', () => {
     '{"answers":{}}',
     '{"answers":{"p.levels":{"value":1}}}',
     '{"answers":{"p.levels":{"value":"1"},"p.flag":{"value":0.25}}}',
+    '{"answers":{"p.levels":{"value":1},"p.flag":{"value":0.25}},"inputTokens":"9"}',
   ])('treats the valid JSON %s as a miss and repairs the entry', async (corrupt) => {
     const doDecide = vi.fn<MockModel['doDecide']>(answer);
     const options = { resolved: resolvedWith(doDecide), questions, source: 'code', config };

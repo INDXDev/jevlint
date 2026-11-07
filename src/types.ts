@@ -328,6 +328,14 @@ export interface SpecIndex {
   name: string;
   description: string;
   checklist: SpecItem[];
+  /** Documents a person decided may state requirements the spec leaves out. */
+  accept_uncovered: SpecAcceptedDoc[];
+}
+
+/** One `accept_uncovered` entry: a document path, relative to the root, and why. */
+export interface SpecAcceptedDoc {
+  path: string;
+  reason: string;
 }
 
 /** `features/<id>.yaml`: one feature and its checklist. */
@@ -406,6 +414,8 @@ export interface SpecDocResult {
   items: SpecItemResult<DriftVerdict>[];
   /** Probability the document states a requirement the checklist misses. Null with no answer. */
   uncovered: number | null;
+  /** The `accept_uncovered` reason, present when the document may be uncovered. */
+  uncoveredAccepted?: string;
   warnings: string[];
 }
 
@@ -419,7 +429,7 @@ export interface SpecDriftReport {
   complete: boolean;
   docs: SpecDocResult[];
   contradictions: number;
-  /** Documents whose `uncovered` is 0.5 or more. */
+  /** Documents whose `uncovered` is 0.5 or more, leaving out those in `accept_uncovered`. */
   uncovered: string[];
   /** Items absent from every document routed to their checklist. */
   unbacked: SpecItemRef[];

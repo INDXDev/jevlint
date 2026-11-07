@@ -45,14 +45,14 @@ async function checkFile(run: SpecRun, spec: Spec, path: string): Promise<SpecFi
   const request = { [ROUTE]: routeQuestion(spec, 'file'), ...checkRequest(null, project) };
   const first = await ask(run, request, source, result.warnings);
   if (!first) return result;
-  const items = verdicts<CheckVerdict>(first, project);
+  const items = verdicts<CheckVerdict>(first, project, config.spec.threshold);
   result.feature = first[ROUTE]?.choice ?? null;
   result.featureConfidence = first[ROUTE]?.value ?? null;
   const feature = spec.features.find(({ id }) => id === result.feature);
   if (feature) {
     const own = itemRefs(feature, feature.checklist);
     const second = await ask(run, checkRequest(feature, own), source, result.warnings);
-    if (second) items.push(...verdicts<CheckVerdict>(second, own));
+    if (second) items.push(...verdicts<CheckVerdict>(second, own, config.spec.threshold));
   }
   return { ...result, items, score: scoreOf(items, config) };
 }

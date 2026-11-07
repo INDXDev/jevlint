@@ -57,12 +57,15 @@ async function driftDoc(run: SpecRun, spec: Spec, path: string): Promise<SpecDoc
   result.featureConfidence = route.value;
   const feature = spec.features.find(({ id }) => id === route.choice) ?? null;
   const items = itemRefs(feature, feature?.checklist ?? spec.index.checklist);
-  const state = driftState(feature, items, path, document);
+  const others = checklists(spec)
+    .filter((list) => list.route !== route.choice)
+    .flatMap((list) => itemRefs(list.feature, list.feature?.checklist ?? spec.index.checklist));
+  const state = driftState(feature, items, others, path, document);
   const second = await ask(run, driftRequest(items), state, result.warnings);
   if (!second) return result;
   return {
     ...result,
-    items: verdicts<DriftVerdict>(second, items),
+    items: verdicts<DriftVerdict>(second, items, run.config.spec.threshold),
     uncovered: second[UNCOVERED]?.value ?? null,
   };
 }
@@ -90,8 +93,18 @@ export async function driftSpec(
 ): Promise<SpecDriftReport> {
   const run = await startRun(config, 'drift', options.noCache);
   const paths = await discoverDocs(config, options.paths);
-  const docs = await eachPath(run, paths, options.onProgress, (path) => driftDoc(run, spec, path));
+  const accepted = new Map(spec.index.accept_uncovered.map(({ path, reason }) => [path, reason]));
+  const docs = (
+    await eachPath(run, paths, options.onProgress, (path) => driftDoc(run, spec, path))
+  ).map((doc) => {
+    const reason = accepted.get(doc.path);
+    return reason === undefined ? doc : { ...doc, uncoveredAccepted: reason };
+  });
   const complete = !options.paths;
+  // Only a full run sees every document, so only it can tell an entry is stale.
+  const stale = complete
+    ? [...accepted.keys()].filter((path) => !docs.some((doc) => doc.path === path))
+    : [];
   const { unbacked, undocumented } = complete
     ? gaps(spec, docs)
     : { unbacked: [], undocumented: [] };
@@ -104,10 +117,12 @@ export async function driftSpec(
     docs,
     contradictions: docs.flatMap(({ items }) => items).filter((i) => i.verdict === 'contradicts')
       .length,
-    uncovered: docs.filter((doc) => (doc.uncovered ?? 0) >= 0.5).map(({ path }) => path),
+    uncovered: docs
+      .filter((doc) => (doc.uncovered ?? 0) >= 0.5 && doc.uncoveredAccepted === undefined)
+      .map(({ path }) => path),
     unbacked,
     undocumented,
     usage: usageOf(run),
-    warnings: [],
+    warnings: stale.map((path) => `accept_uncovered names ${path}, which is not a document`),
   };
 }

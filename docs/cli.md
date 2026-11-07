@@ -116,7 +116,8 @@ Keeps documents, a checklist spec and code in agreement. See
 
 `check` and `drift` take `--copy`, which also copies a Markdown prompt asking a coding agent to fix
 what was found: the code for `check`, the documents and the spec for `drift`. The report still
-prints. `check`, `drift` and `list` take `--json` (see [JSON output](json-output.md#spec-reports)). `check`
+prints. Both list every file or document with its checklist and verdict counts, and `--verbose` adds
+every item with its verdict and confidence. `check`, `drift` and `list` take `--json` (see [JSON output](json-output.md#spec-reports)). `check`
 and `drift` take `--no-cache`, and need a decision model.
 
 ## `jevlint pr [number]`

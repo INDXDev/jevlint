@@ -27,8 +27,9 @@ jevlint architecture --perspective class --top 50
    An outline holds paths, line counts, names and dependencies. It never holds file contents.
 
 One unit is one request, so a review costs 1 + directories + classes with methods. Use
-`--perspective` to limit that in a repository with many classes. Results are cached like any other
-decision.
+`--perspective` to limit that in a repository with many classes. It takes `codebase`, `directory` or
+`class`, comma-separated, reviews only those, and rejects any other name. Results are cached like any
+other decision.
 
 ## What it finds
 

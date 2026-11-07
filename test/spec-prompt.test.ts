@@ -4,7 +4,7 @@ import type { Spec, SpecCheckReport, SpecDriftReport } from '../src/types.ts';
 
 const spec: Spec = {
   dir: '.jevlint/spec',
-  index: { version: 1, name: 'Shop', description: 'A shop.', checklist: [] },
+  index: { version: 1, name: 'Shop', description: 'A shop.', checklist: [], accept_uncovered: [] },
   features: [{ id: 'login', title: 'Login', summary: 'Signs in.', checklist: [] }],
 };
 const base = {

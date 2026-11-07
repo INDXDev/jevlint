@@ -28,6 +28,11 @@ const CACHE_ARG = {
   negativeDescription: 'Ignore cached decisions, and do not store new ones',
 } as const;
 
+const VERBOSE_ARG = {
+  type: 'boolean',
+  description: 'List every judged item with its verdict and confidence',
+} as const;
+
 const COPY_ARG = {
   type: 'boolean',
   description: 'Also copy a prompt for a coding agent to fix what was found',
@@ -105,6 +110,7 @@ const checkCommand = defineCommand({
     },
     json: JSON_ARG,
     copy: COPY_ARG,
+    verbose: VERBOSE_ARG,
     cache: CACHE_ARG,
   },
   async run({ args }) {
@@ -116,7 +122,7 @@ const checkCommand = defineCommand({
     );
     printFallbackNotice(config, report.provider);
     if (args.json) printJson(report);
-    else console.log(formatSpecCheck(report));
+    else console.log(formatSpecCheck(report, args.verbose));
     if (args.copy) await copyPrompt(withoutEscapes(renderCheckPrompt(report)));
     if (report.violations > 0 || report.unimplemented.length > 0) process.exitCode = 1;
   },
@@ -132,6 +138,7 @@ const driftCommand = defineCommand({
     },
     json: JSON_ARG,
     copy: COPY_ARG,
+    verbose: VERBOSE_ARG,
     cache: CACHE_ARG,
   },
   async run({ args }) {
@@ -143,7 +150,7 @@ const driftCommand = defineCommand({
     );
     printFallbackNotice(config, report.provider);
     if (args.json) printJson(report);
-    else console.log(formatSpecDrift(report));
+    else console.log(formatSpecDrift(report, args.verbose));
     if (args.copy) await copyPrompt(withoutEscapes(renderDriftPrompt(report)));
     const { contradictions, uncovered, unbacked, undocumented } = report;
     if (contradictions + uncovered.length + unbacked.length + undocumented.length > 0) {

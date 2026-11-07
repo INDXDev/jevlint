@@ -56,6 +56,7 @@ describe('loadSpec', () => {
       name: 'Shop',
       description: 'An online shop.',
       checklist: [{ id: 'no-secrets', text: 'No secrets.', source: 'docs/a.md' }],
+      accept_uncovered: [],
     });
     expect(spec?.features.map(({ id }) => id)).toEqual(['a', 'a-b']);
     expect(specFiles(spec as NonNullable<typeof spec>)).toEqual([
@@ -69,6 +70,17 @@ describe('loadSpec', () => {
   it('defaults the project checklist to none', async () => {
     await write({ 'index.yaml': INDEX, 'features/a.yaml': feature('a') });
     expect((await load())?.index.checklist).toEqual([]);
+  });
+
+  it('reads accept_uncovered, and defaults it to none', async () => {
+    await write({ 'index.yaml': INDEX, 'features/a.yaml': feature('a') });
+    expect((await load())?.index.accept_uncovered).toEqual([]);
+    await write({
+      'index.yaml': `${INDEX}accept_uncovered:\n  - { path: docs/README.md, reason: Links only. }\n`,
+    });
+    expect((await load())?.index.accept_uncovered).toEqual([
+      { path: 'docs/README.md', reason: 'Links only.' },
+    ]);
   });
 
   it('returns null without index.yaml', async () => {
@@ -86,6 +98,7 @@ describe('loadSpec', () => {
       `${INDEX}checklist:\n  - { id: a, text: T }\n  - { id: a, text: U }\n`,
       'duplicate id a',
     ],
+    ['index.yaml', `${INDEX}accept_uncovered:\n  - { path: docs/README.md }\n`, 'reason'],
     ['features/a.yaml', feature('b'), 'must equal the file name'],
     ['features/a.yaml', 'id: a\ntitle: A\nsummary: S\nchecklist: []\n', 'checklist'],
     ['features/a.yaml', 'id: a\ntitle: A\nsummary: S\n', 'checklist'],

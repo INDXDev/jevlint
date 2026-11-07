@@ -25,21 +25,47 @@ function section(lines: string[], title?: string): string[] {
 
 const confidence = (value: number | null) => (value === null ? '' : `(${value.toFixed(2)})`);
 
-/** One row per file or document with a problem, then its failing items. */
+const MARKS: Record<string, string> = {
+  agrees: pc.green('✓'),
+  satisfies: pc.green('✓'),
+  absent: pc.dim('·'),
+  'not-applicable': pc.dim('·'),
+};
+
+/** One row per file or document, then the items given for it, with confidence when asked. */
 function problemRows(
   rows: { path: string; feature: string | null; featureConfidence: number | null; extra: string }[],
-  failing: SpecItemResult<string>[][],
+  shownItems: SpecItemResult<string>[][],
+  withConfidence = false,
 ): string[] {
   const pathWidth = longest(rows.map(({ path }) => path));
   const featureWidth = longest(rows.map(({ feature }) => feature ?? '-'));
-  const width = longest(failing.flat().map(({ id }) => id));
+  const width = longest(shownItems.flat().map(({ id }) => id));
   return rows.flatMap(({ path, feature, featureConfidence, extra }, index) => [
     `  ${path.padEnd(pathWidth)}  ${(feature ?? '-').padEnd(featureWidth)}  ${confidence(featureConfidence).padEnd(6)}  ${extra}`.trimEnd(),
-    ...(failing[index] ?? []).map(
-      ({ id, text }) => `    ${pc.red('✗')} ${id.padEnd(width)}  ${text}`,
+    ...(shownItems[index] ?? []).map(
+      (item) =>
+        `    ${MARKS[item.verdict] ?? pc.red('✗')} ${item.id.padEnd(width)}  ${withConfidence ? `${confidence(item.confidence)}  ` : ''}${item.text}`,
     ),
   ]);
 }
+
+/** How items were judged, as `3 agree, 1 absent, 0 contradict`. */
+function verdictCounts(items: SpecItemResult<string>[], labels: [string, string][]): string {
+  const count = (verdict: string) => items.filter((item) => item.verdict === verdict).length;
+  return labels.map(([verdict, label]) => `${count(verdict)} ${label}`).join(', ');
+}
+
+const CHECK_LABELS: [string, string][] = [
+  ['satisfies', 'satisfy'],
+  ['violates', 'violate'],
+  ['not-applicable', 'n/a'],
+];
+const DRIFT_LABELS: [string, string][] = [
+  ['agrees', 'agree'],
+  ['absent', 'absent'],
+  ['contradicts', 'contradict'],
+];
 
 function warningLines(report: {
   warnings: string[];
@@ -53,13 +79,16 @@ function warningLines(report: {
   ];
 }
 
-/** Lists the violated items of each file, then the items no file satisfies. */
-export function formatSpecCheck(untrusted: SpecCheckReport): string {
+/**
+ * Lists every file with how its items were judged and its violated items, then the items no file
+ * satisfies. `verbose` lists every item with its verdict and confidence.
+ */
+export function formatSpecCheck(untrusted: SpecCheckReport, verbose = false): string {
   const report = withoutControlCharacters(untrusted);
   const failing = report.files.map(({ items }) => items.filter((i) => i.verdict === 'violates'));
-  const shown = report.files.filter((_, index) => (failing[index] ?? []).length > 0);
+  const failingFiles = failing.filter((items) => items.length > 0).length;
   const counts = [
-    `${plural(report.violations, 'violation')} in ${plural(shown.length, 'file')}`,
+    `${plural(report.violations, 'violation')} in ${plural(failingFiles, 'file')}`,
     ...(report.complete ? [plural(report.unimplemented.length, 'unimplemented item')] : []),
   ];
   const clean = report.violations === 0 && report.unimplemented.length === 0;
@@ -68,17 +97,17 @@ export function formatSpecCheck(untrusted: SpecCheckReport): string {
         `Spec check: no problems in ${plural(report.files.length, 'file')} (${report.specDir})`,
       )
     : `Spec check: ${counts.join(', ')} (${report.specDir})`;
-  const rows = shown.map((file) => ({
+  const rows = report.files.map((file) => ({
     ...file,
-    extra: file.score === null ? '' : `score ${formatScore(file.score)}`,
+    extra: [
+      verdictCounts(file.items, CHECK_LABELS),
+      file.score === null ? 'score -' : `score ${formatScore(file.score)}`,
+    ].join('  '),
   }));
   return [
     header,
     ...section(
-      problemRows(
-        rows,
-        failing.filter((f) => f.length > 0),
-      ),
+      problemRows(rows, verbose ? report.files.map(({ items }) => items) : failing, verbose),
     ),
     ...section(itemLines(report.unimplemented), 'Unimplemented: no file satisfies these items.'),
     ...(report.complete
@@ -89,13 +118,14 @@ export function formatSpecCheck(untrusted: SpecCheckReport): string {
   ].join('\n');
 }
 
-/** Lists the contradicted items of each document, then the repository-wide drift. */
-export function formatSpecDrift(untrusted: SpecDriftReport): string {
+/**
+ * Lists every document with how its items were judged and its contradicted items, then the
+ * repository-wide drift. `verbose` lists every item with its verdict and confidence.
+ */
+export function formatSpecDrift(untrusted: SpecDriftReport, verbose = false): string {
   const report = withoutControlCharacters(untrusted);
-  const failing = report.docs.map(({ items }) => items.filter((i) => i.verdict === 'contradicts'));
-  const isUncovered = (path: string) => report.uncovered.includes(path);
-  const shown = report.docs.filter(
-    (doc, index) => (failing[index] ?? []).length > 0 || isUncovered(doc.path),
+  const shownItems = report.docs.map(({ items }) =>
+    verbose ? items : items.filter((i) => i.verdict === 'contradicts'),
   );
   const counts = [
     plural(report.contradictions, 'contradiction'),
@@ -117,19 +147,17 @@ export function formatSpecDrift(untrusted: SpecDriftReport): string {
         `Spec drift: no drift in ${plural(report.docs.length, 'document')} (${report.specDir})`,
       )
     : `Spec drift: ${counts.join(', ')} (${report.specDir})`;
-  const rows = shown.map((doc) => ({
+  const rows = report.docs.map((doc) => ({
     ...doc,
-    extra:
-      isUncovered(doc.path) && doc.uncovered !== null
-        ? `uncovered ${doc.uncovered.toFixed(2)}`
-        : '',
+    extra: [
+      verdictCounts(doc.items, DRIFT_LABELS),
+      doc.uncovered === null ? 'uncovered -' : `uncovered ${doc.uncovered.toFixed(2)}`,
+      ...(doc.uncoveredAccepted === undefined ? [] : ['accepted']),
+    ].join('  '),
   }));
-  const shownFailing = report.docs.flatMap((doc, index) =>
-    shown.includes(doc) ? [failing[index] ?? []] : [],
-  );
   return [
     header,
-    ...section(problemRows(rows, shownFailing)),
+    ...section(problemRows(rows, shownItems, verbose)),
     ...section(
       report.uncovered.map((path) => `  ${path}`),
       'Uncovered: these documents state requirements the spec misses. Recompile to add them.',

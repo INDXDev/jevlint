@@ -162,6 +162,22 @@ end
     expect(metrics(source)['cognitive-complexity:f']).toBe(5);
   });
 
+  it('adds nothing for case labels, do loops or ternaries', () => {
+    const source = `int f(int a) {
+    do {
+        a = a > 0 ? a - 1 : a;
+    } while (a);
+    switch (a) {
+        case 1:
+            return 1;
+    }
+    return 0;
+}
+`;
+    // switch 1, and nothing else.
+    expect(metrics(source)['cognitive-complexity:f']).toBe(1);
+  });
+
   it('measures nested functions on their own', () => {
     const source = `def outer(a)
   if a

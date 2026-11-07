@@ -47,6 +47,7 @@ checklist:
 | \`name\` | string | Yes | The project's name |
 | \`description\` | string | Yes | What the project is, in a paragraph |
 | \`checklist\` | list of items | No | Items every file and document is judged against |
+| \`accept_uncovered\` | list | No | Documents a person decided may state requirements the spec leaves out, each with \`path\` and \`reason\`. Keep it as it is, and never add an entry yourself |
 
 Each \`features/<id>.yaml\` describes one feature:
 
@@ -225,7 +226,7 @@ jevlint compared this repository's documents with the checklist spec in \`${repo
     `## How to work
 
 1. For each contradiction, decide which side is right. Fix the document, or the item's \`text\`. If you cannot tell, leave both and ask in your summary.
-2. For each uncovered document, add an item for every checkable requirement it states, in the feature it belongs to, with \`source\` naming the document.
+2. For each uncovered document, add an item for every checkable requirement it states, in the feature it belongs to, with \`source\` naming the document. Do not add it to \`accept_uncovered\` in \`index.yaml\`: that is a person's decision. If it states no requirement, say so in your summary.
 3. For each unbacked item, document it if the code does it, or delete the item.
 4. For each undocumented feature, document it, or delete its file if it no longer exists.
 5. Keep the id of every item whose meaning did not change. Do not change code.

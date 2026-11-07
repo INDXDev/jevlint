@@ -42,6 +42,7 @@ checklist:
 | `name` | string | Yes | The project's name |
 | `description` | string | Yes | What the project is, in a paragraph. Every routing question includes it |
 | `checklist` | list of items | No | Items every file and document is judged against. Defaults to none |
+| `accept_uncovered` | list | No | Documents allowed to state requirements the spec leaves out, each with `path` and `reason`. See [Accepting an uncovered document](#accepting-an-uncovered-document) |
 
 ## `features/<id>.yaml`
 
@@ -149,10 +150,17 @@ is `the whole project` or `the <title> feature`.
   the model gave that option, or 1 when the provider reports none.
 - A file's score is satisfied items over satisfied plus violated items, on the configured
   `scoring.scale`. A file with no applicable item has no score.
+- A `violates` or `contradicts` verdict less confident than `spec.threshold` (default 0) is dropped,
+  as if the model had not answered, so unsure failures neither rank a file nor fail the run. A
+  `satisfies` or `agrees` verdict is kept whatever its confidence.
 - Files are listed by the number of violations, most first, then by score, lowest first.
 - An item is **unimplemented** when no file satisfies it. This is worked out only when the run covered
   the whole repository, because a narrowed run cannot see every file.
 - The run **fails**, with exit code 1, when any item is violated or unimplemented.
+
+The terminal report lists every file: its checklist, the routing confidence, how many items it
+satisfies, violates and finds not applicable, its score, and each violated item. With `--verbose` it
+lists every item with its verdict and confidence. `--json` always holds all of it.
 
 A provider error on one file becomes a warning on that file, as in an audit. A bad key stops the run.
 
@@ -172,10 +180,15 @@ plus `global`.
 - Options are described as for `check`, with `global` as `The project as a whole, or no single
   feature.`
 
-**Request 2: compare.** The state is the routed checklist, then the document:
+**Request 2: compare.** The state is the routed checklist, then every item of the other checklists,
+then the document:
 
 ```
 ===== Checklist: <scope> =====
+- <full id>: <text>
+...
+
+===== Covered elsewhere =====
 - <full id>: <text>
 ...
 
@@ -183,7 +196,9 @@ plus `global`.
 <document>
 ```
 
-The checklist comes first, so truncation cuts the document, never the checklist. Questions:
+The checklists come first, so truncation cuts the document, never a checklist. The other items are
+context only: they get no question, but a document that restates another feature, as an overview
+does, is not uncovered for it. Questions:
 
 - One choice question per item of the routed checklist (the project checklist for `global`):
 
@@ -195,16 +210,40 @@ The checklist comes first, so truncation cuts the document, never the checklist.
 
   Instructions: `Compare the document with checklist item <full id>: "<text>"`.
 - `uncovered`, a boolean question: `Does the document state a specific, checkable requirement that
-  no item in the checklist covers?` Its answer is the probability of yes.
+  no item in the checklist, and no item listed as covered elsewhere, covers?` Its answer is the probability of yes.
 
 **Results.**
 
 - A **contradiction** is any item a document contradicts.
-- A document is **uncovered** when `uncovered` is 0.5 or more.
+- A document is **uncovered** when `uncovered` is 0.5 or more, unless `accept_uncovered` names it.
 - An item is **unbacked** when it is `absent` from every document routed to its checklist.
 - A feature is **undocumented** when no document is routed to it.
 - Unbacked items and undocumented features are worked out only when the run covered every document.
 - The run **fails**, with exit code 1, when it finds any of the four.
+
+The terminal report lists every document: its checklist, the routing confidence, how many items it
+agrees with, leaves out and contradicts, its `uncovered` score, and each contradicted item. With
+`--verbose` it lists every item with its verdict and confidence. `--json` always holds all of it.
+
+### Accepting an uncovered document
+
+Some documents restate the rest without rules of their own, such as an index of links or a
+getting-started tour. A model may still call them uncovered, and the answer can move between runs
+near 0.5. Name such a document in `index.yaml`:
+
+```yaml
+accept_uncovered:
+  - path: docs/README.md
+    reason: A table of links to the other pages; it states no rules of its own.
+```
+
+- `path` is relative to the root, as the report prints it. `reason` is required, so the decision is
+  recorded.
+- The document is still asked, and the report still shows its score, marked `accepted`. It only stops
+  counting as uncovered. Contradictions and the items it backs count as usual.
+- A full run warns about an entry that names no document, so a renamed file does not leave it stale.
+- Like a `jevlint-score` pin, this records a person's decision. The compile and drift prompts tell an
+  agent to keep the list as it is and never add to it.
 
 ## Fix prompts
 
@@ -215,7 +254,7 @@ a coding agent. Like the compile prompt, it names paths and quotes item texts, n
   change the code, never the spec or the documents, and to confirm with `jevlint spec check`.
 - The drift prompt lists contradictions by document, uncovered documents, unbacked items and
   undocumented features, with how to resolve each. It asks the agent to change the documents or the
-  spec, never the code, and to confirm with `jevlint spec list` and `jevlint spec drift`.
+  spec, never the code, and never to add to `accept_uncovered`, and to confirm with `jevlint spec list` and `jevlint spec drift`.
 - With nothing found, the prompt says so in one line.
 
 ## JSON output
@@ -285,7 +324,8 @@ a coding agent. Like the compile prompt, it names paths and quotes item texts, n
 ```
 
 `uncovered` on a document is a probability from 0 to 1. On the report it lists the documents at or
-above 0.5.
+above 0.5 that `accept_uncovered` does not name. An accepted document carries `uncoveredAccepted`,
+its reason, and a stale entry adds a warning to the report.
 
 `spec list --json` prints the loaded spec: `{ "dir", "index", "features" }`, with the keys of the
 YAML files.
