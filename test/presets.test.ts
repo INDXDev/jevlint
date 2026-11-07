@@ -2,6 +2,7 @@ import { lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { patternMatches } from '../src/ast/analyze.ts';
 import { paths, UserError } from '../src/config.ts';
 import {
   activeQuestions,
@@ -16,6 +17,61 @@ import {
   removePreset,
 } from '../src/presets.ts';
 import type { Preset } from '../src/types.ts';
+
+/** For each `bug-hunt` pattern, code it must flag and code it must leave alone. */
+const BUG_HUNT_SAMPLES: Record<string, [bad: string, good: string]> = {
+  '$A.forEach(async ($$$P) => { $$$B })': [
+    'xs.forEach(async (x) => { await f(x); });',
+    'for (const x of xs) await f(x);',
+  ],
+  '$A.forEach(async function ($$$P) { $$$B })': [
+    'xs.forEach(async function (x) { await f(x); });',
+    'xs.forEach(function (x) { f(x); });',
+  ],
+  'new Promise(async ($$$P) => { $$$B })': [
+    'new Promise(async (resolve) => { resolve(await f()); });',
+    'new Promise((resolve) => { resolve(1); });',
+  ],
+  'try { $$$A } catch ($E) { }': ['try { f(); } catch (e) { }', 'try { f(); } catch (e) { g(e); }'],
+  'try { $$$A } catch { }': ['try { f(); } catch { }', 'try { f(); } catch { g(); }'],
+  '$A === NaN': ['if (x === NaN) y();', 'if (Number.isNaN(x)) y();'],
+  '$A !== NaN': ['if (x !== NaN) y();', 'if (x !== 1) y();'],
+  '$A === $A': ['if (a.b === a.b) y();', 'if (a.b === a.c) y();'],
+  'if ($A = $B) { $$$C }': ['if (x = 1) { y(); }', 'if (x === 1) { y(); }'],
+  'def $F($$$A, $P=[], $$$B): $$$C': [
+    'def f(a, b=[], c=1):\n    pass\n',
+    'def f(a, c=1):\n    pass\n',
+  ],
+  'def $F($$$A, $P=[]): $$$C': ['def f(b=[]):\n    pass\n', 'def f(b=None):\n    pass\n'],
+  'def $F($$$A, $P={}, $$$B): $$$C': [
+    'def f(a, b={}, c=1):\n    pass\n',
+    'def f(a, c=1):\n    pass\n',
+  ],
+  'def $F($$$A, $P={}): $$$C': ['def f(a, b={}):\n    pass\n', 'def f(a, b=None):\n    pass\n'],
+  'try:\n    $$$A\nexcept:\n    $$$B': [
+    'try:\n    f()\nexcept:\n    g()\n',
+    'try:\n    f()\nexcept ValueError:\n    g()\n',
+  ],
+  'try:\n    $$$A\nexcept $E:\n    pass': [
+    'try:\n    f()\nexcept ValueError as e:\n    pass\n',
+    'try:\n    f()\nexcept ValueError:\n    g()\n',
+  ],
+  'open($$$A).read()': ['x = open(p).read()\n', 'with open(p) as f:\n    x = f.read()\n'],
+  'datetime.utcnow()': ['x = datetime.utcnow()\n', 'x = datetime.now(timezone.utc)\n'],
+  '$A == $A': ['a.b == a.b', 'a.b == a.c'],
+  'assert ($A, $B)': ['assert (x, "m")\n', 'assert x, "m"\n'],
+  '$V, _ := $F($$$A)': [
+    'package a\nfunc f() { v, _ := g(1); h(v) }\n',
+    'package a\nfunc f() { v, err := g(1); h(v, err) }\n',
+  ],
+  '_ = $F($$$A)': [
+    'package a\nfunc f() { _ = g(1) }\n',
+    'package a\nfunc f() { x := g(1); h(x) }\n',
+  ],
+  '$A.unwrap()': ['fn f() { let a = g().unwrap(); }', 'fn f() { let a = g()?; }'],
+  'todo!($$$A)': ['fn f() { todo!(); }', 'fn f() { g(); }'],
+  'unimplemented!($$$A)': ['fn f() { unimplemented!(); }', 'fn f() { g(); }'],
+};
 
 const boolean = (extra = 'good = false') => `
 [[questions]]
@@ -152,6 +208,31 @@ describe('loading', () => {
     const builtIns = (await listPresets(root)).filter(({ origin }) => origin === 'built-in');
     expect(builtIns.map(({ name }) => name)).toContain('readable-code');
     expect(await loadPresets(['readable-code'], root)).toHaveLength(1);
+  });
+
+  it('keeps bug-hunt within what every provider can ask in one request', async () => {
+    const [bugHunt] = await loadPresets(['bug-hunt'], root);
+    expect(bugHunt?.questions.length).toBeGreaterThanOrEqual(30);
+    expect(bugHunt?.questions.length).toBeLessThanOrEqual(64);
+  });
+
+  it('flags the bad sample of every bug-hunt pattern, and not the good one', async () => {
+    const [bugHunt] = await loadPresets(['bug-hunt'], root);
+    for (const pattern of bugHunt?.patterns ?? []) {
+      const [bad, good] = BUG_HUNT_SAMPLES[pattern.pattern] ?? [];
+      // Go needs a file around the expression, and the shape differs per language.
+      const wrap = (code = '') =>
+        pattern.pattern !== '$A == $A' || pattern.language === 'python'
+          ? code
+          : pattern.language === 'go'
+            ? `package a\nfunc f() bool { return ${code} }\n`
+            : `fn f() -> bool { ${code} }`;
+      const count = (code: string) =>
+        patternMatches(wrap(code), pattern.language, [pattern])[0]?.matches.length;
+      expect(bad, pattern.id).toBeDefined();
+      expect(count(bad ?? ''), `${pattern.id} on bad`).toBe(1);
+      expect(count(good ?? ''), `${pattern.id} on good`).toBe(0);
+    }
   });
 
   it('refuses to overwrite a file that holds a differently named preset', async () => {

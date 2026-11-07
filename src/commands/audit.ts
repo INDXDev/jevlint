@@ -5,27 +5,22 @@ import { newIssues, readBaseline } from '../baseline.ts';
 import { type Config, type ConfigOverrides, UserError } from '../config.ts';
 import { configuredTarget, createDecisionModel } from '../decision/providers.ts';
 import { auditIssues, formatIssues, type OutputFormat } from '../formats.ts';
-import { presetsInArgs } from '../presets.ts';
-import {
-  formatPlan,
-  formatReport,
-  formatScore,
-  plural,
-  withoutControlCharacters,
-} from '../report.ts';
+import { formatPlan, formatReport, formatScore, plural } from '../report.ts';
 import type { AuditReport } from '../types.ts';
 import {
   auditProject,
   everyProviderCallFailed,
   FORMAT_ARG,
+  PRESET_ARG,
   parseCount,
   parseFormat,
-  parsePresetList,
   parseThreshold,
+  presetOverride,
   printJson,
   projectConfig,
   refuseUnansweredEnvKey,
   resolvePaths,
+  splitPositionals,
   warnAboutScope,
 } from './shared.ts';
 
@@ -37,32 +32,6 @@ interface AuditScope {
   noCache: boolean;
 }
 
-/** Tells preset names from paths, and stops on a near miss of a preset name. */
-async function splitPositionals(positionals: string[]) {
-  const { root } = await projectConfig();
-  const {
-    presets: named,
-    paths,
-    shadowed,
-    typos,
-  } = await presetsInArgs(positionals, {
-    root,
-    cwd: process.cwd(),
-  });
-  const [typo, meant] = Object.entries(typos)[0] ?? [];
-  if (typo !== undefined) {
-    throw new UserError(`No file or preset named "${typo}". Did you mean the preset "${meant}"?`);
-  }
-  for (const name of shadowed) {
-    console.error(
-      withoutControlCharacters(
-        `${name} is both a path and a preset, so it is audited as a path. For the preset, use --preset ${name}.`,
-      ),
-    );
-  }
-  return { named, paths };
-}
-
 function parseOverrides(flags: {
   preset?: string;
   named: string[];
@@ -71,10 +40,8 @@ function parseOverrides(flags: {
 }): ConfigOverrides {
   const concurrency = parseCount('--concurrency', flags.concurrency);
   const failUnder = parseThreshold('--fail-under', flags.failUnder);
-  const flagged = flags.preset === undefined ? [] : parsePresetList(flags.preset);
-  const presets = [...new Set([...flagged, ...flags.named])];
   return {
-    ...(presets.length > 0 && { presets }),
+    ...presetOverride(flags.preset, flags.named),
     ...(concurrency !== undefined && { concurrency }),
     ...(failUnder !== undefined && { scoring: { fail_under: failUnder } }),
   };
@@ -83,12 +50,12 @@ function parseOverrides(flags: {
 function printReport(
   report: AuditReport,
   format: OutputFormat,
-  { top, onlyNew }: { top: number; onlyNew: boolean },
+  { top, onlyNew, presets }: { top: number; onlyNew: boolean; presets?: string[] },
 ): void {
   if (format === 'json') return printJson(report);
   if (format !== 'text') return console.log(formatIssues(auditIssues(report), format));
   const nothingNew = onlyNew && report.files.length === 0;
-  console.log(nothingNew ? 'No new issues.' : formatReport(report, { top }));
+  console.log(nothingNew ? 'No new issues.' : formatReport(report, { top, presets }));
 }
 
 async function printDryRun(
@@ -128,11 +95,7 @@ export const auditCommand = defineCommand({
       description:
         'Files or directories to audit (default: the whole repository). A preset name, as in `audit security`, works like --preset',
     },
-    preset: {
-      type: 'string',
-      valueHint: 'names',
-      description: 'Comma-separated presets, replacing the configured ones',
-    },
+    preset: PRESET_ARG,
     top: { type: 'string', valueHint: 'n', description: `Rows to show (default ${DEFAULT_TOP})` },
     json: { type: 'boolean', description: 'Print the JSON report, with every file' },
     format: FORMAT_ARG,
@@ -185,7 +148,7 @@ export const auditCommand = defineCommand({
     const baseline = args.new ? await readBaseline(config.root) : null;
     const report = await auditProject(config, { paths, ...scope });
     const shown = baseline ? newIssues(report, baseline) : report;
-    printReport(shown, format, { top, onlyNew: baseline !== null });
+    printReport(shown, format, { top, onlyNew: baseline !== null, presets: overrides.presets });
 
     if (gated) refuseUncheckableReport(report, failUnder);
     if (report.score < failUnder) {

@@ -9,6 +9,7 @@ import { envKeysAllowed, KEY_ENV } from '../credentials.ts';
 import { createDecisionModel } from '../decision/providers.ts';
 import { discoverFiles } from '../files.ts';
 import { OUTPUT_FORMATS, type OutputFormat } from '../formats.ts';
+import { presetsInArgs } from '../presets.ts';
 import { hasIssues } from '../prompt.ts';
 import { withoutControlCharacters } from '../report.ts';
 import type { AuditReport, FileReport } from '../types.ts';
@@ -31,6 +32,13 @@ export const FORMAT_ARG = {
   type: 'string',
   valueHint: 'format',
   description: `Output format: ${OUTPUT_FORMATS.join(', ')} (default text)`,
+} as const;
+
+/** The `--preset` flag of commands that audit. */
+export const PRESET_ARG = {
+  type: 'string',
+  valueHint: 'names',
+  description: 'Comma-separated presets, replacing the configured ones',
 } as const;
 
 /** Loads the config for the current directory. */
@@ -59,6 +67,39 @@ export function parsePresetList(value: string): string[] {
     .filter(Boolean);
   if (presets.length === 0) throw new UserError('--preset needs at least one preset name.');
   return presets;
+}
+
+/** Turns `--preset` and any presets named as arguments into the override for one run. */
+export function presetOverride(flag: string | undefined, named: string[] = []): ConfigOverrides {
+  const flagged = flag === undefined ? [] : parsePresetList(flag);
+  const presets = [...new Set([...flagged, ...named])];
+  return presets.length > 0 ? { presets } : {};
+}
+
+/** Tells preset names from paths, and stops on a near miss of a preset name. */
+export async function splitPositionals(positionals: string[]) {
+  const { root } = await projectConfig();
+  const {
+    presets: named,
+    paths,
+    shadowed,
+    typos,
+  } = await presetsInArgs(positionals, {
+    root,
+    cwd: process.cwd(),
+  });
+  const [typo, meant] = Object.entries(typos)[0] ?? [];
+  if (typo !== undefined) {
+    throw new UserError(`No file or preset named "${typo}". Did you mean the preset "${meant}"?`);
+  }
+  for (const name of shadowed) {
+    console.error(
+      withoutControlCharacters(
+        `${name} is both a path and a preset, so it is audited as a path. For the preset, use --preset ${name}.`,
+      ),
+    );
+  }
+  return { named, paths };
 }
 
 /** Parses a flag that must be a positive integer. */

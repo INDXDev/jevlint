@@ -21,6 +21,8 @@ Scores files and ranks them. With `paths`, only those files or directories are a
 that names a preset and no existing path selects that preset, so `jevlint audit security` runs with
 only the `security` preset, and adds to any `--preset`. A name that is neither, but close to a preset,
 stops with a suggestion rather than auditing nothing. See [Choosing presets](presets.md#choosing-presets).
+`baseline`, `explain`, `prompt` and `fix` read a preset name among their arguments the same way, and
+`pr`, `commits`, `hook` and `test` take `--preset`.
 
 | Flag | Description |
 | --- | --- |
@@ -194,8 +196,9 @@ fixtures. Everything else in `.jevlint/fixtures/` that names no active question 
 
 | Flag | Description |
 | --- | --- |
+| `--preset <names>` | Comma-separated presets, replacing the configured ones |
 | `--json` | Print the [results as JSON](json-output.md#fixture-results) |
-| `--record` | Write the results to `.jevlint/calibration.json`, to commit. It covers every fixture, so it takes no question ids |
+| `--record` | Write the results to `.jevlint/calibration.json`, to commit. It covers every fixture, so it takes no question ids or `--preset` |
 | `--drift` | Compare with the record, and list fixtures that moved |
 | `--drift-limit <n>` | Compliance change that counts as a move (default 0.1) |
 
@@ -217,7 +220,8 @@ jevlint test --drift --drift-limit 0.2
 ## `jevlint explain <file>`
 
 Shows a file's score, its worst AST findings with line numbers, and every question's compliance,
-worst first. `--json` prints the file's [report](json-output.md).
+worst first. `--json` prints the file's [report](json-output.md). `--preset <names>`, or a preset name
+beside the file, as in `jevlint explain security src/a.ts`, replaces the configured presets.
 
 ## `jevlint prompt [files...]`
 
@@ -226,10 +230,12 @@ Prints a Markdown fix prompt. With no files, it uses the highest-priority files.
 | Flag | Description |
 | --- | --- |
 | `--top <n>` | Number of files with issues to include (default 1) |
+| `--preset <names>` | Comma-separated presets, replacing the configured ones |
 | `--copy` | Copy to the clipboard instead of printing |
 
 ```sh
 jevlint prompt --top 3 --copy
+jevlint prompt security --copy
 jevlint prompt | claude -p
 jevlint prompt | codex exec -
 ```
@@ -243,6 +249,7 @@ Runs a coding agent, one file at a time, then re-scores each file. See
 | --- | --- |
 | `--agent <name>` | Agent to run. Built-in: `claude`, `codex` |
 | `--top <n>` | Number of files with issues to fix (default 1) |
+| `--preset <names>` | Comma-separated presets, replacing the configured ones |
 | `--yes` | Skip the confirmation. Required when not running in a terminal |
 | `--allow-dirty` | Run even if the git working tree has changes |
 
@@ -267,6 +274,7 @@ directory works. A new file counts as all new, and problems already in `HEAD` ar
 | --- | --- |
 | `--staged` | Review the staged change against `HEAD`, not an edit. Exits 1 with the report on stdout if it made anything worse, and 0 with no output if not |
 | `--model` | Also ask the provider. This sends both versions of each file and costs money |
+| `--preset <names>` | Comma-separated presets, replacing the configured ones |
 
 ```sh
 echo '{"file_path":"src/orders.ts"}' | jevlint hook

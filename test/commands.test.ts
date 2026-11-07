@@ -488,12 +488,15 @@ describe('choosing presets', () => {
     expect(jevlint(cwd, 'preset').stdout).toBe(jevlint(cwd, 'preset', 'list').stdout);
   });
 
-  it.each([['audit'], ['preset'], ['init']])('lists presets and examples in %s --help', (name) => {
-    const { status, stdout } = jevlint(project(), name, '--help');
-    expect(status).toBe(0);
-    expect(stdout).toContain('* readable-code');
-    expect(stdout).toContain('jevlint audit security');
-  });
+  it.each([['audit'], ['preset'], ['init'], ['prompt'], ['pr'], ['hook']])(
+    'lists presets and examples in %s --help',
+    (name) => {
+      const { status, stdout } = jevlint(project(), name, '--help');
+      expect(status).toBe(0);
+      expect(stdout).toContain('* readable-code');
+      expect(stdout).toContain('jevlint audit security');
+    },
+  );
 
   it('still prints help where the config is broken', () => {
     const { status, stdout } = jevlint(
@@ -515,6 +518,92 @@ describe('choosing presets', () => {
     const { status, stderr } = jevlint(project(), 'preset', 'edit', 'solid');
     expect(status).toBe(2);
     expect(stderr).toContain('No terminal to edit in');
+  });
+});
+
+describe('presets outside audit', () => {
+  const HIDES_FAILURE = 'try { f(); } catch (e) { }\n';
+  const FINDING = 'An empty catch hides the failure';
+
+  it.each([
+    ['named', ['prompt', 'bug-hunt']],
+    ['flagged', ['prompt', '--preset', 'bug-hunt']],
+  ])('builds a prompt from a %s preset', (_, args) => {
+    const cwd = project({ 'a.ts': HIDES_FAILURE });
+    expect(jevlint(cwd, ...args).stdout).toContain(FINDING);
+    expect(jevlint(cwd, 'prompt').stdout).not.toContain(FINDING);
+  });
+
+  it.each([
+    ['named', ['explain', 'bug-hunt', 'a.ts']],
+    ['flagged', ['explain', 'a.ts', '--preset', 'bug-hunt']],
+  ])('explains a file with a %s preset', (_, args) => {
+    const cwd = project({ 'a.ts': HIDES_FAILURE });
+    expect(jevlint(cwd, ...args).stdout).toContain(FINDING);
+  });
+
+  it('keeps a chosen preset in the next-step hints', () => {
+    const cwd = project({ 'a.ts': HIDES_FAILURE });
+    const { stdout } = jevlint(cwd, 'audit', 'bug-hunt', '--ast-only');
+    expect(stdout).toContain('Next: jevlint explain a.ts --preset bug-hunt');
+    expect(stdout).toContain('jevlint prompt --top 1 --copy --preset bug-hunt');
+    expect(jevlint(cwd, 'audit', '--ast-only').stdout).toContain('Next: jevlint explain a.ts\n');
+  });
+
+  it('asks for a file when explain gets only a preset', () => {
+    const { status, stderr } = jevlint(project(), 'explain', 'bug-hunt');
+    expect(status).toBe(2);
+    expect(stderr).toContain('Name a file to explain.');
+  });
+
+  it('records a baseline with a preset', () => {
+    const cwd = project({ 'a.ts': HIDES_FAILURE });
+    expect(jevlint(cwd, 'baseline', 'bug-hunt', '--ast-only').status).toBe(0);
+    expect(readFileSync(join(cwd, '.jevlint/baseline.json'), 'utf8')).toContain('empty-catch-ts');
+    expect(jevlint(cwd, 'audit', 'bug-hunt', '--new', '--ast-only').status).toBe(0);
+  });
+
+  it('fixes what a preset found, and re-scores with the same preset', () => {
+    const home = tempDir();
+    mkdirSync(join(home, 'jevlint'));
+    writeFileSync(join(home, 'jevlint/config.toml'), '[agents.noop]\ncommand = ["true"]\n');
+    const cwd = project({ 'a.ts': HIDES_FAILURE });
+    const flags = ['--agent', 'noop', '--yes', '--allow-dirty'];
+    expect(jevlintAt(home, cwd, 'fix', ...flags).stderr).toContain('Nothing to fix');
+    const { status, stdout } = jevlintAt(home, cwd, 'fix', 'bug-hunt', ...flags);
+    expect(status).toBe(0);
+    expect(stdout).toMatch(/a\.ts 95 -> 95/);
+  });
+
+  it('reviews commits and staged changes with a preset', () => {
+    const git = (...args: string[]) =>
+      spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd });
+    const cwd = project({ 'a.ts': 'export const a = 1;\n' });
+    git('init', '-q');
+    git('add', '.');
+    git('commit', '-qm', 'first');
+    writeFileSync(join(cwd, 'a.ts'), HIDES_FAILURE);
+    git('add', '.');
+    expect(jevlint(cwd, 'hook', '--staged').status).toBe(0);
+    const staged = jevlint(cwd, 'hook', '--staged', '--preset', 'bug-hunt');
+    expect(staged.status).toBe(1);
+    expect(staged.stdout).toContain(FINDING);
+    git('commit', '-qm', 'second');
+    const commits = ['commits', '--count', '1', '--ast-only'];
+    expect(jevlint(cwd, ...commits).stdout).not.toContain(FINDING);
+    expect(jevlint(cwd, ...commits, '--preset', 'bug-hunt').stdout).toContain(FINDING);
+  });
+
+  it('stops on an unknown preset', () => {
+    const { status, stderr } = jevlint(project(), 'prompt', '--preset', 'bug-hnt');
+    expect(status).toBe(2);
+    expect(stderr).toContain('Did you mean "bug-hunt"?');
+  });
+
+  it('refuses a partial calibration record', () => {
+    const { status, stderr } = jevlint(project(), 'test', '--record', '--preset', 'bug-hunt');
+    expect(status).toBe(2);
+    expect(stderr).toContain('takes no --preset');
   });
 });
 

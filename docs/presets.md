@@ -25,6 +25,23 @@ jevlint audit --preset clean-code
 A name after `audit` counts as a preset only when no file or directory of that name exists, so
 `jevlint audit solid` still audits a directory called `solid` and prints a note saying so.
 
+The same choice works beyond `audit`, for one run of any command that scores files:
+
+```sh
+jevlint prompt security --copy        # a fix prompt from one preset
+jevlint fix bug-hunt --agent claude   # fix what it found, and re-score with it
+jevlint explain security src/a.ts
+jevlint baseline security
+jevlint pr 42 --preset bug-hunt       # pr, commits, hook and test take only --preset
+jevlint commits --preset security,solid
+jevlint hook --staged --preset security
+jevlint test --preset house-style
+```
+
+`jevlint audit --new` compares with a baseline finding by finding, so run it with the presets the
+baseline was recorded with. `jevlint architecture` and `--intent` keep their own presets, because
+their questions are about directories, classes and changes, not files.
+
 Set the presets every audit uses with `jevlint preset default`, which writes `presets` in your user
 config, or in `jevlint.toml` with `--repo`. With no names, it lets you pick in a terminal, and in a
 pipe it prints the current ones. `jevlint preset list` marks them with `*`.
@@ -50,11 +67,47 @@ The `presets` key in `jevlint.toml` wins over your user config, as every reposit
 | `kiss-dry-yagni` | Common engineering maxims | Simplicity, duplication, speculative generality |
 | `documentation` | Common API documentation practice | A purpose for each file, doc comments on exported code, stated contracts, doc comments that match the code, TODOs with a reason |
 | `security` | Common secure coding guidance | Input validation, injection, secrets in source, access checks, safe failure, cryptography. Patterns flag `eval`, `innerHTML` and `shell=True` |
+| `bug-hunt` | MITRE CWE, IBM Orthogonal Defect Classification, Beizer's bug taxonomy, SEI CERT coding standards, SpotBugs bug patterns | 43 defect classes, from absent values and swallowed errors to races and leaks. See [Hunting bugs](#hunting-bugs) |
 | `architecture-codebase`, `architecture-directory`, `architecture-class` | Common design guidance | One preset per perspective. Used only by [`jevlint architecture`](architecture-review.md) |
 | `change-intent` | Common code review practice | Whether a change does what its message says and keeps to the repository's instructions. Used only by [`--intent`](cli.md#judging-a-change-with---intent) |
 
 `readable-code` is the default. Each preset is an independent paraphrase of ideas. None reproduces
 text from these works, and none is affiliated with or endorsed by their authors or publishers.
+
+## Hunting bugs
+
+`jevlint audit bug-hunt` ranks files by how likely they are to hide a bug. It joins two signals:
+43 questions, one for each known class of defect, and the churn that
+[priority](scoring.md) already weighs, because code that changes often is where defects land.
+
+| Group | Hunts for |
+| --- | --- |
+| Assignment and initialization | Null dereference, uninitialized state, reused variables, shared mutable state, stale derived state |
+| Checking | Unchecked results, swallowed errors, broad catches, partial failure, dropped async failures, missing edge inputs, unchecked indexes |
+| Algorithm and method | Off-by-one, overflow, division by zero, float precision, lossy conversion, coercion, wrong operators, inverted logic, missing cases, copy-and-paste slips, identity comparison, the equality contract, loops that never end, mutation during iteration, regular expressions, dates and times, text encoding |
+| Timing and serialization | Data races, check-then-act, lock discipline, interleaving across `await`, missing timeouts, unsafe retries |
+| Resources | Leaks, use after release, unbounded growth |
+| Interface and relationship | Swapped arguments, mixed units, misused APIs, order dependence, impossible states |
+
+Its `[[patterns]]` need no model, so `jevlint audit bug-hunt --ast-only` still finds async `forEach`
+callbacks, empty catches, comparisons with `NaN` or with the value itself, and assignment in a
+condition in JavaScript and TypeScript; mutable defaults, bare `except`, `except: pass` and unclosed
+files in Python; discarded results in Go; and `unwrap`, `todo!` and `unimplemented!` in Rust. An
+empty catch counts even with a comment in it.
+
+```sh
+jevlint audit bug-hunt --top 10          # the riskiest files
+jevlint explain bug-hunt src/orders.ts   # which classes, in one file
+jevlint prompt bug-hunt --copy           # hand the worst file to an agent
+jevlint pr --preset bug-hunt             # what a pull request made worse
+```
+
+The score is a mean of 43 answers, so it stays high even when a few of them matter. Compare files with
+each other, and read the weak answers in `explain`, rather than judging the number alone. Each answer
+is a model's suspicion from one file, not a proven bug, and it cannot see what is safe by design, such
+as a single-process tool that cannot race with itself. Check the strongest answers against the code
+before acting on them. Every file sends all 43 questions, so check the cost with `--dry-run`. Set a question's [weight](#tuning) to `0` to stop
+asking it, and note that Cloudflare allows 64 questions per request across your active presets.
 
 ## Tuning
 

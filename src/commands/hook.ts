@@ -2,14 +2,20 @@
 import { resolve } from 'node:path';
 import { defineCommand } from 'citty';
 import type { AuditOptions } from '../audit.ts';
-import { type Config, UserError } from '../config.ts';
+import { type Config, type ConfigOverrides, UserError } from '../config.ts';
 import { stagedChange } from '../git.ts';
 import { editedPath, reviewEdit } from '../hook.ts';
 import { formatReview } from '../report.ts';
 import { madeWorse, reviewChange } from '../review.ts';
 import type { ChangeReview } from '../types.ts';
 import { askAboutEnvKeys } from './auth.ts';
-import { printFallbackNotice, printNoKeyNotice, projectConfig } from './shared.ts';
+import {
+  PRESET_ARG,
+  presetOverride,
+  printFallbackNotice,
+  printNoKeyNotice,
+  projectConfig,
+} from './shared.ts';
 
 // Claude Code's Write payload carries the whole file, and more than once.
 const MAX_STDIN_BYTES = 32 * 1024 * 1024;
@@ -36,11 +42,11 @@ function printNotices(config: Config, review: ChangeReview, options: AuditOption
   printFallbackNotice(config, review.provider);
 }
 
-async function reviewEditedFile(options: AuditOptions): Promise<void> {
+async function reviewEditedFile(options: AuditOptions, presets: ConfigOverrides): Promise<void> {
   const text = await readStdin();
   const path = text === undefined ? undefined : editedPath(text);
   if (path === undefined) return;
-  const config = await projectConfig();
+  const config = await projectConfig(presets);
   const review = await reviewEdit(config, resolve(path), options);
   if (!review) return;
   printNotices(config, review, options);
@@ -49,8 +55,8 @@ async function reviewEditedFile(options: AuditOptions): Promise<void> {
   process.exitCode = EXIT_TELL_AGENT;
 }
 
-async function reviewStaged(options: AuditOptions): Promise<void> {
-  const config = await projectConfig();
+async function reviewStaged(options: AuditOptions, presets: ConfigOverrides): Promise<void> {
+  const config = await projectConfig(presets);
   const review = await reviewChange(config, await stagedChange(config.root), options);
   printNotices(config, review, options);
   if (!madeWorse(review)) return;
@@ -65,10 +71,12 @@ export const hookCommand = defineCommand({
   args: {
     staged: { type: 'boolean', description: 'Review the staged change, for a pre-commit hook' },
     model: { type: 'boolean', description: 'Also ask the provider, which sends file contents' },
+    preset: PRESET_ARG,
   },
   async run({ args }) {
     if (args.model) await askAboutEnvKeys();
     const options = { astOnly: !args.model };
-    await (args.staged ? reviewStaged(options) : reviewEditedFile(options));
+    const presets = presetOverride(args.preset);
+    await (args.staged ? reviewStaged(options, presets) : reviewEditedFile(options, presets));
   },
 });

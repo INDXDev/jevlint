@@ -4,6 +4,12 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- Presets now work beyond `audit`. `prompt`, `fix`, `explain` and `baseline` take a preset name among
+  their arguments or `--preset`, as in `jevlint prompt security --copy`, and `pr`, `commits`, `hook`
+  and `test` take `--preset`. `test --record` refuses it, as a record covers every fixture.
+- A built-in `bug-hunt` preset: 43 questions, one per defect class from CWE, Orthogonal Defect
+  Classification and other taxonomies, plus patterns for JavaScript, TypeScript, Python, Go and Rust
+  that need no model. `jevlint audit bug-hunt` ranks the files most likely to hide a bug.
 - A stalled network no longer hangs a run. `jevlint pr` gives `gh` 60 seconds and `git fetch` 5
   minutes, and a provider gets 5 minutes per file, after which that file gets a warning.
 - `jevlint preset new`, `edit` and `add` no longer overwrite a file that holds a preset of a different

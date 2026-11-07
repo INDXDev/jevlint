@@ -8,8 +8,10 @@ import { reviewChange } from '../review.ts';
 import type { Change, ChangeReview } from '../types.ts';
 import {
   FORMAT_ARG,
+  PRESET_ARG,
   parseCount,
   parseFormat,
+  presetOverride,
   printFallbackNotice,
   printJson,
   printNoKeyNotice,
@@ -22,6 +24,7 @@ const DEFAULT_COUNT = 10;
 const REVIEW_ARGS = {
   json: { type: 'boolean', description: 'Print a JSON array, with one review per change' },
   format: FORMAT_ARG,
+  preset: PRESET_ARG,
   'ast-only': { type: 'boolean', description: 'Use AST analysis only, with no provider requests' },
   cache: {
     type: 'boolean',
@@ -114,7 +117,7 @@ export const prCommand = defineCommand({
       'The pull request number',
       args.number ?? pullRequestOfRef(process.env.GITHUB_REF),
     );
-    const config = await projectConfig();
+    const config = await projectConfig(presetOverride(args.preset));
     await printReviews(config, [await pullRequestChange(config.root, number)], args, format);
   },
 });
@@ -140,7 +143,7 @@ export const commitsCommand = defineCommand({
     const format = parseFormat(args);
     assertUsableFlags(args, format);
     const count = parseCount('--count', args.count) ?? DEFAULT_COUNT;
-    const config = await projectConfig();
+    const config = await projectConfig(presetOverride(args.preset));
     await printReviews(config, await commitsFrom(config.root, args.revision, count), args, format);
   },
 });

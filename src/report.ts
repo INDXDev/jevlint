@@ -186,11 +186,13 @@ function formatEmpty({ skipped }: AuditReport): string {
 const shellQuoted = (path: string) =>
   /^[\w./-]+$/.test(path) ? path : `'${path.replaceAll("'", `'\\''`)}'`;
 
-function formatNext(report: AuditReport, shown: number): string {
+function formatNext(report: AuditReport, shown: number, presets: string[] = []): string {
   const top = Math.min(NEXT_PROMPT_TOP, report.files.length);
+  // Only known presets get this far, and their names are limited to shell-safe characters.
+  const flag = presets.length > 0 ? ` --preset ${presets.join(',')}` : '';
   const hints = [
-    ` Next: jevlint explain ${shellQuoted(report.files[0]?.path ?? '')}`,
-    `       jevlint prompt --top ${top} --copy`,
+    ` Next: jevlint explain ${shellQuoted(report.files[0]?.path ?? '')}${flag}`,
+    `       jevlint prompt --top ${top} --copy${flag}`,
   ];
   const hidden = report.files.length - shown;
   if (hidden > 0) hints.unshift(` ${hidden} more. Show them with --top ${report.files.length}`, '');
@@ -198,7 +200,10 @@ function formatNext(report: AuditReport, shown: number): string {
 }
 
 /** Renders the ranked audit table with its header and next-step hints. */
-export function formatReport(untrusted: AuditReport, opts: { top: number }): string {
+export function formatReport(
+  untrusted: AuditReport,
+  opts: { top: number; presets?: string[] },
+): string {
   const report = withoutControlCharacters(untrusted);
   const header = formatHeader(report);
   if (report.files.length === 0) return `${header}\n\n${formatEmpty(report)}`;
@@ -206,7 +211,7 @@ export function formatReport(untrusted: AuditReport, opts: { top: number }): str
   return [
     [header, formatSummary(report), ...formatUsage(report.usage)].join('\n'),
     formatTable(shown, report.scale),
-    formatNext(report, shown.length),
+    formatNext(report, shown.length, opts.presets),
   ].join('\n\n');
 }
 
