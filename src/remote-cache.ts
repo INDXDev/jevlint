@@ -101,7 +101,11 @@ async function downloadEntry(cache: CacheConfig, key: string): Promise<unknown> 
   if (status === 404 && (await response.text()).includes('NoSuchBucket')) {
     throw new UserError(`${cache.remote}: no such bucket. Check cache.remote and cache.endpoint.`);
   }
-  if (status === 404 || status === 429 || status >= 500) return undefined;
+  if (status === 404 || status === 429 || status >= 500) {
+    // An unread body keeps its connection until garbage collection, and files run in parallel.
+    await response.body?.cancel();
+    return undefined;
+  }
   if (!response.ok) {
     throw new UserError(
       `${cache.remote} refused the cache read (HTTP ${status}). Check the AWS_ credentials and cache.region, and that they may list, read and write the bucket.`,
@@ -128,6 +132,8 @@ export async function readThrough<T>(cache: CacheConfig, key: string): Promise<T
 export async function writeThrough(cache: CacheConfig, key: string, value: unknown): Promise<void> {
   await Promise.allSettled([
     writeCache(cache.dir, key, value),
-    ...(cache.remote ? [send(cache, 'PUT', key, JSON.stringify(value))] : []),
+    ...(cache.remote
+      ? [send(cache, 'PUT', key, JSON.stringify(value)).then(({ body }) => body?.cancel())]
+      : []),
   ]);
 }

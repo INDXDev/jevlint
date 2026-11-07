@@ -4,6 +4,13 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- A stalled network no longer hangs a run. `jevlint pr` gives `gh` 60 seconds and `git fetch` 5
+  minutes, and a provider gets 5 minutes per file, after which that file gets a warning.
+- `jevlint preset new`, `edit` and `add` no longer overwrite a file that holds a preset of a different
+  name, such as `foo.toml` declaring `name = "bar"`. They stop and name the file.
+- The remote cache releases its connection after an upload or a miss, instead of holding it until
+  garbage collection.
+
 ## 0.2.1 - 2026-11-05
 
 - `jevlint pr` no longer needs a number. It finds it from `GITHUB_REF` in a GitHub Actions

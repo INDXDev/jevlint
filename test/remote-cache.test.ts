@@ -117,6 +117,17 @@ describe('readThrough', () => {
     expect(await readCache(dir, key)).toBeUndefined();
   });
 
+  it('releases the connection after a miss and after an upload', async () => {
+    const outage = new Response('busy', { status: 503 });
+    fetchMock.mockResolvedValueOnce(outage);
+    await readThrough(cache, key);
+    expect(outage.bodyUsed).toBe(true);
+    const uploaded = new Response('ok');
+    fetchMock.mockResolvedValueOnce(uploaded);
+    await writeThrough(cache, key, entry);
+    expect(uploaded.bodyUsed).toBe(true);
+  });
+
   it('treats a network failure as a miss', async () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'));
     expect(await readThrough(cache, key)).toBeUndefined();

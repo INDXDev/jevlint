@@ -154,6 +154,24 @@ describe('loading', () => {
     expect(await loadPresets(['readable-code'], root)).toHaveLength(1);
   });
 
+  it('refuses to overwrite a file that holds a differently named preset', async () => {
+    await writePreset(paths.presetsDir(), 'foo', preset('bar', 'precious'));
+    const file = join(paths.presetsDir(), 'foo.toml');
+    await expect(createPreset('foo', { repo: false, root })).rejects.toThrow(
+      'holds the preset "bar"',
+    );
+    expect(await readFile(file, 'utf8')).toContain('precious');
+  });
+
+  it('still replaces a preset of the same name when adding it again', async () => {
+    await writePreset(paths.presetsDir(), 'house', preset('house', 'old'));
+    const update = join(home, 'update.toml');
+    await writeFile(update, preset('house', 'new'));
+    await installPreset(update, { repo: false, root });
+    const [loaded] = await loadPresets(['house'], root);
+    expect(loaded?.description).toBe('new');
+  });
+
   it('never resolves a traversal name to a file', async () => {
     await writeFile(join(home, 'evil.toml'), preset('evil'));
     await expect(loadPresets(['../../evil'], root)).rejects.toThrow(/Unknown preset/);
