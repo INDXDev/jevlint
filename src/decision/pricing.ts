@@ -11,7 +11,7 @@ const INPUT_PRICES: Partial<Record<ProviderName, Record<string, number>>> = {
   typesafe: { jev: 0.042 },
   openai: { 'gpt-6-luna': 0.1 },
   gateway: { 'typesafe-ai/jev': 0.042 },
-  cloudflare: { clef: 0.24 },
+  cloudflare: { '': 0.24 },
 };
 
 /** Estimates what input tokens cost, or null when the model's price is unknown. */

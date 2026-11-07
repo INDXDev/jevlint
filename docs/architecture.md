@@ -15,6 +15,7 @@ cli.ts ── commands/* ── audit.ts ─┬─ files.ts          discover
                   ├─ baseline.ts   compare an audit to a recorded one
                   ├─ intent.ts     judge a change against its message
                   ├─ fixtures.ts   test questions on known files
+                  ├─ spec/         check code and documents against a spec
                   ├─ report.ts     terminal output
                   ├─ formats.ts    SARIF and workflow commands
                   ├─ prompt.ts     agent prompt
@@ -33,6 +34,7 @@ jevlint/
 │   ├── ast/             Local code metrics
 │   ├── decision/        Everything that talks to a decision model
 │   ├── architecture/    Structure review: extraction, graphs and views
+│   ├── spec/            Spec-driven development: load, check, drift and their output
 │   └── *.ts             Core modules, listed below
 ├── presets/             Built-in presets, as TOML
 ├── examples/messy-shop/ A deliberately messy project for demos
@@ -48,6 +50,7 @@ jevlint/
 | `src/ast/` | It measures source code without a network | Scoring, I/O |
 | `src/decision/` | It depends on the AI SDK or a provider | Scoring, file discovery |
 | `src/architecture/` | It reviews structure across files | Per-file metrics |
+| `src/spec/` | It reads a spec or judges code or documents against one | Terminal output outside `prompt.ts` and `terminal.ts` |
 | `presets/` | It is a principle or a question | Code of any kind |
 | `test/` | It verifies behaviour without a real provider | Real API calls |
 
@@ -57,10 +60,10 @@ Dependencies point downward only. A module never imports from a layer above it.
 
 | Layer | Modules | May use |
 | --- | --- | --- |
-| Interface | `cli.ts`, `commands/`, `report.ts`, `formats.ts`, `prompt.ts`, `agent.ts`, `architecture/terminal.ts`, `architecture/html.ts` | Everything below |
-| Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `fixtures.ts`, `architecture/review.ts` | Everything below |
-| Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts` | Infrastructure, contracts |
-| Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `node-version.ts` | Contracts |
+| Interface | `cli.ts`, `commands/`, `report.ts`, `formats.ts`, `prompt.ts`, `agent.ts`, `architecture/terminal.ts`, `architecture/html.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
+| Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `fixtures.ts`, `architecture/review.ts`, `spec/check.ts`, `spec/drift.ts` | Everything below |
+| Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts`, `spec/questions.ts` | Infrastructure, contracts |
+| Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `node-version.ts`, `spec/load.ts` | Contracts |
 | Contracts | `types.ts` | Nothing |
 
 Modules in the same layer may import each other, as `ast/analyze.ts` does with `scoring.ts`.
@@ -116,6 +119,10 @@ Three rules keep these layers clean:
 | `src/fixtures.ts` | Reads `.jevlint/fixtures`, asks each fixture its question, and writes or compares `calibration.json` |
 | `src/git.ts` | Churn, working-tree status, and reading changes, diffs, commits and pull requests |
 | `src/node-version.ts` | Decides whether this Node.js has the required security fixes |
+| `src/spec/load.ts` | Reads and validates the spec YAML in `spec.dir` |
+| `src/spec/questions.ts` | Builds the routing, item and coverage questions, as pure data |
+| `src/spec/check.ts`, `drift.ts` | Judge code files and documents against the spec in two requests each |
+| `src/spec/prompt.ts`, `terminal.ts` | Render the compile prompt and the reports |
 | `src/scoring.ts` | Pure functions from the [scoring formulas](scoring.md) |
 | `src/audit.ts` | Runs the pipeline and returns an `AuditReport` |
 | `src/rules.ts` | Judges each semantic rule match with one boolean question, and adds hits to the AST findings |
@@ -180,6 +187,13 @@ own preset, because a question that fits a directory does not fit a class. It re
 `decideFile`, as the architecture review does, so the cache and every provider work unchanged. The
 message goes before the diff because `max_file_chars` cuts from the end.
 
+**A spec is judged in two requests per file.** The first asks one choice question, which feature
+the file belongs to, together with the project checklist. The second asks only that feature's items.
+This keeps each request small and every question relevant. Both go through `decideState`, the
+general form of `decideFile` that also takes choice questions, so the cache and every provider work
+unchanged. jevlint never writes the spec: `spec compile` hands that judgement to a coding agent, and
+the YAML is the single source of truth that both other commands read.
+
 ## Dependencies
 
 | Package | Purpose |
@@ -190,6 +204,7 @@ message goes before the diff because `max_file_chars` cuts from the end.
 | `@clack/prompts` | Interactive prompts |
 | `picocolors` | Colour |
 | `smol-toml` | TOML |
+| `yaml` | Spec files |
 | `zod` | Config and preset validation |
 | `tinyglobby`, `ignore` | File discovery |
 | `p-limit` | Concurrency |

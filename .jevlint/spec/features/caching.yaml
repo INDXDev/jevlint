@@ -1,0 +1,58 @@
+id: caching
+title: "Answer cache"
+summary: "The model answer cache, as docs/caching.md describes: content-addressed answers on disk, the shared S3-compatible bucket, and jevlint cache. Code in src/cache.ts and src/remote-cache.ts."
+checklist:
+  - id: location
+    text: "The cache lives in ~/.cache/jevlint/, moved by JEVLINT_CACHE_DIR, XDG_CACHE_HOME or cache.dir."
+    source: docs/caching.md#location
+  - id: key-covers
+    text: "A cache key covers the content sent, the provider, the model, the custom endpoint and the text and type of every active question."
+    source: docs/caching.md#what-invalidates-an-entry
+  - id: sha256-key
+    text: "Cache keys are SHA-256 hashes."
+    source: docs/caching.md#what-is-stored
+  - id: raw-answers-only
+    text: "An entry holds question ids, numeric answers and token usage, and no source code."
+    source: docs/caching.md#what-is-stored
+  - id: damaged-entry
+    text: "A damaged or wrong-shaped entry counts as a miss and is replaced."
+    source: docs/caching.md#what-invalidates-an-entry
+  - id: unwritable-dir
+    text: "A cache directory that cannot be written is ignored, and answers still reach the report."
+    source: docs/caching.md#what-invalidates-an-entry
+  - id: no-cache-flag
+    text: "--no-cache ignores cached decisions, stores no new ones, and skips the bucket."
+    source: docs/caching.md#share-the-cache-through-object-storage
+  - id: local-first
+    text: "An entry is looked up locally first, and downloaded from the bucket only when missing, then kept locally."
+    source: docs/caching.md#share-the-cache-through-object-storage
+  - id: upload-new
+    text: "A new answer is stored locally and uploaded straight away, and entries already in the local cache are not uploaded."
+    source: docs/caching.md#share-the-cache-through-object-storage
+  - id: object-layout
+    text: "Bucket objects use the key decisions/ab/<key>.json under the configured prefix."
+    source: docs/caching.md#share-the-cache-through-object-storage
+  - id: aws-env-only
+    text: "Bucket credentials come only from AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_SESSION_TOKEN, and ~/.aws is not read."
+    source: docs/caching.md#share-the-cache-through-object-storage
+  - id: region-default
+    text: "The bucket region defaults to AWS_REGION, then us-east-1."
+    source: docs/caching.md#share-the-cache-through-object-storage
+  - id: env-overrides
+    text: "JEVLINT_CACHE_REMOTE, JEVLINT_CACHE_ENDPOINT and JEVLINT_CACHE_REGION override cache.remote, cache.endpoint and cache.region."
+    source: docs/configuration.md#environment-variables
+  - id: fatal-bucket-errors
+    text: "Missing credentials, a bucket that does not exist or a refused read stop the run with exit code 2."
+    source: docs/caching.md#share-the-cache-through-object-storage
+  - id: ignored-bucket-errors
+    text: "A network failure, a server error or a failed upload is ignored, and the affected file counts as a miss."
+    source: docs/caching.md#share-the-cache-through-object-storage
+  - id: ast-only-no-bucket
+    text: "--ast-only never touches the bucket."
+    source: docs/caching.md#share-the-cache-through-object-storage
+  - id: clear-local-only
+    text: "cache clear deletes only the local directory, and cache info shows the location, entry count, size and bucket."
+    source: docs/cli.md#jevlint-cache
+  - id: ast-not-cached
+    text: "AST analysis always runs fresh and is never cached."
+    source: docs/caching.md#what-invalidates-an-entry

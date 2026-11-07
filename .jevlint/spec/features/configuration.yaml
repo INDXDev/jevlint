@@ -1,0 +1,85 @@
+id: configuration
+title: "Configuration and file discovery"
+summary: "The settings in jevlint.toml and the user config.toml, as docs/configuration.md describes: config layers, defaults, user-only keys, init and config show, and which files an audit reads through include, exclude, .gitignore and the built-in exclusions. Code in src/config.ts and src/files.ts."
+checklist:
+  - id: layer-order
+    text: "Config layers apply in the order defaults, user config, repository config, flags, and later layers win."
+    source: docs/configuration.md#where-config-lives
+  - id: merge-rules
+    text: "Tables merge key by key, and arrays are replaced rather than combined."
+    source: docs/configuration.md#where-config-lives
+  - id: user-config-path
+    text: "The user config is ~/.config/jevlint/config.toml, and XDG_CONFIG_HOME moves its directory."
+    source: docs/configuration.md#where-config-lives
+  - id: find-root
+    text: "The root is the directory holding jevlint.toml found by walking up from the current directory, else the git root, else the current directory."
+    source: docs/configuration.md#where-config-lives
+  - id: user-only-keys
+    text: "provider.base_url, agents, cache and max_rule_matches in a repository's jevlint.toml are a config error."
+    source: docs/configuration.md#settings-a-repository-cannot-set
+  - id: no-api-key-field
+    text: "An api_key field in jevlint.toml or config.toml is rejected."
+    source: docs/providers.md#storing-keys
+  - id: top-level-defaults
+    text: "Defaults are presets full, include **/*, an empty exclude, concurrency 8, max_file_chars 80000, warn_file_count 1000 and max_rule_matches 20."
+    source: docs/configuration.md#full-example
+  - id: scoring-defaults
+    text: "Scoring defaults are scale 100, precision 0, ast_weight 0.4, model_weight 0.6 and fail_under 0."
+    source: docs/configuration.md#full-example
+  - id: weight-above-zero
+    text: "At least one of ast_weight and model_weight must be above 0."
+    source: docs/configuration.md#full-example
+  - id: precision-range
+    text: "scoring.precision accepts values from 0 to 100."
+    source: docs/configuration.md#full-example
+  - id: base-url-env
+    text: "JEVLINT_BASE_URL overrides provider.base_url."
+    source: docs/configuration.md#environment-variables
+  - id: config-show
+    text: "config show prints the merged config as TOML without secrets, and config path prints the config files in the order they apply."
+    source: docs/cli.md#jevlint-config
+  - id: source-extensions
+    text: "Only files with an extension in SOURCE_EXTENSIONS are audited, and include or path arguments cannot widen this."
+    source: docs/configuration.md#files-that-are-always-excluded
+  - id: secret-files
+    text: "Files matching .env*, *.pem, *.key, *.p12, *.pfx, id_rsa*, *credentials* or *secret* are never read."
+    source: docs/configuration.md#files-that-are-always-excluded
+  - id: generated-files
+    text: "node_modules, dist, build, vendor, target, coverage and *.min.* are never read."
+    source: docs/configuration.md#files-that-are-always-excluded
+  - id: fixtures-excluded
+    text: ".jevlint/fixtures/ is never audited."
+    source: docs/configuration.md#files-that-are-always-excluded
+  - id: binary-files
+    text: "Binary files are never read."
+    source: docs/configuration.md#files-that-are-always-excluded
+  - id: exclude-adds
+    text: "exclude globs add to .gitignore and the built-in exclusions rather than replacing them."
+    source: docs/configuration.md#full-example
+  - id: warn-file-count
+    text: "When more than warn_file_count files are in scope, a warning goes to stderr and the run carries on."
+    source: docs/troubleshooting.md#a-warning-about-the-home-directory-or-the-number-of-files
+  - id: limits
+    text: "Default limits are max_fan_out 12, max_hub_links 5, max_directory_files 20, max_class_methods 20, max_class_lines 300 and max_inheritance_depth 3."
+    source: docs/configuration.md#architecture-limits
+  - id: hub-links
+    text: "A file's hub links are the lower of its import count and its user count."
+    source: docs/configuration.md#architecture-limits
+  - id: debug-stack
+    text: "With DEBUG set to any value, an unexpected error prints its stack trace."
+    source: docs/configuration.md#environment-variables
+  - id: truncate
+    text: "Content longer than max_file_chars is cut before sending, and the file gets a warning."
+    source: docs/configuration.md#top-level-keys
+  - id: priority-defaults
+    text: "Priority defaults are churn 0.5, size 0.25 and churn_days 180."
+    source: docs/configuration.md#full-example
+  - id: fail-under
+    text: "An audit exits 1 when the repository score is below fail_under, and fail_under 0 disables the check."
+    source: docs/configuration.md#full-example
+  - id: metric-limits
+    text: "Default limits are max_cognitive_complexity 15, max_nesting 4, max_function_lines 60, max_params 4 and max_file_lines 400."
+    source: docs/configuration.md#full-example
+  - id: concurrency
+    text: "Parallel provider requests are capped at concurrency."
+    source: docs/configuration.md#top-level-keys

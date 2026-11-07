@@ -48,8 +48,9 @@ cross-language approximation, so values can differ from SonarQube's.
 
 ### Languages without a grammar
 
-Any other source file, such as Java, Ruby, PHP, C or Lua, gets the same metrics approximated from
-keywords and indentation. It needs consistent indentation, and the terminal marks its score `AST ~`.
+TypeScript, JavaScript, Python, Go and Rust get exact metrics from an ast-grep grammar. Any other
+source file, such as Java, Ruby, PHP, C or Lua, gets the same metrics approximated from keywords
+and indentation. It needs consistent indentation, and the terminal marks its score `AST ~`.
 
 - It finds functions by keywords such as `def`, `func` and `function`, by assignments of them, and by
   C-style declarations followed by a block.

@@ -1,0 +1,67 @@
+id: architecture-review
+title: "Architecture review"
+summary: "Architecture reviews, as docs/architecture-review.md describes: jevlint architecture builds module, directory and class graphs from imports, reports cycles and size limits, and asks the model about the codebase, its directories and its classes. Code in src/architecture/."
+checklist:
+  - id: no-cycles
+    text: "dependency-cycle and directory-cycle findings allow no cycle at all."
+    source: docs/architecture-review.md#what-it-finds
+  - id: subfolder-not-cycle
+    text: "A folder and its own subfolder never count as a directory cycle."
+    source: docs/architecture-review.md#what-it-finds
+  - id: structure-score
+    text: "A unit's structure score is set by its worst finding, as limit divided by value, so a cycle of two scores 0.5."
+    source: docs/architecture-review.md#scores
+  - id: outlines-not-code
+    text: "A unit's outline holds paths, line counts, names and dependencies, and never file contents."
+    source: docs/architecture-review.md#how-it-works
+  - id: one-request-per-unit
+    text: "Each unit is one request through decideFile, so a review costs 1 + directories + classes with methods."
+    source: docs/architecture-review.md#how-it-works
+  - id: methodless-classes
+    text: "A class without methods is left out of the ranking unless it has a finding."
+    source: docs/architecture-review.md#scores
+  - id: line-weighted
+    text: "Each perspective's score and the overall score are means weighted by lines."
+    source: docs/architecture-review.md#scores
+  - id: presets
+    text: "The codebase, directory and class perspectives use the architecture-codebase, architecture-directory and architecture-class presets."
+    source: docs/architecture-review.md#changing-the-questions
+  - id: html-offline
+    text: "The HTML report has no scripts and makes no network requests, and --html requires a file name."
+    source: docs/architecture-review.md#reading-the-report
+  - id: ambiguous-class
+    text: "A class name declared in two files links to nothing."
+    source: docs/architecture-review.md#language-support
+  - id: go-package
+    text: "A Go package maps to its first non-test .go file."
+    source: docs/architecture-review.md#language-support
+  - id: ts-aliases
+    text: "TypeScript paths aliases and workspace packages are not followed."
+    source: docs/architecture-review.md#language-support
+  - id: destructuring
+    text: "Top-level destructuring patterns are not listed as names."
+    source: docs/architecture-review.md#language-support
+  - id: not-architecture
+    text: "Pins do not apply in jevlint architecture."
+    source: docs/architecture-review.md#scores
+  - id: limit-rules
+    text: "fan-out, hub, directory-files, class-methods, class-lines and inheritance-depth findings are measured against max_fan_out, max_hub_links, max_directory_files, max_class_methods, max_class_lines and max_inheritance_depth."
+    source: docs/architecture-review.md#what-it-finds
+  - id: score-scope
+    text: "A directory counts its own findings, a class counts findings about that class, and the codebase counts every finding."
+    source: docs/architecture-review.md#scores
+  - id: score-blend
+    text: "A unit's structure score blends with the model's answers using ast_weight and model_weight."
+    source: docs/architecture-review.md#scores
+  - id: excluded-not-in-graph
+    text: "Files in exclude, and files jevlint cannot read, are left out of the graph."
+    source: docs/architecture-review.md#language-support
+  - id: go-methods
+    text: "Go methods merge with their type only within one file."
+    source: docs/architecture-review.md#language-support
+  - id: export-import
+    text: "TypeScript export import b = require('./b') is not read as an import."
+    source: docs/architecture-review.md#language-support
+  - id: perspective-flag
+    text: "--perspective takes codebase, directory or class, comma-separated, reviews only those, and rejects any other name."
+    source: docs/architecture-review.md#how-it-works

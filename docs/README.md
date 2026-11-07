@@ -9,6 +9,7 @@
 | Choose a model or store a key | [Providers](providers.md) |
 | Choose or write principles | [Presets](presets.md) |
 | Understand a number | [Scoring](scoring.md) |
+| Keep documents, a spec and code in agreement | [Spec-driven development](spec-driven-development.md) and the [spec reference](spec-reference.md) |
 | Review and visualise a repository's structure | [Architecture review](architecture-review.md) |
 | Review a pull request or recent commits | [CLI reference](cli.md#jevlint-pr-number) |
 | Gate only on new problems | [Continuous integration](ci.md#gate-only-on-new-problems) |

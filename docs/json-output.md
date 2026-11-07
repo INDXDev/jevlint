@@ -153,3 +153,38 @@ Each result has `question`, `file`, `expected` (`good` or `bad`), `compliance` f
 | `classes` | `id`, `name`, `path`, `line`, `lines`, `methods` (names), `layer` |
 | `edges` | `directories`, `modules` and `classes`: lists of `from`, `to`, `weight`, `cyclic`, and `kind` for classes |
 | `findings` | Each has the fields of an AST finding, plus `path` and `directories` |
+
+## Spec reports
+
+`jevlint spec check --json` prints one object:
+
+| Key | Holds |
+| --- | --- |
+| `root`, `provider`, `model`, `scale`, `usage` | The same as `audit --json` |
+| `specDir` | The spec directory, relative to the root |
+| `complete` | `false` when paths narrowed the run, which leaves `unimplemented` empty |
+| `files` | `path`, `feature`, `featureConfidence`, `score`, `items`, `warnings`, most violations first |
+| `violations` | How many item verdicts are `violates` |
+| `unimplemented` | `id` and `text` of each item no file satisfies |
+| `warnings` | Problems with the run as a whole |
+
+`feature` is a feature id, `global` for shared code, or `null` when the file got no answer. `score` is
+on the configured scale, or `null` when no item applied. Each item has `id`, `text`, `verdict`
+(`satisfies`, `violates` or `not-applicable`) and `confidence` from 0 to 1.
+
+`jevlint spec drift --json` prints one object:
+
+| Key | Holds |
+| --- | --- |
+| `root`, `provider`, `model`, `specDir`, `complete`, `usage`, `warnings` | As above |
+| `docs` | `path`, `feature`, `featureConfidence`, `items`, `uncovered`, `warnings` |
+| `contradictions` | How many item verdicts are `contradicts` |
+| `uncovered` | Documents whose `uncovered` probability is 0.5 or more |
+| `unbacked` | `id` and `text` of each item absent from every document routed to its checklist |
+| `undocumented` | Feature ids no document is routed to |
+
+Item verdicts are `agrees`, `contradicts` or `absent`. `unbacked` and `undocumented` are empty when
+`complete` is `false`. See the [spec reference](spec-reference.md#json-output) for examples.
+
+`jevlint spec list --json` prints the loaded spec: `dir`, `index` and `features`, with the keys of the
+YAML files.

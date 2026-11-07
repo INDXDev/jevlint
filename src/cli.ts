@@ -18,6 +18,7 @@ import { initCommand } from './commands/init.ts';
 import { formatPresetList, presetCommand } from './commands/preset.ts';
 import { promptCommand } from './commands/prompt.ts';
 import { commitsCommand, prCommand } from './commands/review.ts';
+import { specCommand } from './commands/spec.ts';
 import { testCommand } from './commands/test.ts';
 import { UserError } from './config.ts';
 import { isPatchedNode } from './node-version.ts';
@@ -36,6 +37,7 @@ const subCommands = {
   commits: commitsCommand,
   test: testCommand,
   prompt: promptCommand,
+  spec: specCommand,
   fix: fixCommand,
   hook: hookCommand,
   init: initCommand,

@@ -36,8 +36,9 @@ const CLOSER = /^\s*(?:[)\]}]|end\b)/i;
 const OPENER = /^\s*(?:\{|begin\b)/i;
 
 // `case` and `match` are left out: labels would overcount, and `match` is a common variable name.
+// The `while` after `}` closes a `do` loop, which adds nothing.
 const FLOW =
-  /(?<![\w$.:-]|end\s)(else\s+if|elif|elsif|elseif|else|catch|except|rescue|if|unless|for|foreach|while|until|switch)(?![\w$-])|&&(?!=)|\|\|(?!=)|(?<![\w$.:-])(?:and|or)(?![\w$-])/gi;
+  /(?<![\w$.:-]|end\s)(else\s+if|elif|elsif|elseif|else|catch|except|rescue|if|unless|for|foreach|(?<!\}\s*)while|until|switch)(?![\w$-])|&&(?!=)|\|\|(?!=)|(?<![\w$.:-])(?:and|or)(?![\w$-])/gi;
 const CONTINUATION = /^(?:else|elif|elsif|elseif|catch|except|rescue)/i;
 
 const RECEIVER = /^&?(?:mut\s+)?\$?(?:self|this|cls)\b/;

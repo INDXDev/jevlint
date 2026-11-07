@@ -10,6 +10,7 @@ describe('estimateCostUsd', () => {
     ['cloudflare', 'clef', 0.24],
     // cloudflareFetch calls clef whatever the model id says.
     ['cloudflare', 'clef-flash', 0.24],
+    ['cloudflare', 'llama-4', 0.24],
   ] as const)('prices %s %s per million input tokens', (provider, modelId, price) => {
     expect(estimateCostUsd(1_000_000, { provider, modelId })).toBeCloseTo(price);
   });

@@ -93,8 +93,13 @@ export interface AstResult {
 
 /** Raw decision for one question, as cached. */
 export interface RawAnswer {
-  /** Score questions: 0 to levels-1. Boolean questions: probability of true. */
+  /**
+   * Score questions: 0 to levels-1. Boolean questions: probability of true. Choice questions: the
+   * probability of the chosen option, or 1 when the provider reports none.
+   */
   value: number;
+  /** Choice questions only: the chosen option. */
+  choice?: string;
 }
 
 /** A score a team fixed with a `jevlint-score` comment. */
@@ -306,4 +311,130 @@ export interface ArchitectureReport {
   /** Every structural problem. */
   findings: ArchitectureFinding[];
   usage: AuditReport['usage'];
+}
+
+/** One checkable requirement in a spec checklist. */
+export interface SpecItem {
+  /** Unique within its checklist. The full id is `<feature>.<id>`, or `global.<id>`. */
+  id: string;
+  text: string;
+  /** Where the item came from, for people only. */
+  source?: string;
+}
+
+/** `index.yaml`: the project and the checklist every file is judged against. */
+export interface SpecIndex {
+  version: 1;
+  name: string;
+  description: string;
+  checklist: SpecItem[];
+  /** Documents a person decided may state requirements the spec leaves out. */
+  accept_uncovered: SpecAcceptedDoc[];
+}
+
+/** One `accept_uncovered` entry: a document path, relative to the root, and why. */
+export interface SpecAcceptedDoc {
+  path: string;
+  reason: string;
+}
+
+/** `features/<id>.yaml`: one feature and its checklist. */
+export interface SpecFeature {
+  id: string;
+  title: string;
+  /** Tells this feature apart from the others in the routing question. */
+  summary: string;
+  checklist: SpecItem[];
+}
+
+/** A loaded and validated spec. See docs/spec-reference.md. */
+export interface Spec {
+  /** Root-relative posix path of the spec directory. */
+  dir: string;
+  index: SpecIndex;
+  /** Sorted by id. */
+  features: SpecFeature[];
+}
+
+/** An item named by its full id, as reports list it. */
+export interface SpecItemRef {
+  id: string;
+  text: string;
+}
+
+/** What a code file does with one item. */
+export type CheckVerdict = 'satisfies' | 'violates' | 'not-applicable';
+
+/** What a document does with one item. */
+export type DriftVerdict = 'agrees' | 'contradicts' | 'absent';
+
+/** One item's verdict on one file or document. */
+export interface SpecItemResult<V extends string> extends SpecItemRef {
+  verdict: V;
+  /** The probability the model gave its choice, or 1 when the provider reports none. */
+  confidence: number;
+}
+
+/** One code file judged against the spec. */
+export interface SpecFileResult {
+  path: string;
+  /** A feature id, `global` for shared code, or null when the file got no answer. */
+  feature: string | null;
+  featureConfidence: number | null;
+  /** Satisfied over satisfied plus violated, on the configured scale. Null with none applicable. */
+  score: number | null;
+  /** Project items first. */
+  items: SpecItemResult<CheckVerdict>[];
+  warnings: string[];
+}
+
+/** The result of `jevlint spec check`. */
+export interface SpecCheckReport {
+  root: string;
+  specDir: string;
+  provider: string | null;
+  model: string | null;
+  scale: number;
+  /** False when paths narrowed the run, which leaves `unimplemented` empty. */
+  complete: boolean;
+  /** Most violations first, then lowest score. */
+  files: SpecFileResult[];
+  violations: number;
+  /** Items no file satisfies. */
+  unimplemented: SpecItemRef[];
+  usage: AuditReport['usage'];
+  warnings: string[];
+}
+
+/** One document compared with the spec. */
+export interface SpecDocResult {
+  path: string;
+  feature: string | null;
+  featureConfidence: number | null;
+  items: SpecItemResult<DriftVerdict>[];
+  /** Probability the document states a requirement the checklist misses. Null with no answer. */
+  uncovered: number | null;
+  /** The `accept_uncovered` reason, present when the document may be uncovered. */
+  uncoveredAccepted?: string;
+  warnings: string[];
+}
+
+/** The result of `jevlint spec drift`. */
+export interface SpecDriftReport {
+  root: string;
+  specDir: string;
+  provider: string | null;
+  model: string | null;
+  /** False when paths narrowed the run, which leaves `unbacked` and `undocumented` empty. */
+  complete: boolean;
+  docs: SpecDocResult[];
+  contradictions: number;
+  /** Documents whose `uncovered` is 0.5 or more, leaving out those in `accept_uncovered`. */
+  uncovered: string[];
+  /** Items absent from every document routed to their checklist. */
+  unbacked: SpecItemRef[];
+  /** Feature ids no document is routed to. */
+  undocumented: string[];
+  usage: AuditReport['usage'];
+  warnings: string[];
 }

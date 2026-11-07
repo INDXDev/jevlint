@@ -1,0 +1,40 @@
+id: reports
+title: "Output formats"
+summary: "The machine-readable reports, as docs/json-output.md and the CI guide docs/ci.md describe: the --json report and its fields, dry runs, explain, SARIF 2.1.0 for code scanning and GitHub workflow annotations. Code in src/report.ts and src/formats.ts."
+checklist:
+  - id: json-sorted
+    text: "audit --json prints one object whose files are sorted by priority, highest first."
+    source: docs/json-output.md
+  - id: json-alias
+    text: "--format json is the same as --json."
+    source: docs/json-output.md
+  - id: json-score-ranges
+    text: "In JSON, top-level and file score use the configured scale, while ast.score, model.score, compliance and presets values run from 0 to 1."
+    source: docs/json-output.md#notes
+  - id: json-null-engines
+    text: "In JSON, ast is null when a file has no grammar and no function was found, and model is null when no model ran."
+    source: docs/json-output.md#notes
+  - id: json-approximate
+    text: "ast.approximate is true when a file had no grammar, and absent otherwise."
+    source: docs/json-output.md#notes
+  - id: json-pin
+    text: "A pinned file or answer carries pin with value, reason and line."
+    source: docs/json-output.md#notes
+  - id: json-usage
+    text: "usage.inputTokens counts only this run, and usage.estimatedCostUsd is null when no model ran or its price is unknown."
+    source: docs/json-output.md#notes
+  - id: dry-run-json
+    text: "audit --dry-run --json prints files, skipped, chars, estimatedTokens and estimatedCostUsd."
+    source: docs/json-output.md#dry-run
+  - id: new-json
+    text: "audit --new --json keeps only files with something new, and only the new findings and answers in them, while scores, skipped and usage still describe the whole run."
+    source: docs/json-output.md#new-issues
+  - id: json-array
+    text: "pr --json and commits --json print an array with one object per change, newest first, with before null for a new file."
+    source: docs/json-output.md#change-reviews
+  - id: rule-usage
+    text: "A file with a rule answer carries ruleUsage with inputTokens, cacheHits and modelCalls, which usage includes."
+    source: docs/json-output.md#notes
+  - id: json-results
+    text: "test --json results hold question, file, expected, compliance and passed, sorted by question then file, plus recorded and moved with --drift."
+    source: docs/json-output.md#fixture-results

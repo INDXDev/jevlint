@@ -1,0 +1,196 @@
+id: cli
+title: "Command reference"
+summary: "Every command's arguments, flags and exit codes, as the CLI reference docs/cli.md lists them: audit, baseline and audit --new, the pr and commits change reviews, hook and the pre-commit hook, init, auth, cache and config. Code in src/cli.ts, src/commands/, src/baseline.ts, src/review.ts and src/hook.ts."
+checklist:
+  - id: default-audit
+    text: "Running jevlint with no command runs jevlint audit, and jevlint src runs jevlint audit src."
+    source: docs/cli.md
+  - id: command-name-wins
+    text: "A command's name takes precedence over a directory with the same name."
+    source: docs/cli.md
+  - id: exit-one
+    text: "Exit code 1 means a check failed: a score below fail_under, something new in audit --new, a worse staged change in hook --staged, a failed or moved fixture in test, a violated or unimplemented spec item, or spec drift."
+    source: docs/cli.md#exit-codes
+  - id: exit-two
+    text: "Exit code 2 means a usage or config error, a rejected API key, a refused cache bucket, or a Node.js without the required security fixes."
+    source: docs/cli.md#exit-codes
+  - id: gate-failures-exit-two
+    text: "With fail_under or --new set, a run where no file was scored, every provider request failed, or an environment key was never allowed exits with code 2."
+    source: docs/cli.md#exit-codes
+  - id: node-floor
+    text: "jevlint refuses to run on a Node.js without the required security fixes, with exit code 2."
+    source: docs/cli.md#exit-codes
+  - id: colour-env
+    text: "Colour follows the NO_COLOR and FORCE_COLOR environment variables."
+    source: docs/cli.md
+  - id: version-flag
+    text: "jevlint --version prints the version, and every command supports --help."
+    source: docs/cli.md
+  - id: contents
+    text: "The baseline holds each file's AST findings as rule, symbol and value, and weak answers as id and compliance, sorted and with no timestamps."
+    source: docs/cli.md#jevlint-baseline-paths
+  - id: replaced
+    text: "Running baseline replaces the file rather than merging into it."
+    source: docs/cli.md#jevlint-baseline-paths
+  - id: match-rule-symbol
+    text: "A finding matches the baseline by rule and symbol, not line, and counts as new only if its value got worse."
+    source: docs/cli.md#jevlint-baseline-paths
+  - id: weak-answer-new
+    text: "In audit --new, a weak answer counts if the baseline has no answer for that question, or a higher one."
+    source: docs/cli.md#jevlint-baseline-paths
+  - id: renamed-new
+    text: "A renamed file counts as new."
+    source: docs/cli.md#jevlint-baseline-paths
+  - id: pinned-settled
+    text: "A pinned file counts as settled."
+    source: docs/cli.md#jevlint-baseline-paths
+  - id: new-exit
+    text: "audit --new exits 1 if anything is new or worse, and also applies fail_under when it is set."
+    source: docs/cli.md#jevlint-baseline-paths
+  - id: no-baseline-error
+    text: "--new with no baseline is an error, and so is a baseline run where every provider request failed."
+    source: docs/cli.md#jevlint-baseline-paths
+  - id: pr-number
+    text: "With no number, pr takes it from GITHUB_REF when that is refs/pull/<number>/merge, and otherwise uses the current branch's pull request."
+    source: docs/cli.md#jevlint-pr-number
+  - id: pr-sides
+    text: "pr audits each changed file at the merge base and at the pull request's head."
+    source: docs/cli.md#jevlint-pr-number
+  - id: pr-needs-gh
+    text: "pr reads the pull request through the GitHub CLI and fetches its commits from origin."
+    source: docs/cli.md#jevlint-pr-number
+  - id: commits-defaults
+    text: "commits reviews each commit against its parent from revision, default HEAD, backwards, for --count commits, default 10."
+    source: docs/cli.md#jevlint-commits-revision
+  - id: shallow-refused
+    text: "commits refuses a shallow clone."
+    source: docs/cli.md#jevlint-commits-revision
+  - id: merge-skipped
+    text: "Merge commits are skipped."
+    source: docs/cli.md#jevlint-commits-revision
+  - id: snapshots
+    text: "A change's files are read with git plumbing into a new private directory that is deleted afterwards, with nothing checked out."
+    source: docs/security.md#untrusted-repositories
+  - id: checkout-config
+    text: "The config and presets come from the user's checkout, never from the change."
+    source: docs/security.md#untrusted-repositories
+  - id: worse-only
+    text: "Output keeps only AST findings the change introduced or made worse, and weak answers it lowered."
+    source: docs/json-output.md#change-reviews
+  - id: change-review-renamed-new
+    text: "A renamed file counts as new."
+    source: docs/cli.md#jevlint-commits-revision
+  - id: report-only
+    text: "pr and commits exit 0 whatever the scores, because fail_under does not apply."
+    source: docs/cli.md#jevlint-commits-revision
+  - id: intent-questions
+    text: "--intent asks the change-intent preset whether the message describes the diff, whether the diff does unmentioned things, and, only when there are instructions, whether it breaks one."
+    source: docs/cli.md#judging-a-change-with---intent
+  - id: intent-instructions
+    text: "--intent reads AGENTS.md, or CLAUDE.md when that is absent or empty, from the base commit, and a root commit has none."
+    source: docs/cli.md#judging-a-change-with---intent
+  - id: intent-order
+    text: "The --intent state puts the message before the diff, and a diff cut at max_file_chars gives a warning."
+    source: docs/cli.md#judging-a-change-with---intent
+  - id: intent-exclusions
+    text: "The --intent diff leaves out secret files, .gitignore matches and exclude, including for deleted files."
+    source: docs/security.md#protecting-secrets-in-code
+  - id: intent-incompatible
+    text: "--intent cannot be combined with --ast-only, --format sarif or --format github."
+    source: docs/cli.md#jevlint-pr-number
+  - id: intent-no-key
+    text: "With no key for any provider, --intent warns and the review carries on without it."
+    source: docs/cli.md#judging-a-change-with---intent
+  - id: stdin-json
+    text: "hook reads JSON on stdin, either {tool_input: {file_path}} or a flat {file_path}, and compares that file on disk with HEAD."
+    source: docs/cli.md#jevlint-hook
+  - id: worse-exit-two
+    text: "When the edit made the file worse, hook exits 2 with the findings on stderr."
+    source: docs/cli.md#jevlint-hook
+  - id: silent-pass
+    text: "hook exits 0 with no output when nothing got worse, and for no path, a path outside the root, an excluded or unscorable file, no git repository, or more than 32 MiB of input."
+    source: docs/cli.md#jevlint-hook
+  - id: invalid-json
+    text: "Invalid JSON makes hook exit 2 with an error on stderr."
+    source: docs/cli.md#jevlint-hook
+  - id: staged
+    text: "hook --staged reviews the staged change against HEAD, exiting 1 with the report on stdout if anything got worse, and 0 with no output if not."
+    source: docs/cli.md#jevlint-hook
+  - id: ast-only-default
+    text: "hook uses AST metrics only and sends nothing unless --model is passed."
+    source: docs/cli.md#jevlint-hook
+  - id: head-problems
+    text: "A new file counts as all new, and problems already in HEAD are not reported."
+    source: docs/cli.md#jevlint-hook
+  - id: pre-commit-text
+    text: "init --pre-commit writes fixed hook text that runs jevlint hook --staged from PATH, with nothing from the repository in it, and writes no config."
+    source: docs/security.md#untrusted-repositories
+  - id: pre-commit-existing
+    text: "init --pre-commit leaves a different existing hook in place unless --force is passed."
+    source: docs/cli.md#jevlint-init
+  - id: prompt-top
+    text: "prompt and fix take the highest-priority files with issues when no files are named, one by default, or --top."
+    source: docs/cli.md#jevlint-prompt-files
+  - id: architecture-top
+    text: "jevlint architecture --top sets the rows to show, default 20."
+    source: docs/cli.md#jevlint-architecture-paths
+  - id: init-flags
+    text: "init writes jevlint.toml, or ~/.config/jevlint/config.toml with --user, accepts defaults with --yes, and replaces an existing file only with --force."
+    source: docs/cli.md#jevlint-init
+  - id: init-full-first
+    text: "init asks for the provider and default presets, with full selected first."
+    source: docs/cli.md#jevlint-init
+  - id: close-name
+    text: "An argument that is neither a path nor a preset but close to a preset name stops with a suggestion."
+    source: docs/cli.md#jevlint-audit-paths
+  - id: test-exit-codes
+    text: "test exits 1 if a fixture failed or moved, and 2 with no key or when a request fails, without writing a record."
+    source: docs/cli.md#jevlint-test-questions
+  - id: no-key-ast-only
+    text: "With no usable key for any provider, audit prints a notice and runs AST-only."
+    source: docs/cli.md#jevlint-audit-paths
+  - id: ast-only-sends-nothing
+    text: "audit and pr with --ast-only send no request to a model provider and need no key."
+    source: docs/ci.md#gate-on-ast-metrics
+  - id: formats
+    text: "--format accepts text, json, sarif and github, and --dry-run accepts only text and json."
+    source: docs/cli.md#jevlint-audit-paths
+  - id: format-exit-code
+    text: "--format never changes the exit code."
+    source: docs/cli.md#output-formats
+  - id: ci-issue-placement
+    text: "SARIF and github formats list AST findings on their line, and weak, unpinned answers on line 1 of their file with the question id as the rule."
+    source: docs/cli.md#output-formats
+  - id: sarif-one-run
+    text: "--format sarif prints a SARIF 2.1.0 log with one run."
+    source: docs/cli.md#output-formats
+  - id: github-warning
+    text: "--format github prints one ::warning workflow command per issue."
+    source: docs/cli.md#output-formats
+  - id: relative-paths
+    text: "Paths in output are relative to the jevlint root."
+    source: docs/cli.md#output-formats
+  - id: explain
+    text: "explain shows a file's score, its worst AST findings with line numbers, and every question's compliance, worst first, and --json prints one entry of files."
+    source: docs/cli.md#jevlint-explain-file
+  - id: weak-answer
+    text: "An answer with compliance below 0.7 is weak."
+    source: docs/cli.md#output-formats
+  - id: dry-run-no-requests
+    text: "--dry-run lists files and estimates tokens and cost with no provider requests, though with cache.remote set it reads the bucket to tell what is cached."
+    source: docs/cli.md#jevlint-audit-paths
+  - id: builtin-not-removable
+    text: "Built-in presets cannot be removed."
+    source: docs/cli.md#jevlint-preset
+  - id: fresh-answers
+    text: "--record and --drift ask afresh and store nothing in the cache, while a plain run uses the cache."
+    source: docs/cli.md#jevlint-test-questions
+  - id: unrecorded
+    text: "With --drift, a fixture added since the record was made gets a warning and is not compared."
+    source: docs/cli.md#jevlint-test-questions
+  - id: top-default
+    text: "audit shows 20 rows by default, set by --top, while --json always includes every file."
+    source: docs/cli.md#jevlint-audit-paths
+  - id: other-model
+    text: "When the record is from another provider or model, --drift says so on stderr and compares anyway."
+    source: docs/cli.md#jevlint-test-questions

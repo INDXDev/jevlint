@@ -106,6 +106,12 @@ const cache = z.strictObject({
   region: z.string().optional(),
 });
 
+const spec = z.strictObject({
+  dir: z.string().min(1),
+  docs: z.array(z.string()),
+  threshold: z.number().min(0).max(1),
+});
+
 const configSchema = z.strictObject({
   presets: z.array(z.string()),
   include: z.array(z.string()),
@@ -126,6 +132,7 @@ const configSchema = z.strictObject({
   rules: astRulesSchema,
   agents: z.record(z.string(), z.strictObject({ command: z.array(z.string()).min(1) })),
   cache,
+  spec,
 });
 
 const layerSchema = configSchema
@@ -136,6 +143,7 @@ const layerSchema = configSchema
     ast: ast.partial(),
     architecture: architecture.partial(),
     cache: cache.partial(),
+    spec: spec.partial(),
   })
   .partial();
 
@@ -181,6 +189,11 @@ const DEFAULTS = {
   agents: {
     claude: { command: ['claude', '-p', '--permission-mode', 'acceptEdits'] },
     codex: { command: ['codex', 'exec', '--sandbox', 'workspace-write', '-'] },
+  },
+  spec: {
+    dir: '.jevlint/spec',
+    docs: ['README.md', 'docs/**/*.md', 'docs/**/*.html'],
+    threshold: 0,
   },
 };
 
@@ -293,6 +306,7 @@ function mergeTables(base: Record<string, unknown>, layer: Record<string, unknow
   return merged;
 }
 
+/** The nearest directory from start upwards that holds name, or undefined at the filesystem root. */
 export async function findUp(start: string, name: string): Promise<string | undefined> {
   for (let dir = start; ; dir = dirname(dir)) {
     const found = await access(join(dir, name)).then(
@@ -333,7 +347,14 @@ export async function loadConfig(options: {
   const repo = options.skip === 'repo' ? undefined : await readLayer(repoFile, USER_ONLY_KEYS);
 
   const layers = [
-    { ...DEFAULTS, cache: { dir: xdgDir('XDG_CACHE_HOME', '.cache') } },
+    {
+      ...DEFAULTS,
+      // AWS_REGION is only a default, so a configured cache.region such as "auto" still wins.
+      cache: {
+        dir: xdgDir('XDG_CACHE_HOME', '.cache'),
+        region: process.env.AWS_REGION || undefined,
+      },
+    },
     withoutForeignEndpoint(user ?? {}, repo),
     repo ?? {},
     {
@@ -342,7 +363,7 @@ export async function loadConfig(options: {
         dir: process.env.JEVLINT_CACHE_DIR || undefined,
         remote: process.env.JEVLINT_CACHE_REMOTE || undefined,
         endpoint: process.env.JEVLINT_CACHE_ENDPOINT || undefined,
-        region: process.env.JEVLINT_CACHE_REGION || process.env.AWS_REGION || undefined,
+        region: process.env.JEVLINT_CACHE_REGION || undefined,
       },
     },
     options.overrides ?? {},

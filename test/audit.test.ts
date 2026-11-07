@@ -98,6 +98,11 @@ beforeEach(async () => {
     weights: {},
     patterns: [],
     rules: [],
+    spec: {
+      dir: '.jevlint/spec',
+      docs: ['README.md', 'docs/**/*.md', 'docs/**/*.html'],
+      threshold: 0,
+    },
     agents: {},
     cache: { dir: cache },
   };

@@ -103,6 +103,8 @@ describe('environment', () => {
   it('falls back to AWS_REGION for the cache bucket', async () => {
     vi.stubEnv('AWS_REGION', 'ap-northeast-1');
     expect((await loadConfig({ cwd: repo })).cache.region).toBe('ap-northeast-1');
+    await writeUser('[cache]\nregion = "auto"\n');
+    expect((await loadConfig({ cwd: repo })).cache.region).toBe('auto');
   });
 
   it('rejects a cache.remote that is not an s3:// location', async () => {

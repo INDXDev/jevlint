@@ -85,7 +85,7 @@ export const architectureCommand = defineCommand({
       });
     }
     if (args.json) printJson(report);
-    else if (args.html) console.log(`Wrote ${args.html}`);
+    else if (args.html) console.error(`Wrote ${args.html}`);
     else console.log(formatArchitecture(report, { top }));
   },
 });

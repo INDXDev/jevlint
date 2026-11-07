@@ -17,7 +17,10 @@ const CLOUDFLARE_MAX_QUESTIONS = 64;
 // The SDK prints provider warnings to the console, and core modules must stay silent.
 globalThis.AI_SDK_LOG_WARNINGS = false;
 
-type DecisionQuestion = ReturnType<typeof toDecisionQuestion>;
+/** A question as the provider receives it. Choice questions map each option to its description. */
+export type DecisionQuestion =
+  | ReturnType<typeof toDecisionQuestion>
+  | { type: 'choice'; instructions: string; criteria: Record<string, string> };
 
 interface Answers {
   answers: Record<string, RawAnswer>;
@@ -36,6 +39,11 @@ export interface DecideFileOptions {
   source: string;
   config: Config;
   noCache?: boolean;
+}
+
+/** The inputs of one decision over prepared questions, for callers that ask choice questions. */
+export interface DecideStateOptions extends Omit<DecideFileOptions, 'questions'> {
+  request: Record<string, DecisionQuestion>;
 }
 
 function toDecisionQuestion(question: Question) {
@@ -79,10 +87,28 @@ function translateError(error: unknown, { provider }: ResolvedModel): unknown {
 }
 
 /** Entries are plain JSON on disk, so one without every answer must count as a miss. */
-function isComplete(hit: Answers | undefined, questions: Question[]): hit is Answers {
+function isComplete(
+  hit: Answers | undefined,
+  request: Record<string, DecisionQuestion>,
+): hit is Answers {
   return (
-    Boolean(hit?.answers) && questions.every(({ id }) => Number.isFinite(hit?.answers[id]?.value))
+    Boolean(hit?.answers) &&
+    Number.isFinite(hit?.inputTokens) &&
+    Object.entries(request).every(([id, { type }]) => {
+      const answer = hit?.answers[id];
+      return (
+        Number.isFinite(answer?.value) && (type !== 'choice' || typeof answer?.choice === 'string')
+      );
+    })
   );
+}
+
+function rawAnswer(answer: Awaited<ReturnType<typeof decide>>['answers'][string]): RawAnswer {
+  if (answer.type === 'score') return { value: answer.score };
+  if (answer.type === 'choice') {
+    return { value: answer.probabilities?.[answer.choice] ?? 1, choice: answer.choice };
+  }
+  return { value: (answer as { probability: number }).probability };
 }
 
 async function askOnce(
@@ -99,10 +125,7 @@ async function askOnce(
   }).catch((error) => {
     throw translateError(error, resolved);
   });
-  const values = Object.entries(answers).map(([id, answer]) => [
-    id,
-    { value: answer.type === 'score' ? answer.score : answer.probability },
-  ]);
+  const values = Object.entries(answers).map(([id, answer]) => [id, rawAnswer(answer)]);
   return { answers: Object.fromEntries(values), inputTokens: usage.inputTokens ?? 0 };
 }
 
@@ -132,8 +155,9 @@ export async function isDecisionCached(
   config: Config,
 ): Promise<boolean> {
   const content = source.slice(0, config.max_file_chars);
-  const key = decisionKey(target, decisionRequest(questions), content);
-  return isComplete(await readThrough<Answers>(config.cache, key), questions);
+  const request = decisionRequest(questions);
+  const key = decisionKey(target, request, content);
+  return isComplete(await readThrough<Answers>(config.cache, key), request);
 }
 
 /** Identical files audited together share one lookup, as the cache would have them do in turn. */
@@ -141,26 +165,32 @@ const inFlight = new Map<string, Promise<Answers & { cached: boolean }>>();
 
 async function cachedOrAsked(
   key: string,
-  request: Record<string, DecisionQuestion>,
-  { resolved, questions, source, config, noCache }: DecideFileOptions,
+  { resolved, request, source, config, noCache }: DecideStateOptions,
 ): Promise<Answers & { cached: boolean }> {
   const hit = noCache ? undefined : await readThrough<Answers>(config.cache, key);
-  if (isComplete(hit, questions)) return { ...hit, cached: true };
+  if (isComplete(hit, request)) return { ...hit, cached: true };
   const fresh = await ask(resolved, request, source.slice(0, config.max_file_chars));
   if (!noCache) await writeThrough(config.cache, key, fresh);
   return { ...fresh, cached: false };
 }
 
 /** Returns raw answers for one file. Scoring happens later, so tuning weights stays free. */
-export async function decideFile(options: DecideFileOptions): Promise<Answers & CallDetails> {
-  const { resolved, questions, source, config } = options;
+export function decideFile({
+  questions,
+  ...options
+}: DecideFileOptions): Promise<Answers & CallDetails> {
+  return decideState({ ...options, request: decisionRequest(questions) });
+}
+
+/** Returns raw answers to prepared questions about one state, through the cache. */
+export async function decideState(options: DecideStateOptions): Promise<Answers & CallDetails> {
+  const { resolved, request, source, config } = options;
   const content = source.slice(0, config.max_file_chars);
   const truncated = content.length < source.length;
-  const request = decisionRequest(questions);
   const key = decisionKey(resolved, request, content);
   const running = inFlight.get(key);
   if (running) return { ...(await running), cached: true, truncated };
-  const lookup = cachedOrAsked(key, request, options).finally(() => inFlight.delete(key));
+  const lookup = cachedOrAsked(key, options).finally(() => inFlight.delete(key));
   inFlight.set(key, lookup);
   return { ...(await lookup), truncated };
 }

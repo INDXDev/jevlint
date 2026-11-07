@@ -38,6 +38,8 @@ export const baselineCommand = defineCommand({
     }
     const baseline = toBaseline(report);
     await writeBaseline(config.root, baseline);
-    console.log(`Wrote ${BASELINE_PATH}, with ${plural(baseline.files.length, 'file')} of issues.`);
+    console.error(
+      `Wrote ${BASELINE_PATH}, with ${plural(baseline.files.length, 'file')} of issues.`,
+    );
   },
 });

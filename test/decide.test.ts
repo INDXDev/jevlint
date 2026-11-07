@@ -5,7 +5,7 @@ import { APICallError } from 'ai';
 import { Experimental_DecisionMockModelV4 as MockModel } from 'ai/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Config, UserError } from '../src/config.ts';
-import { decideFile } from '../src/decision/decide.ts';
+import { decideFile, decideState } from '../src/decision/decide.ts';
 import type { ResolvedModel } from '../src/decision/providers.ts';
 import type { ProviderName, Question } from '../src/types.ts';
 
@@ -156,6 +156,7 @@ describe('decideFile', () => {
     '{"answers":{}}',
     '{"answers":{"p.levels":{"value":1}}}',
     '{"answers":{"p.levels":{"value":"1"},"p.flag":{"value":0.25}}}',
+    '{"answers":{"p.levels":{"value":1},"p.flag":{"value":0.25}},"inputTokens":"9"}',
   ])('treats the valid JSON %s as a miss and repairs the entry', async (corrupt) => {
     const doDecide = vi.fn<MockModel['doDecide']>(answer);
     const options = { resolved: resolvedWith(doDecide), questions, source: 'code', config };
@@ -253,5 +254,33 @@ describe('decideFile', () => {
     const resolved = resolvedWith(doDecide);
     await decideFile({ resolved, questions: many as Question[], source: 'code', config });
     expect(doDecide).toHaveBeenCalledOnce();
+  });
+});
+
+describe('decideState', () => {
+  const request = {
+    route: { type: 'choice' as const, instructions: 'Which?', criteria: { a: 'A', b: 'B' } },
+  };
+  const choose =
+    (probabilities?: Record<string, number>): MockModel['doDecide'] =>
+    async () => ({
+      answers: { route: { type: 'choice' as const, choice: 'b', probabilities } },
+      usage: { inputTokens: 5 },
+      warnings: [],
+    });
+
+  it('returns the choice with its probability, and reuses the cache', async () => {
+    const doDecide = vi.fn<MockModel['doDecide']>(choose({ a: 0.3, b: 0.7 }));
+    const options = { resolved: resolvedWith(doDecide), request, source: 'doc', config };
+    const first = await decideState(options);
+    expect(first.answers).toEqual({ route: { value: 0.7, choice: 'b' } });
+    expect(doDecide.mock.calls[0]?.[0].questions).toEqual(request);
+    expect(await decideState(options)).toEqual({ ...first, cached: true });
+    expect(doDecide).toHaveBeenCalledOnce();
+  });
+
+  it('gives the choice a value of 1 when the provider reports no probabilities', async () => {
+    const options = { resolved: resolvedWith(choose()), request, source: 'other', config };
+    expect((await decideState(options)).answers).toEqual({ route: { value: 1, choice: 'b' } });
   });
 });
