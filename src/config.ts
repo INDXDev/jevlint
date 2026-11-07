@@ -150,7 +150,7 @@ export interface Config extends z.infer<typeof configSchema> {
 export type ConfigOverrides = z.infer<typeof layerSchema>;
 
 const DEFAULTS = {
-  presets: ['readable-code'],
+  presets: ['full'],
   include: ['**/*'],
   exclude: [],
   concurrency: 8,

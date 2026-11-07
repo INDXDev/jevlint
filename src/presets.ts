@@ -44,6 +44,7 @@ const presetSchema = z.strictObject({
   used_by: z
     .enum(['audit', 'architecture', 'intent'] as const satisfies PresetUse[])
     .default('audit'),
+  includes: z.array(idSchema).default([]),
   questions: z
     .array(questionSchema)
     .refine((questions) => new Set(questions.map(({ id }) => id)).size === questions.length, {
@@ -125,18 +126,29 @@ function unknownPreset(name: string, names: Iterable<string>): UserError {
   return new UserError(`Unknown preset "${name}". ${hint}`);
 }
 
-/** Resolves preset names, preferring repository, then user, then built-in. */
+/**
+ * Resolves preset names, preferring repository, then user, then built-in. A preset's `includes`
+ * join the result as presets of their own, so their question ids and scores stay theirs.
+ */
 export async function loadPresets(names: string[], root: string): Promise<Preset[]> {
   const found = await discoverPresets(root);
-  return [...new Set(names)].map((name) => {
+  const loaded = new Map<string, Preset>();
+  const load = (name: string) => {
+    // Also what stops presets that include each other, which a repository can plant.
+    if (loaded.has(name)) return;
     const entry = found.get(name);
-    if (entry) return entry.preset;
-    const suggestion = closestName(name, found.keys());
-    const hint = suggestion
-      ? `Did you mean "${suggestion}"?`
-      : `Available: ${[...found.keys()].sort().join(', ')}`;
-    throw new UserError(`Unknown preset "${name}". ${hint}`);
-  });
+    if (!entry) {
+      const suggestion = closestName(name, found.keys());
+      const hint = suggestion
+        ? `Did you mean "${suggestion}"?`
+        : `Available: ${[...found.keys()].sort().join(', ')}`;
+      throw new UserError(`Unknown preset "${name}". ${hint}`);
+    }
+    loaded.set(name, entry.preset);
+    entry.preset.includes.forEach(load);
+  };
+  names.forEach(load);
+  return [...loaded.values()];
 }
 
 /** Lists the presets that can be used from `root`, sorted by name. */

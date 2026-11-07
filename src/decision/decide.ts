@@ -58,12 +58,14 @@ function decisionKey(
   return cacheKey({ provider, modelId, endpoint, questions: request, content });
 }
 
-function assertQuestionLimit({ provider }: ResolvedModel, count: number): void {
-  if (provider === 'cloudflare' && count > CLOUDFLARE_MAX_QUESTIONS) {
-    throw new UserError(
-      `Cloudflare allows ${CLOUDFLARE_MAX_QUESTIONS} questions per request, but your active presets have ${count}.`,
-    );
-  }
+/** How many requests one file's questions take, each of which bills the file again. */
+export function requestsPerFile(
+  { provider }: Pick<ModelTarget, 'provider'>,
+  questions: number,
+): number {
+  return provider === 'cloudflare'
+    ? Math.max(1, Math.ceil(questions / CLOUDFLARE_MAX_QUESTIONS))
+    : 1;
 }
 
 /** A bad key fails every file the same way, so it stops the run instead of warning per file. */
@@ -83,7 +85,7 @@ function isComplete(hit: Answers | undefined, questions: Question[]): hit is Ans
   );
 }
 
-async function ask(
+async function askOnce(
   resolved: ResolvedModel,
   questions: Record<string, DecisionQuestion>,
   content: string,
@@ -102,6 +104,24 @@ async function ask(
     { value: answer.type === 'score' ? answer.score : answer.probability },
   ]);
   return { answers: Object.fromEntries(values), inputTokens: usage.inputTokens ?? 0 };
+}
+
+async function ask(
+  resolved: ResolvedModel,
+  questions: Record<string, DecisionQuestion>,
+  content: string,
+): Promise<Answers> {
+  const entries = Object.entries(questions);
+  const requests = requestsPerFile(resolved, entries.length);
+  const size = Math.ceil(entries.length / requests);
+  const batches = Array.from({ length: requests }, (_, index) =>
+    Object.fromEntries(entries.slice(index * size, (index + 1) * size)),
+  );
+  const parts = await Promise.all(batches.map((batch) => askOnce(resolved, batch, content)));
+  return {
+    answers: Object.assign({}, ...parts.map(({ answers }) => answers)),
+    inputTokens: parts.reduce((sum, { inputTokens }) => sum + inputTokens, 0),
+  };
 }
 
 /** Says whether `decideFile` would answer from the cache, with no provider call. */
@@ -134,7 +154,6 @@ async function cachedOrAsked(
 /** Returns raw answers for one file. Scoring happens later, so tuning weights stays free. */
 export async function decideFile(options: DecideFileOptions): Promise<Answers & CallDetails> {
   const { resolved, questions, source, config } = options;
-  assertQuestionLimit(resolved, questions.length);
   const content = source.slice(0, config.max_file_chars);
   const truncated = content.length < source.length;
   const request = decisionRequest(questions);

@@ -263,6 +263,42 @@ describe('loading', () => {
     expect(loaded.map(({ name }) => name)).toEqual(['solid', 'clean-code']);
   });
 
+  it('loads what a preset includes as presets of their own', async () => {
+    const toml =
+      'name = "both"\ndescription = "d"\nsource = "s"\nincludes = ["solid", "security"]\nquestions = []\n';
+    await writePreset(paths.presetsDir(), 'both', toml);
+    const loaded = await loadPresets(['security', 'both'], root);
+    expect(loaded.map(({ name }) => name)).toEqual(['security', 'both', 'solid']);
+    const ids = activeQuestions(loaded, {}).map(({ id }) => id);
+    expect(ids).toContain('solid.interface-segregation');
+  });
+
+  it('survives presets that include each other', async () => {
+    const includes = (name: string, other: string) =>
+      `name = "${name}"\ndescription = "d"\nsource = "s"\nincludes = ["${other}"]\nquestions = []\n`;
+    await writePreset(paths.presetsDir(), 'a', includes('a', 'b'));
+    await writePreset(paths.presetsDir(), 'b', includes('b', 'a'));
+    const loaded = await loadPresets(['a'], root);
+    expect(loaded.map(({ name }) => name)).toEqual(['a', 'b']);
+  });
+
+  it('stops on an include that does not exist', async () => {
+    const toml =
+      'name = "broken"\ndescription = "d"\nsource = "s"\nincludes = ["nope"]\nquestions = []\n';
+    await writePreset(paths.presetsDir(), 'broken', toml);
+    await expect(loadPresets(['broken'], root)).rejects.toThrow(/Unknown preset "nope"/);
+  });
+
+  it('keeps full to every audit built-in, within a 200-question budget', async () => {
+    const auditPresets = (await listPresets(root))
+      .filter(({ origin, used_by }) => origin === 'built-in' && used_by === 'audit')
+      .map(({ name }) => name)
+      .filter((name) => name !== 'full');
+    const loaded = await loadPresets(['full'], root);
+    expect(loaded.map(({ name }) => name).sort()).toEqual(['full', ...auditPresets].sort());
+    expect(activeQuestions(loaded, {}).length).toBeLessThanOrEqual(200);
+  });
+
   it('creates nothing outside the repository through a linked .jevlint', async () => {
     const outside = join(home, 'outdir');
     await mkdir(outside);

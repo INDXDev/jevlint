@@ -10,7 +10,7 @@ import { createDecisionModel, type ResolvedModel } from '../src/decision/provide
 import { discoverFiles } from '../src/files.ts';
 import { commitCounts } from '../src/git.ts';
 import { loadPresets } from '../src/presets.ts';
-import type { Preset } from '../src/types.ts';
+import type { Preset, ProviderName, Question } from '../src/types.ts';
 
 vi.mock('../src/ast/analyze.ts', async (original) => {
   const actual = await original<typeof import('../src/ast/analyze.ts')>();
@@ -31,6 +31,7 @@ const preset: Preset = {
   name: 'p',
   description: '',
   used_by: 'audit',
+  includes: [],
   source: 'test',
   questions: [
     { id: 'q', title: 'T', instructions: 'I', weight: 1, fix: 'F', type: 'boolean', good: true },
@@ -393,6 +394,15 @@ describe('planAudit', () => {
     });
     const plan = await planAudit(config, { target });
     expect(plan).toMatchObject({ files: ['a.ts'], skipped: 3 });
+  });
+
+  it('counts a file once per request when its questions need several', async () => {
+    await write({ 'a.ts': 'a'.repeat(400) });
+    const many = Array.from({ length: 65 }, (_, i) => ({ ...preset.questions[0], id: `q${i}` }));
+    vi.mocked(loadPresets).mockResolvedValue([{ ...preset, questions: many as Question[] }]);
+    const tokens = async (provider: ProviderName) =>
+      (await planAudit(config, { target: { provider, modelId: 'm' } })).estimatedTokens;
+    expect((await tokens('cloudflare')) - (await tokens('typesafe'))).toBe(100);
   });
 
   it('does not count cached files, unless the cache is off', async () => {

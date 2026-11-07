@@ -1,0 +1,16 @@
+name = "full"
+description = "Every audit preset at once: design, readability, documentation, security and bug hunting"
+source = "The presets it includes. Their question ids, weights and scores stay their own."
+includes = [
+  "readable-code",
+  "clean-code",
+  "solid",
+  "software-design",
+  "code-smells",
+  "clean-architecture",
+  "kiss-dry-yagni",
+  "documentation",
+  "security",
+  "bug-hunt",
+]
+questions = []

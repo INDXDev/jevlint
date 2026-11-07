@@ -4,6 +4,18 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+## 0.2.3 - 2026-11-07
+
+- **The default preset is now `full`**, a new built-in that runs every audit preset at once: 97
+  questions and all their patterns, in one request per file. Scores, cost and `audit --new` results
+  change for any repository that does not set `presets`. Each file sends about 10,000 more tokens: a
+  4.6 KB file went from 2,435 to 12,438 billed input tokens on Jev, about $0.0001 to $0.0005.
+  `presets = ["readable-code"]` in `jevlint.toml` keeps the old behaviour. A baseline recorded under
+  the old default should be recorded again.
+- Presets can name others in `includes`. Each included preset keeps its own question ids and scores.
+- On Cloudflare, more than 64 questions no longer stops the run. They are split over several requests,
+  each billing the file again, and `--dry-run` counts that.
+
 ## 0.2.2 - 2026-11-07
 
 - Presets now work beyond `audit`. `prompt`, `fix`, `explain` and `baseline` take a preset name among

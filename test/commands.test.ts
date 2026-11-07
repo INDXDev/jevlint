@@ -419,7 +419,7 @@ describe('choosing presets', () => {
     const { status, stdout, stderr } = jevlint(cwd, 'audit', 'solid', '--ast-only');
     expect(status).toBe(0);
     expect(stdout).toContain('solid/a.ts');
-    expect(stdout).toContain('readable-code');
+    expect(stdout).toContain('full');
     expect(stderr).toContain('use --preset solid');
   });
 
@@ -493,7 +493,7 @@ describe('choosing presets', () => {
     (name) => {
       const { status, stdout } = jevlint(project(), name, '--help');
       expect(status).toBe(0);
-      expect(stdout).toContain('* readable-code');
+      expect(stdout).toContain('* full');
       expect(stdout).toContain('jevlint audit security');
     },
   );
@@ -524,12 +524,14 @@ describe('choosing presets', () => {
 describe('presets outside audit', () => {
   const HIDES_FAILURE = 'try { f(); } catch (e) { }\n';
   const FINDING = 'An empty catch hides the failure';
+  // The default holds every audit preset, so these need a narrower one to compare with.
+  const NARROW = { 'jevlint.toml': 'presets = ["readable-code"]\n' };
 
   it.each([
     ['named', ['prompt', 'bug-hunt']],
     ['flagged', ['prompt', '--preset', 'bug-hunt']],
   ])('builds a prompt from a %s preset', (_, args) => {
-    const cwd = project({ 'a.ts': HIDES_FAILURE });
+    const cwd = project({ ...NARROW, 'a.ts': HIDES_FAILURE });
     expect(jevlint(cwd, ...args).stdout).toContain(FINDING);
     expect(jevlint(cwd, 'prompt').stdout).not.toContain(FINDING);
   });
@@ -567,7 +569,7 @@ describe('presets outside audit', () => {
     const home = tempDir();
     mkdirSync(join(home, 'jevlint'));
     writeFileSync(join(home, 'jevlint/config.toml'), '[agents.noop]\ncommand = ["true"]\n');
-    const cwd = project({ 'a.ts': HIDES_FAILURE });
+    const cwd = project({ ...NARROW, 'a.ts': HIDES_FAILURE });
     const flags = ['--agent', 'noop', '--yes', '--allow-dirty'];
     expect(jevlintAt(home, cwd, 'fix', ...flags).stderr).toContain('Nothing to fix');
     const { status, stdout } = jevlintAt(home, cwd, 'fix', 'bug-hunt', ...flags);
@@ -578,7 +580,7 @@ describe('presets outside audit', () => {
   it('reviews commits and staged changes with a preset', () => {
     const git = (...args: string[]) =>
       spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd });
-    const cwd = project({ 'a.ts': 'export const a = 1;\n' });
+    const cwd = project({ ...NARROW, 'a.ts': 'export const a = 1;\n' });
     git('init', '-q');
     git('add', '.');
     git('commit', '-qm', 'first');

@@ -24,7 +24,7 @@ Run `jevlint config show` to see the result, and `jevlint config path` to see wh
 Every value below is the default unless a comment says otherwise.
 
 ```toml
-presets = ["readable-code"]
+presets = ["full"]
 include = ["**/*"]
 exclude = []            # added to .gitignore and the built-in exclusions
 concurrency = 8

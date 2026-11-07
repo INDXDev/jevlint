@@ -24,6 +24,14 @@ const answer = async () => ({
   warnings: [],
 });
 
+const answerAll: MockModel['doDecide'] = async ({ questions: asked }) => ({
+  answers: Object.fromEntries(
+    Object.keys(asked).map((id) => [id, { type: 'boolean' as const, probability: 1 }]),
+  ),
+  usage: { inputTokens: 10 },
+  warnings: [],
+});
+
 let dir: string;
 let config: Config;
 
@@ -225,11 +233,25 @@ describe('decideFile', () => {
     await expect(run).rejects.not.toBeInstanceOf(UserError);
   });
 
-  it('enforces the cloudflare question limit', async () => {
+  it('splits questions over the cloudflare limit, and merges the answers', async () => {
     const many = Array.from({ length: 65 }, (_, i) => ({ ...questions[1], id: `p.${i}` }));
-    const resolved = resolvedWith(answer, 'cloudflare');
-    await expect(
-      decideFile({ resolved, questions: many as Question[], source: 'code', config }),
-    ).rejects.toThrow(UserError);
+    const doDecide = vi.fn<MockModel['doDecide']>(answerAll);
+    const resolved = resolvedWith(doDecide, 'cloudflare');
+    const options = { resolved, questions: many as Question[], source: 'code', config };
+    const { answers, inputTokens } = await decideFile(options);
+    const sizes = doDecide.mock.calls.map(([call]) => Object.keys(call.questions).length);
+    expect(sizes.sort()).toEqual([32, 33]);
+    expect(Object.keys(answers)).toHaveLength(65);
+    expect(inputTokens).toBe(20);
+    expect((await decideFile(options)).cached).toBe(true);
+    expect(doDecide).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks other providers everything in one request', async () => {
+    const many = Array.from({ length: 65 }, (_, i) => ({ ...questions[1], id: `p.${i}` }));
+    const doDecide = vi.fn<MockModel['doDecide']>(answerAll);
+    const resolved = resolvedWith(doDecide);
+    await decideFile({ resolved, questions: many as Question[], source: 'code', config });
+    expect(doDecide).toHaveBeenCalledOnce();
   });
 });

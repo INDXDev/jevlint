@@ -12,6 +12,7 @@ import {
   decisionRequest,
   isDecisionCached,
   PROVIDER_ERROR,
+  requestsPerFile,
 } from './decision/decide.ts';
 import { estimateCostUsd } from './decision/pricing.ts';
 import { createDecisionModel, type ModelTarget, type ResolvedModel } from './decision/providers.ts';
@@ -259,6 +260,7 @@ export async function planAudit(
   const questions = activeQuestions(presets, config.weights);
   const rules = [...presets.flatMap((preset) => preset.rules), ...config.rules];
   const fileQuestionChars = JSON.stringify(decisionRequest(questions)).length;
+  const fileRequests = target ? requestsPerFile(target, questions.length) : 1;
   const sentChars = async (path: string) => {
     const source = await readSource(config, path).catch(() => '');
     const { code, filePin } = readDirectives(source, config, ignorePins);
@@ -281,7 +283,8 @@ export async function planAudit(
         : { chars: 0, questionChars: 0 };
     return {
       path,
-      chars: (sendsFile ? Math.min(code.length, config.max_file_chars) : 0) + ruled.chars,
+      chars:
+        (sendsFile ? Math.min(code.length, config.max_file_chars) * fileRequests : 0) + ruled.chars,
       questionChars: (sendsFile ? fileQuestionChars : 0) + ruled.questionChars,
       sends: sendsFile || ruled.chars > 0,
     };
