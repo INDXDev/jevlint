@@ -1,0 +1,103 @@
+id: spec
+title: Spec-driven development
+summary: jevlint spec, in src/spec/, loads the YAML checklist spec from .jevlint/spec/, prints the compile prompt for a coding agent, and judges code files (check) and documents (drift) against it in two requests each.
+checklist:
+  - id: defaults
+    text: "spec.dir defaults to .jevlint/spec and spec.docs to README.md, docs/**/*.md and docs/**/*.html."
+    source: docs/spec-reference.md#location
+  - id: dir-inside-root
+    text: "spec.dir must stay inside the root, and a symlink leading out of it is refused."
+    source: docs/spec-reference.md#location
+  - id: strict-schema
+    text: "Spec files are validated with a strict schema in which unknown keys are errors."
+    source: docs/spec-reference.md#validation
+  - id: id-format
+    text: "An id uses only lowercase letters, digits and -, starts with a letter or digit, and global cannot be a feature id."
+    source: docs/spec-reference.md#validation
+  - id: feature-file-name
+    text: "A feature's id must equal its file name without .yaml."
+    source: docs/spec-reference.md#featuresidyaml
+  - id: feature-count
+    text: "A spec has at least one feature and at most 255."
+    source: docs/spec-reference.md#validation
+  - id: read-files
+    text: "Only index.yaml and features/*.yaml are read, each as a regular file inside the root."
+    source: docs/spec-reference.md#validation
+  - id: alias-limit
+    text: "YAML is parsed with a limit on aliases."
+    source: docs/spec-reference.md#security
+  - id: first-invalid-file
+    text: "Loading stops at the first invalid file with exit code 2 and names every problem in that file."
+    source: docs/spec-reference.md#validation
+  - id: missing-index
+    text: "With no index.yaml, compile carries on and every other spec command stops and says to run jevlint spec compile."
+    source: docs/spec-reference.md#validation
+  - id: compile-no-io
+    text: "spec compile makes no network call and writes no file, and prints the prompt or copies it with --copy."
+    source: docs/spec-reference.md#compile
+  - id: compile-paths-only
+    text: "The compile prompt lists document paths, never their contents."
+    source: docs/spec-reference.md#compile
+  - id: compile-invalid-spec
+    text: "When the existing spec fails to load, compile still prints the prompt and says why it failed."
+    source: docs/spec-reference.md#compile
+  - id: never-writes-spec
+    text: "jevlint never writes the spec itself."
+    source: docs/spec-driven-development.md#2-compile-the-spec-with-a-coding-agent
+  - id: check-discovery
+    text: "spec check judges the files audit would discover, narrowed to the given paths."
+    source: docs/spec-reference.md#check
+  - id: check-route
+    text: "check's first request asks a route choice question over every feature id plus global, together with one question per project checklist item."
+    source: docs/spec-reference.md#check
+  - id: check-feature-request
+    text: "check sends a second request with one question per feature item only when route chose a feature."
+    source: docs/spec-reference.md#check
+  - id: check-options
+    text: "Each check item question offers satisfies, violates and not-applicable."
+    source: docs/spec-reference.md#check
+  - id: confidence
+    text: "An item's confidence is the probability the model gave the chosen option, or 1 when the provider reports none."
+    source: docs/spec-reference.md#check
+  - id: check-score
+    text: "A file's spec score is satisfied items over satisfied plus violated items on scoring.scale, and is null when no item applied."
+    source: docs/spec-reference.md#check
+  - id: check-order
+    text: "spec check lists files by number of violations, most first, then by score, lowest first."
+    source: docs/spec-reference.md#check
+  - id: unimplemented
+    text: "An item is unimplemented when no file satisfies it, worked out only when the run covered the whole repository."
+    source: docs/spec-reference.md#check
+  - id: check-exit
+    text: "spec check exits 1 when any item is violated or unimplemented."
+    source: docs/spec-reference.md#check
+  - id: drift-discovery
+    text: "spec drift reads files matching spec.docs with .gitignore, exclude and the built-in exclusions, but not include or the source-extension filter."
+    source: docs/spec-reference.md#drift
+  - id: drift-checklist-first
+    text: "drift's compare state puts the routed checklist before the document, so truncation cuts the document, never the checklist."
+    source: docs/spec-reference.md#drift
+  - id: drift-options
+    text: "Each drift item question offers agrees, contradicts and absent, and uncovered is a boolean question."
+    source: docs/spec-reference.md#drift
+  - id: drift-results
+    text: "A document is uncovered at 0.5 or more, an item is unbacked when absent from every document routed to its checklist, and a feature is undocumented when no document is routed to it."
+    source: docs/spec-reference.md#drift
+  - id: drift-complete
+    text: "Unbacked items and undocumented features are worked out only when the run covered every document."
+    source: docs/spec-reference.md#drift
+  - id: drift-exit
+    text: "spec drift exits 1 on any contradiction, uncovered document, unbacked item or undocumented feature."
+    source: docs/spec-reference.md#drift
+  - id: provider-errors
+    text: "A provider error on one file becomes a warning on that file, and a bad key stops the run."
+    source: docs/spec-reference.md#check
+  - id: needs-model
+    text: "spec check and spec drift need a decision model and have no AST-only fallback."
+    source: docs/spec-driven-development.md#commands
+  - id: ids-not-paths
+    text: "Feature ids are never used to build a path."
+    source: docs/spec-reference.md#security
+  - id: decide-state
+    text: "Spec requests go through decideState, so the cache key covers the provider, model, endpoint, every question with its options, and the state."
+    source: docs/architecture.md#design-decisions

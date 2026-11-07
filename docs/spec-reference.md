@@ -206,6 +206,18 @@ The checklist comes first, so truncation cuts the document, never the checklist.
 - Unbacked items and undocumented features are worked out only when the run covered every document.
 - The run **fails**, with exit code 1, when it finds any of the four.
 
+## Fix prompts
+
+`spec check --copy` and `spec drift --copy` print the report as usual, then copy a Markdown prompt for
+a coding agent. Like the compile prompt, it names paths and quotes item texts, never file contents.
+
+- The check prompt lists each file's violated items and the unimplemented items. It asks the agent to
+  change the code, never the spec or the documents, and to confirm with `jevlint spec check`.
+- The drift prompt lists contradictions by document, uncovered documents, unbacked items and
+  undocumented features, with how to resolve each. It asks the agent to change the documents or the
+  spec, never the code, and to confirm with `jevlint spec list` and `jevlint spec drift`.
+- With nothing found, the prompt says so in one line.
+
 ## JSON output
 
 `spec check --json`:

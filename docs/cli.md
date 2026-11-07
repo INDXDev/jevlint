@@ -114,7 +114,9 @@ Keeps documents, a checklist spec and code in agreement. See
 | `jevlint spec drift [docs...]` | Compare documents with the spec. Exits 1 on a contradiction, an uncovered document, an unbacked item or an undocumented feature |
 | `jevlint spec list` | Load and print the spec. Exits 2 when it does not load |
 
-`check`, `drift` and `list` take `--json` (see [JSON output](json-output.md#spec-reports)). `check`
+`check` and `drift` take `--copy`, which also copies a Markdown prompt asking a coding agent to fix
+what was found: the code for `check`, the documents and the spec for `drift`. The report still
+prints. `check`, `drift` and `list` take `--json` (see [JSON output](json-output.md#spec-reports)). `check`
 and `drift` take `--no-cache`, and need a decision model.
 
 ## `jevlint pr [number]`

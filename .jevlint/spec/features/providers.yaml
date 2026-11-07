@@ -1,0 +1,61 @@
+id: providers
+title: Decision providers
+summary: Builds the decision model for typesafe, openai, gateway, cloudflare, microsoft or compatible in src/decision/, sends one file's questions in a single request, falls back to another provider with a key, and estimates the cost of input tokens.
+checklist:
+  - id: default-models
+    text: "Default models are jev-latest for typesafe, gpt-6-luna for openai, typesafe-ai/jev for gateway and clef for cloudflare, and microsoft and compatible have none."
+    source: docs/providers.md
+  - id: key-variables
+    text: "Key variables are TYPESAFE_AI_API_KEY, OPENAI_API_KEY, AI_GATEWAY_API_KEY, CLOUDFLARE_API_TOKEN, AZURE_API_KEY and JEVLINT_API_KEY."
+    source: docs/providers.md
+  - id: base-url-required
+    text: "microsoft and compatible require base_url."
+    source: docs/providers.md
+  - id: fallback-order
+    text: "With no key for the configured provider, the first of typesafe, openai, gateway and cloudflare that has a key is used with its default model, and the choice is printed."
+    source: docs/providers.md#fallback
+  - id: no-fallback-base-url
+    text: "microsoft and compatible are never a fallback."
+    source: docs/providers.md#fallback
+  - id: cloudflare-account
+    text: "cloudflare needs an account ID from provider.account_id or CLOUDFLARE_ACCOUNT_ID."
+    source: docs/providers.md#cloudflare-workers-ai
+  - id: cloudflare-64
+    text: "For cloudflare, more than 64 questions are split over several requests."
+    source: docs/providers.md#cloudflare-workers-ai
+  - id: one-jev-path
+    text: "cloudflare, microsoft and compatible reuse the TypeSafe provider with a different base URL."
+    source: docs/architecture.md#design-decisions
+  - id: systemone
+    text: "A Jev-compatible endpoint is called with POST <base_url>/systemone."
+    source: docs/providers.md#jev-compatible-endpoints
+  - id: one-request
+    text: "Each file is sent with every active question in a single request."
+    source: docs/concepts.md#one-file-one-request
+  - id: truncate
+    text: "Content longer than max_file_chars is cut before sending, and the file gets a warning."
+    source: docs/configuration.md#top-level-keys
+  - id: failure-keeps-ast
+    text: "When a model refuses a question or a request fails, the file keeps its AST score and gets a warning."
+    source: docs/providers.md#provider-differences
+  - id: retry-429
+    text: "A 429 response is retried with backoff."
+    source: docs/providers.md#provider-differences
+  - id: concurrency
+    text: "Parallel provider requests are capped at concurrency."
+    source: docs/configuration.md#top-level-keys
+  - id: no-key-ast-only
+    text: "With no usable key for any provider, audit prints a notice and runs AST-only."
+    source: docs/cli.md#jevlint-audit-paths
+  - id: prices
+    text: "Built-in input prices are 0.042 USD per million tokens for jev models on typesafe and gateway, 0.10 for gpt-6-luna on openai, and 0.24 for any model on cloudflare."
+    source: docs/providers.md#cost-estimates
+  - id: unknown-price
+    text: "estimateCostUsd returns null when the model's price is unknown, including on microsoft and compatible."
+    source: docs/code-reference.md#engines
+  - id: chars-per-token
+    text: "Token estimates assume 4 characters per token, and bill the file once plus every active question."
+    source: docs/providers.md#cost-estimates
+  - id: cost-excludes
+    text: "Pinned, blank and cached files are not counted in a run's cost."
+    source: docs/providers.md#cost-estimates

@@ -1,0 +1,55 @@
+id: scoring
+title: Scoring and ranking
+summary: The pure formulas in src/scoring.ts that convert AST findings and model answers into compliance, file scores, the line-weighted repository score and the churn and size priority that orders the ranking.
+checklist:
+  - id: sub-score
+    text: "Each AST metric's sub-score is min(1, limit / worst value in the file)."
+    source: docs/scoring.md#ast-score
+  - id: ast-score
+    text: "The AST score is the lowest sub-score multiplied by 0.95 for each pattern match and each semantic rule hit."
+    source: docs/scoring.md#ast-score
+  - id: score-compliance
+    text: "A score answer's compliance is answer / (levels - 1)."
+    source: docs/scoring.md#model-score
+  - id: boolean-compliance
+    text: "A boolean answer's compliance is its probability when good is true, and 1 minus its probability when good is false."
+    source: docs/scoring.md#model-score
+  - id: model-score
+    text: "The model score is the weighted mean of compliance over all active questions."
+    source: docs/scoring.md#model-score
+  - id: file-score
+    text: "The file score is (ast_weight × ast_score + model_weight × model_score) / (ast_weight + model_weight)."
+    source: docs/scoring.md#file-score
+  - id: one-engine
+    text: "When only one engine ran, its score is the file score, and a file with neither is listed as skipped."
+    source: docs/scoring.md#file-score
+  - id: repo-score
+    text: "The repository score is the mean of file scores weighted by line count."
+    source: docs/scoring.md#repository-score
+  - id: priority
+    text: "Priority is (1 - file_score) × (1 + churn × churn_norm + size × size_norm), and files are sorted by priority, highest first."
+    source: docs/scoring.md#priority
+  - id: norms
+    text: "churn_norm is log(1 + commits) / log(1 + max_commits) with commits counted over churn_days, and size_norm is the same calculation on line counts."
+    source: docs/scoring.md#priority
+  - id: priority-defaults
+    text: "Priority defaults are churn 0.5, size 0.25 and churn_days 180."
+    source: docs/configuration.md#full-example
+  - id: no-git-churn
+    text: "Outside a git repository, churn is 0."
+    source: docs/scoring.md#priority
+  - id: scale
+    text: "Scores run from 0 to 1 internally and are displayed on scoring.scale with scoring.precision decimal places."
+    source: docs/scoring.md#scale
+  - id: weak-answer
+    text: "An answer with compliance below 0.7 is weak."
+    source: docs/cli.md#output-formats
+  - id: fail-under
+    text: "An audit exits 1 when the repository score is below fail_under, and fail_under 0 disables the check."
+    source: docs/configuration.md#full-example
+  - id: after-cache
+    text: "Weights, scoring and priority settings apply after the cache, so changing them sends no request."
+    source: docs/caching.md#what-invalidates-an-entry
+  - id: zero-weight
+    text: "A question with weight 0 is not asked."
+    source: docs/presets.md#tuning

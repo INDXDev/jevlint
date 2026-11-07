@@ -1,0 +1,46 @@
+id: agent-handoff
+title: Agent hand-off
+summary: Turns audit findings into a Markdown fix prompt with jevlint prompt in src/prompt.ts, and with jevlint fix in src/agent.ts runs a coding agent such as Claude Code or Codex on the worst files one at a time and re-scores them.
+checklist:
+  - id: prompt-contents
+    text: "The fix prompt names each file with its score, its AST findings with line numbers and its weakest principles with fix guidance, and tells the agent to preserve behaviour and run the tests."
+    source: docs/agents.md#copy-and-paste
+  - id: no-file-contents
+    text: "The fix prompt contains file paths but no file contents."
+    source: docs/agents.md#copy-and-paste
+  - id: pins-left-out
+    text: "Files with a whole-file pin and pinned questions are left out of the prompt."
+    source: docs/agents.md#copy-and-paste
+  - id: no-pin-edits
+    text: "The prompt tells agents not to add or change jevlint-score comments."
+    source: docs/agents.md#copy-and-paste
+  - id: prompt-top
+    text: "prompt and fix take the highest-priority files with issues when no files are named, one by default, or --top."
+    source: docs/cli.md#jevlint-prompt-files
+  - id: prompt-copy
+    text: "prompt --copy copies the prompt to the clipboard instead of printing it."
+    source: docs/cli.md#jevlint-prompt-files
+  - id: clean-tree
+    text: "fix checks that the git working tree is clean, unless --allow-dirty is passed."
+    source: docs/agents.md#jevlint-fix
+  - id: confirm
+    text: "fix shows the plan and asks for confirmation unless --yes is passed, and --yes is required outside a terminal."
+    source: docs/cli.md#jevlint-fix-files
+  - id: stdin-prompt
+    text: "fix runs the agent with the prompt on stdin, then re-audits the file and prints the score before and after."
+    source: docs/agents.md#jevlint-fix
+  - id: one-at-a-time
+    text: "fix runs files one at a time and stops early if an agent exits with an error."
+    source: docs/agents.md#jevlint-fix
+  - id: never-commits
+    text: "jevlint never commits, pushes or loops on its own."
+    source: docs/agents.md#jevlint-fix
+  - id: default-agents
+    text: "The built-in agents run claude -p --permission-mode acceptEdits and codex exec --sandbox workspace-write -."
+    source: docs/agents.md#default-agents
+  - id: user-only-agents
+    text: "Agents are configured only in the user config."
+    source: docs/agents.md#adding-an-agent
+  - id: rerun-audit
+    text: "prompt, fix and explain re-run audit() rather than reading a stored report."
+    source: docs/architecture.md#design-decisions

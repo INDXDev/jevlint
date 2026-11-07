@@ -1,0 +1,52 @@
+id: architecture-review
+title: Architecture review
+summary: jevlint architecture, in src/architecture/, builds module, directory and class graphs from imports, finds cycles and size findings, asks the model about outlines from the codebase, directory and class perspectives, and renders a terminal, JSON or HTML report.
+checklist:
+  - id: limits
+    text: "Default limits are max_fan_out 12, max_hub_links 5, max_directory_files 20, max_class_methods 20, max_class_lines 300 and max_inheritance_depth 3."
+    source: docs/configuration.md#architecture-limits
+  - id: no-cycles
+    text: "dependency-cycle and directory-cycle findings allow no cycle at all."
+    source: docs/architecture-review.md#what-it-finds
+  - id: subfolder-not-cycle
+    text: "A folder and its own subfolder never count as a directory cycle."
+    source: docs/architecture-review.md#what-it-finds
+  - id: hub-links
+    text: "A file's hub links are the lower of its import count and its user count."
+    source: docs/configuration.md#architecture-limits
+  - id: structure-score
+    text: "A unit's structure score is set by its worst finding, as limit divided by value, so a cycle of two scores 0.5."
+    source: docs/architecture-review.md#scores
+  - id: outlines-not-code
+    text: "A unit's outline holds paths, line counts, names and dependencies, and never file contents."
+    source: docs/architecture-review.md#how-it-works
+  - id: one-request-per-unit
+    text: "Each unit is one request through decideFile, so a review costs 1 + directories + classes with methods."
+    source: docs/architecture-review.md#how-it-works
+  - id: methodless-classes
+    text: "A class without methods is left out of the ranking unless it has a finding."
+    source: docs/architecture-review.md#scores
+  - id: line-weighted
+    text: "Each perspective's score and the overall score are means weighted by lines."
+    source: docs/architecture-review.md#scores
+  - id: presets
+    text: "The codebase, directory and class perspectives use the architecture-codebase, architecture-directory and architecture-class presets."
+    source: docs/architecture-review.md#changing-the-questions
+  - id: html-offline
+    text: "The HTML report has no scripts and makes no network requests, and --html requires a file name."
+    source: docs/architecture-review.md#reading-the-report
+  - id: ambiguous-class
+    text: "A class name declared in two files links to nothing."
+    source: docs/architecture-review.md#language-support
+  - id: go-package
+    text: "A Go package maps to its first non-test .go file."
+    source: docs/architecture-review.md#language-support
+  - id: ts-aliases
+    text: "TypeScript paths aliases and workspace packages are not followed."
+    source: docs/architecture-review.md#language-support
+  - id: destructuring
+    text: "Top-level destructuring patterns are not listed as names."
+    source: docs/architecture-review.md#language-support
+  - id: perspective-flag
+    text: "--perspective limits the review to codebase, directory or class, comma-separated, and --top defaults to 20."
+    source: docs/cli.md#jevlint-architecture-paths

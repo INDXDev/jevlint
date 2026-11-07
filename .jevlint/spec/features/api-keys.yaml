@@ -1,0 +1,34 @@
+id: api-keys
+title: API keys
+summary: Stores, lists and removes provider API keys in credentials.toml through jevlint auth, in src/credentials.ts, and decides whether environment variables may supply a key.
+checklist:
+  - id: credentials-file
+    text: "Keys are stored in ~/.config/jevlint/credentials.toml, created with mode 0600."
+    source: docs/security.md#api-keys
+  - id: env-off-by-default
+    text: "A provider's environment variable is ignored until environment keys are allowed."
+    source: docs/providers.md#storing-keys
+  - id: env-priority
+    text: "Once allowed, an environment variable takes priority over the credentials file."
+    source: docs/providers.md#storing-keys
+  - id: first-run-question
+    text: "The first interactive run of a command that uses a key asks whether to allow environment keys, and remembers the answer."
+    source: docs/providers.md#storing-keys
+  - id: no-terminal-no-question
+    text: "With no terminal, nothing asks, and an audit with fail_under set stops with exit code 2 instead of gating on AST scores alone."
+    source: docs/providers.md#storing-keys
+  - id: auth-env
+    text: "auth env on and auth env off allow or refuse keys from environment variables."
+    source: docs/cli.md#jevlint-auth
+  - id: never-printed
+    text: "Keys are never printed by auth list, config show or error messages."
+    source: docs/security.md#api-keys
+  - id: auth-set-input
+    text: "auth set hides typed input, and reads the key from stdin when it is piped."
+    source: docs/providers.md#storing-keys
+  - id: auth-list-source
+    text: "auth list shows each provider and where its key comes from."
+    source: docs/cli.md#jevlint-auth
+  - id: no-dotenv
+    text: "jevlint does not read a .env file."
+    source: docs/ci.md#review-with-a-model

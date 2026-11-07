@@ -1,6 +1,6 @@
 /** Renders the `jevlint spec compile` prompt, which asks a coding agent to write the spec. */
 import { withoutControlCharacters } from '../report.ts';
-import type { Spec } from '../types.ts';
+import type { Spec, SpecCheckReport, SpecDriftReport, SpecItemRef } from '../types.ts';
 
 /** What the compile prompt is built from: paths only, never document contents. */
 export interface CompilePromptInput {
@@ -154,5 +154,83 @@ Write or update the spec in \`${input.dir}/\` from the documents below. The spec
     FORMAT(input.dir),
     RULES,
     FINISH(input.dir),
+  ].join('\n\n');
+}
+
+const NOTHING_TO_FIX = (command: string) => `jevlint spec ${command} found nothing to fix.`;
+
+const itemLine = ({ id, text }: SpecItemRef) => `- \`${id}\`: ${text}`;
+
+function section(title: string, lines: string[]): string[] {
+  return lines.length > 0 ? [`## ${title}\n\n${lines.join('\n')}`] : [];
+}
+
+/** Renders a Markdown prompt asking an agent to fix the code a `spec check` found wanting. */
+export function renderCheckPrompt(untrusted: SpecCheckReport): string {
+  // One line per path and item, so a crafted name cannot add headings for the agent to obey.
+  const report = withoutControlCharacters(untrusted);
+  const files = report.files.flatMap(({ path, items }) => {
+    const violated = items.filter(({ verdict }) => verdict === 'violates');
+    return violated.length > 0 ? [`- \`${path}\``, ...violated.map((i) => `  ${itemLine(i)}`)] : [];
+  });
+  if (files.length === 0 && report.unimplemented.length === 0) return NOTHING_TO_FIX('check');
+  return [
+    `# Make the code meet the spec
+
+jevlint judged this repository's code against the checklist spec in \`${report.specDir}/\`. Read the spec files there first: they are the requirements, and each item below is quoted from them.`,
+    ...section('Violations, by file', files),
+    ...section('Items no file implements yet', report.unimplemented.map(itemLine)),
+    `## How to work
+
+1. Read each file, its callers and its tests before changing anything.
+2. Change the code to meet the spec. Do not edit the spec or the documents. If you believe an item is wrong, leave it, and say so in your summary.
+3. Make the smallest change that meets each item, and leave unrelated code alone.
+4. Run the project's tests, plus its lint and type checks if it has them, and fix what you broke.
+5. Run \`jevlint spec check\` on the files you changed to confirm.
+6. Do not commit. Leave your changes in the working tree for review.
+7. Finish with a short summary of what changed, and of any item you chose to leave.`,
+  ].join('\n\n');
+}
+
+/** Renders a Markdown prompt asking an agent to bring the documents and the spec into agreement. */
+export function renderDriftPrompt(untrusted: SpecDriftReport): string {
+  const report = withoutControlCharacters(untrusted);
+  const contradictions = report.docs.flatMap(({ path, items }) => {
+    const conflicting = items.filter(({ verdict }) => verdict === 'contradicts');
+    return conflicting.length > 0
+      ? [`- \`${path}\``, ...conflicting.map((i) => `  ${itemLine(i)}`)]
+      : [];
+  });
+  const sections = [
+    ...section(
+      'Contradictions: the document says something different from these items',
+      contradictions,
+    ),
+    ...section(
+      'Uncovered: these documents state requirements the checklist does not have',
+      report.uncovered.map((path) => `- \`${path}\``),
+    ),
+    ...section('Unbacked: no document states these items', report.unbacked.map(itemLine)),
+    ...section(
+      'Undocumented: no document describes these features',
+      report.undocumented.map((id) => `- \`${id}\``),
+    ),
+  ];
+  if (sections.length === 0) return NOTHING_TO_FIX('drift');
+  return [
+    `# Bring the documents and the spec into agreement
+
+jevlint compared this repository's documents with the checklist spec in \`${report.specDir}/\`, and found the drift below. Read the spec files and the documents named before changing anything.`,
+    ...sections,
+    `## How to work
+
+1. For each contradiction, decide which side is right. Fix the document, or the item's \`text\`. If you cannot tell, leave both and ask in your summary.
+2. For each uncovered document, add an item for every checkable requirement it states, in the feature it belongs to, with \`source\` naming the document.
+3. For each unbacked item, document it if the code does it, or delete the item.
+4. For each undocumented feature, document it, or delete its file if it no longer exists.
+5. Keep the id of every item whose meaning did not change. Do not change code.
+6. Run \`jevlint spec list\` until it succeeds, then \`jevlint spec drift\` to confirm.
+7. Do not commit. Leave your changes in the working tree for review.
+8. Finish with a short summary of what changed, and of anything you left for a person to decide.`,
   ].join('\n\n');
 }

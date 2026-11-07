@@ -1,0 +1,67 @@
+id: change-review
+title: Change review
+summary: Reviews what a GitHub pull request (jevlint pr) or recent commits (jevlint commits) changed, by auditing each changed file on both sides in temporary snapshots in src/review.ts, and with --intent judges a change against its message and AGENTS.md in src/intent.ts.
+checklist:
+  - id: pr-number
+    text: "With no number, pr takes it from GITHUB_REF when that is refs/pull/<number>/merge, and otherwise uses the current branch's pull request."
+    source: docs/cli.md#jevlint-pr-number
+  - id: pr-sides
+    text: "pr audits each changed file at the merge base and at the pull request's head."
+    source: docs/cli.md#jevlint-pr-number
+  - id: pr-needs-gh
+    text: "pr reads the pull request through the GitHub CLI and fetches its commits from origin."
+    source: docs/cli.md#jevlint-pr-number
+  - id: commits-defaults
+    text: "commits reviews each commit against its parent from revision, default HEAD, backwards, for --count commits, default 10."
+    source: docs/cli.md#jevlint-commits-revision
+  - id: shallow-refused
+    text: "commits refuses a shallow clone."
+    source: docs/cli.md#jevlint-commits-revision
+  - id: merge-skipped
+    text: "Merge commits are skipped."
+    source: docs/cli.md#jevlint-commits-revision
+  - id: snapshots
+    text: "A change's files are read with git plumbing into a new private directory that is deleted afterwards, with nothing checked out."
+    source: docs/security.md#untrusted-repositories
+  - id: checkout-config
+    text: "The config and presets come from the user's checkout, never from the change."
+    source: docs/security.md#untrusted-repositories
+  - id: unsafe-paths
+    text: "A changed path containing .., .git or .gitignore is not written to the snapshot directory."
+    source: docs/security.md#untrusted-repositories
+  - id: worse-only
+    text: "Output keeps only AST findings the change introduced or made worse, and weak answers it lowered."
+    source: docs/json-output.md#change-reviews
+  - id: renamed-new
+    text: "A renamed file counts as new."
+    source: docs/cli.md#jevlint-commits-revision
+  - id: report-only
+    text: "pr and commits exit 0 whatever the scores, because fail_under does not apply."
+    source: docs/cli.md#jevlint-commits-revision
+  - id: json-array
+    text: "pr --json and commits --json print an array with one object per change, newest first, with before null for a new file."
+    source: docs/json-output.md#change-reviews
+  - id: intent-questions
+    text: "--intent asks the change-intent preset whether the message describes the diff, whether the diff does unmentioned things, and, only when there are instructions, whether it breaks one."
+    source: docs/cli.md#judging-a-change-with---intent
+  - id: intent-instructions
+    text: "--intent reads AGENTS.md, or CLAUDE.md when that is absent or empty, from the base commit, and a root commit has none."
+    source: docs/cli.md#judging-a-change-with---intent
+  - id: intent-order
+    text: "The --intent state puts the message before the diff, and a diff cut at max_file_chars gives a warning."
+    source: docs/cli.md#judging-a-change-with---intent
+  - id: intent-exclusions
+    text: "The --intent diff leaves out secret files, .gitignore matches and exclude, including for deleted files."
+    source: docs/security.md#protecting-secrets-in-code
+  - id: intent-diff-tree
+    text: "--intent reads diffs with git diff-tree with external diff and textconv programs off."
+    source: docs/security.md#untrusted-repositories
+  - id: intent-incompatible
+    text: "--intent cannot be combined with --ast-only, --format sarif or --format github."
+    source: docs/cli.md#jevlint-pr-number
+  - id: intent-no-key
+    text: "With no key for any provider, --intent warns and the review carries on without it."
+    source: docs/cli.md#judging-a-change-with---intent
+  - id: lazy-fetch-off
+    text: "Blobs are read with lazy fetching off, and in a partial clone where an old version is missing, --intent stops with an error."
+    source: docs/security.md#untrusted-repositories

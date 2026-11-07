@@ -1,0 +1,37 @@
+id: pins
+title: Score pins
+summary: Parses jevlint-score comments in src/directives.ts that fix an accepted score for a whole file or one question, removes them from code before it reaches a model, and honours --ignore-pins.
+checklist:
+  - id: two-forms
+    text: "jevlint-score <value> pins the whole file, and jevlint-score <preset>.<id> <value> pins one question."
+    source: docs/scoring.md#pinning-scores
+  - id: syntax
+    text: "A pin is a comment on a line of its own using //, #, -- or /* */, and requires a reason after ' -- '."
+    source: docs/scoring.md#pinning-scores
+  - id: scale-values
+    text: "Pin values use the configured scale."
+    source: docs/scoring.md#pinning-scores
+  - id: removed-before-sending
+    text: "jevlint-score lines are removed from a file or rule match before it is sent to a model, so a pin does not change the cache key."
+    source: docs/scoring.md#pinning-scores
+  - id: whole-file-effect
+    text: "A whole-file pin sets the file score to the pinned value, sends no model request, runs no semantic rules, and gives the file priority 0."
+    source: docs/scoring.md#pinning-scores
+  - id: whole-file-ast
+    text: "AST analysis still runs on a file with a whole-file pin."
+    source: docs/scoring.md#pinning-scores
+  - id: question-pin
+    text: "A question pin replaces that question's answer, and the file score is recalculated with it."
+    source: docs/scoring.md#pinning-scores
+  - id: malformed
+    text: "A malformed pin, or one for an unknown question, is ignored and shown as a warning in jevlint explain."
+    source: docs/scoring.md#pinning-scores
+  - id: counts-in-repo
+    text: "Pinned scores count towards the repository score."
+    source: docs/scoring.md#pinning-scores
+  - id: ignore-pins
+    text: "--ignore-pins scores files as if no jevlint-score comment existed."
+    source: docs/cli.md#jevlint-audit-paths
+  - id: not-architecture
+    text: "Pins do not apply in jevlint architecture."
+    source: docs/architecture-review.md#scores

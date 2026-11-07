@@ -9,7 +9,8 @@ This project follows [Semantic Versioning](https://semver.org).
   prints a prompt that has a coding agent write or update it from your documents. `spec check` routes
   each code file to a feature with one choice question, then judges it against that feature's items,
   and lists the items nothing implements. `spec drift` does the same for documents, and finds
-  contradictions, requirements the checklist misses, and items no document states. `[spec] dir` and
+  contradictions, requirements the checklist misses, and items no document states. With `--copy`,
+  both also copy a prompt that asks a coding agent to fix what they found. `[spec] dir` and
   `docs` in `jevlint.toml` set where the spec and the documents are. By default the documents are
   `README.md` and the Markdown and HTML files under `docs/`. See
   [Spec-driven development](docs/spec-driven-development.md).

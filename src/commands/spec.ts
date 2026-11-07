@@ -9,7 +9,7 @@ import { withoutEscapes } from '../report.ts';
 import { checkSpec } from '../spec/check.ts';
 import { driftSpec } from '../spec/drift.ts';
 import { loadSpec, specFiles } from '../spec/load.ts';
-import { renderCompilePrompt } from '../spec/prompt.ts';
+import { renderCheckPrompt, renderCompilePrompt, renderDriftPrompt } from '../spec/prompt.ts';
 import { formatSpecCheck, formatSpecDrift, formatSpecList } from '../spec/terminal.ts';
 import type { Spec } from '../types.ts';
 import {
@@ -27,6 +27,18 @@ const CACHE_ARG = {
   description: 'Use cached decisions',
   negativeDescription: 'Ignore cached decisions, and do not store new ones',
 } as const;
+
+const COPY_ARG = {
+  type: 'boolean',
+  description: 'Also copy a prompt for a coding agent to fix what was found',
+} as const;
+
+async function copyPrompt(prompt: string): Promise<void> {
+  await clipboard.write(prompt).catch((error: Error) => {
+    throw new UserError(`Could not copy the prompt: ${error.message}`);
+  });
+  console.error('Copied the prompt to the clipboard.');
+}
 
 async function requireSpec(config: Config): Promise<Spec> {
   const spec = await loadSpec(config);
@@ -79,10 +91,7 @@ const compileCommand = defineCommand({
       loadError,
     });
     if (!args.copy) return console.log(prompt);
-    await clipboard.write(prompt).catch((error: Error) => {
-      throw new UserError(`Could not copy the prompt: ${error.message}`);
-    });
-    console.error('Copied the prompt to the clipboard.');
+    await copyPrompt(prompt);
   },
 });
 
@@ -95,6 +104,7 @@ const checkCommand = defineCommand({
       description: 'Files or directories to check (default: the whole repository)',
     },
     json: JSON_ARG,
+    copy: COPY_ARG,
     cache: CACHE_ARG,
   },
   async run({ args }) {
@@ -107,6 +117,7 @@ const checkCommand = defineCommand({
     printFallbackNotice(config, report.provider);
     if (args.json) printJson(report);
     else console.log(formatSpecCheck(report));
+    if (args.copy) await copyPrompt(withoutEscapes(renderCheckPrompt(report)));
     if (report.violations > 0 || report.unimplemented.length > 0) process.exitCode = 1;
   },
 });
@@ -120,6 +131,7 @@ const driftCommand = defineCommand({
       description: 'Documents to compare (default: spec.docs)',
     },
     json: JSON_ARG,
+    copy: COPY_ARG,
     cache: CACHE_ARG,
   },
   async run({ args }) {
@@ -132,6 +144,7 @@ const driftCommand = defineCommand({
     printFallbackNotice(config, report.provider);
     if (args.json) printJson(report);
     else console.log(formatSpecDrift(report));
+    if (args.copy) await copyPrompt(withoutEscapes(renderDriftPrompt(report)));
     const { contradictions, uncovered, unbacked, undocumented } = report;
     if (contradictions + uncovered.length + unbacked.length + undocumented.length > 0) {
       process.exitCode = 1;

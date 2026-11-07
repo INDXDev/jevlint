@@ -1,0 +1,61 @@
+id: presets
+title: Presets
+summary: Loads and validates principle presets of questions, patterns and rules from the repository, user and built-in sources in src/presets.ts, applies weights and includes, picks presets named in arguments, and backs the jevlint preset command.
+checklist:
+  - id: lookup-order
+    text: "When preset names collide, the repository preset wins over the user preset, which wins over the built-in one."
+    source: docs/presets.md#installing-presets
+  - id: full-default
+    text: "full is the default preset, and lists the other audit presets in includes with no questions of its own."
+    source: docs/presets.md#the-full-audit
+  - id: includes-keep-ids
+    text: "A preset named in includes keeps its own question ids, weights and scores."
+    source: docs/presets.md#writing-a-preset
+  - id: question-required
+    text: "A question requires id, type, title, instructions and fix, and type is score or boolean."
+    source: docs/presets.md#question-fields
+  - id: question-id-chars
+    text: "A question id uses letters, digits, - and _, and is unique in its preset."
+    source: docs/presets.md#question-fields
+  - id: levels
+    text: "A score question has 2 to 10 levels, ordered worst to best."
+    source: docs/presets.md#question-fields
+  - id: boolean-good
+    text: "A boolean question states good, the answer a clean file gives."
+    source: docs/presets.md#question-fields
+  - id: weight-default
+    text: "A question's weight defaults to 1, and [weights] overrides it by full id."
+    source: docs/presets.md#question-fields
+  - id: full-ids
+    text: "Active questions get full ids of the form <preset>.<id>."
+    source: docs/code-reference.md#presets-srcpresetsts
+  - id: used-by
+    text: "used_by is audit, architecture or intent, defaults to audit, and only decides where list, --help and pickers show the preset."
+    source: docs/presets.md#writing-a-preset
+  - id: preset-arguments
+    text: "An argument that names a preset and no existing path selects that preset, replacing the configured ones for that run."
+    source: docs/presets.md#choosing-presets
+  - id: close-name
+    text: "An argument that is neither a path nor a preset but close to a preset name stops with a suggestion."
+    source: docs/cli.md#jevlint-audit-paths
+  - id: builtin-not-removable
+    text: "Built-in presets cannot be removed."
+    source: docs/cli.md#jevlint-preset
+  - id: edit-copies-builtin
+    text: "preset edit copies a built-in preset to the user presets, or to .jevlint/presets/ with --repo, before opening it."
+    source: docs/cli.md#jevlint-preset
+  - id: editor-no-shell
+    text: "preset new and preset edit start $VISUAL or $EDITOR without a shell, passing the preset's path as one argument."
+    source: docs/security.md#untrusted-repositories
+  - id: repo-symlink
+    text: "A symlink in .jevlint/presets/ that leads outside the repository is an error."
+    source: docs/security.md#untrusted-repositories
+  - id: preset-default
+    text: "preset default writes presets to the user config, or to jevlint.toml with --repo."
+    source: docs/cli.md#jevlint-preset
+  - id: list-marks-defaults
+    text: "preset list groups presets by the command they serve, shows where each comes from, and marks the default ones with *."
+    source: docs/cli.md#jevlint-preset
+  - id: install-locations
+    text: "preset add copies a file to ~/.config/jevlint/presets/, or to .jevlint/presets/ with --repo."
+    source: docs/presets.md#installing-presets

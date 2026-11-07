@@ -104,7 +104,8 @@ Unimplemented: no file satisfies these items.
   checkout.receipt      A receipt email is sent after every successful payment.
 ```
 
-Hand the result to an agent as you would a normal audit, or fix it by hand. Name paths to check only
+Add `--copy` to also copy a prompt that asks a coding agent to fix the code, then paste it into the
+agent. Or fix it by hand. Name paths to check only
 part of the repository: `jevlint spec check src/auth`. A narrowed run cannot know what is
 unimplemented, so it leaves that list out.
 
@@ -123,6 +124,8 @@ This finds four kinds of drift:
 | Unbacked | No document states an item | Document it, or delete the item |
 | Undocumented | No document describes a feature | Document the feature, or delete it |
 
+`jevlint spec drift --copy` also copies a prompt that asks a coding agent to resolve each one.
+
 ### 5. Keep the three in agreement
 
 When you change the documents, recompile. `jevlint spec compile` sees the existing spec and tells the
@@ -140,8 +143,8 @@ Both exit with 1 when they find a problem, so either can gate a pull request.
 | Command | Exit codes |
 | --- | --- |
 | `jevlint spec compile [docs...] [--copy]` | 0, or 2 if the spec does not load |
-| `jevlint spec check [paths...] [--json] [--no-cache]` | 0 clean, 1 a violation or an unimplemented item, 2 usage, config or spec error |
-| `jevlint spec drift [docs...] [--json] [--no-cache]` | 0 clean, 1 any drift, 2 usage, config or spec error |
+| `jevlint spec check [paths...] [--copy] [--json] [--no-cache]` | 0 clean, 1 a violation or an unimplemented item, 2 usage, config or spec error |
+| `jevlint spec drift [docs...] [--copy] [--json] [--no-cache]` | 0 clean, 1 any drift, 2 usage, config or spec error |
 | `jevlint spec list [--json]` | 0 if the spec loads, 2 if it does not |
 
 `check` and `drift` need a decision model: there is no AST-only fallback, because every answer comes
