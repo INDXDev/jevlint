@@ -53,8 +53,9 @@ jevlint init
 ```
 
 This asks for a provider and presets, then writes `jevlint.toml` in the repository root. Commit it
-so your team shares the same rules. `jevlint init --yes` accepts the defaults, and `--user` writes
-your personal defaults to `~/.config/jevlint/config.toml` instead. `--preset security,solid` picks
+so your team shares the same rules. `full`, every audit preset at once, comes first and starts
+selected. Pick others instead to ask less per file. `jevlint init --yes` accepts the defaults, and
+`--user` writes your personal defaults to `~/.config/jevlint/config.toml` instead. `--preset security,solid` picks
 the presets up front, and `jevlint preset default` changes them later.
 
 To try another preset on one run, name it: `jevlint audit security`. See

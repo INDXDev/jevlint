@@ -61,6 +61,8 @@ export interface Preset {
   source: string;
   /** `audit` unless the questions only make sense to `jevlint architecture` or `--intent`. */
   used_by: PresetUse;
+  /** Other presets that run alongside this one, each keeping its own question ids. */
+  includes: string[];
   questions: Question[];
   patterns: AstPattern[];
   rules: AstRule[];

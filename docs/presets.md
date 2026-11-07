@@ -58,6 +58,7 @@ The `presets` key in `jevlint.toml` wins over your user config, as every reposit
 
 | Preset | Inspired by | Checks |
 | --- | --- | --- |
+| `full` | Every preset below that serves audits | All 97 of their questions and all their patterns in one request per file. See [The full audit](#the-full-audit) |
 | `readable-code` | _The Art of Readable Code_, Boswell and Foucher | Informative names, useful comments, simple control flow, time to understand |
 | `clean-code` | _Clean Code_, Robert C. Martin | Small focused functions, one abstraction level, honest error handling |
 | `solid` | SOLID principles, Robert C. Martin | Single responsibility, open/closed, substitution, interface segregation, dependency inversion |
@@ -71,8 +72,29 @@ The `presets` key in `jevlint.toml` wins over your user config, as every reposit
 | `architecture-codebase`, `architecture-directory`, `architecture-class` | Common design guidance | One preset per perspective. Used only by [`jevlint architecture`](architecture-review.md) |
 | `change-intent` | Common code review practice | Whether a change does what its message says and keeps to the repository's instructions. Used only by [`--intent`](cli.md#judging-a-change-with---intent) |
 
-`readable-code` is the default. Each preset is an independent paraphrase of ideas. None reproduces
+`full` is the default. Each preset is an independent paraphrase of ideas. None reproduces
 text from these works, and none is affiliated with or endorsed by their authors or publishers.
+
+## The full audit
+
+`full` asks everything an audit can ask: readability, design, documentation, security and bug hunting.
+It holds no questions of its own. It lists the other presets in `includes`, so `jevlint explain` and
+`--json` still report `security`, `bug-hunt` and the rest by name, and `"security.no-injection" = 0`
+in `[weights]` still turns one question off.
+
+| | `readable-code` | `full` |
+| --- | --- | --- |
+| Questions per file | 7 | 97 |
+| Input tokens billed by Jev for one 4.6 KB file | 2,435 | 12,438 |
+| Cost of that file | about $0.0001 | about $0.0005 |
+
+Questions are billed as input, at roughly 110 tokens each, even though they share one request. `full`
+adds about 10,000 tokens to every file, so small files cost the most in proportion. A file's score is
+the weighted mean of all 97 answers. Check the cost with `--dry-run`, and narrow a run with
+`jevlint audit security` or `presets = ["readable-code"]`.
+
+A baseline or a `fail_under` chosen under another preset measures something else. Keep them
+comparable by setting `presets` in `jevlint.toml` to what they were recorded with.
 
 ## Hunting bugs
 
@@ -107,7 +129,7 @@ each other, and read the weak answers in `explain`, rather than judging the numb
 is a model's suspicion from one file, not a proven bug, and it cannot see what is safe by design, such
 as a single-process tool that cannot race with itself. Check the strongest answers against the code
 before acting on them. Every file sends all 43 questions, so check the cost with `--dry-run`. Set a question's [weight](#tuning) to `0` to stop
-asking it, and note that Cloudflare allows 64 questions per request across your active presets.
+asking it.
 
 ## Tuning
 
@@ -179,6 +201,17 @@ fix = "Rethrow it, or return an error the caller must handle."
 The top-level `used_by` key says which command the questions are written for: `audit` (the default),
 `architecture` or `intent`. It only decides where `preset list`, `--help` and the pickers show the
 preset, so a preset for `jevlint architecture` does not appear among the choices for audits.
+
+To run other presets alongside yours, name them in a top-level `includes`, as `full` does. Each keeps
+its own question ids, weights and scores, and `includes` on its own needs only `questions = []`:
+
+```toml
+name = "team"
+description = "House style plus security"
+source = "Internal engineering handbook"
+includes = ["house-style", "security"]
+questions = []
+```
 
 ### Question fields
 

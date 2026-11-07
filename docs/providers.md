@@ -144,8 +144,8 @@ account_id = "your-account-id"
 ```
 
 `CLOUDFLARE_ACCOUNT_ID` also works. Clef is Jev-compatible, and jevlint handles the difference in
-Cloudflare's response envelope. Cloudflare allows up to 64 questions per request, so jevlint reports
-an error if your active presets exceed that.
+Cloudflare's response envelope. Cloudflare allows up to 64 questions per request, so jevlint splits a
+larger set over several requests. Each one bills the file again, and `--dry-run` counts that.
 
 ### Microsoft Foundry
 

@@ -286,7 +286,8 @@ new.
 
 ## `jevlint init`
 
-Creates a config file interactively.
+Creates a config file interactively. It asks for the provider and the default presets, starting with
+`full` selected.
 
 | Flag | Description |
 | --- | --- |

@@ -41,7 +41,7 @@ describe('defaults', () => {
   it('works with no config and includes the documented agents', async () => {
     const config = await loadConfig({ cwd: repo });
     expect(config.sources).toEqual([]);
-    expect(config.presets).toEqual(['readable-code']);
+    expect(config.presets).toEqual(['full']);
     expect(config.cache.dir).toBe(join(home, 'cache', 'jevlint'));
     expect(config.agents.claude?.command[0]).toBe('claude');
     expect(config.agents.codex?.command).toContain('workspace-write');

@@ -258,6 +258,7 @@ fail_under = 60    # exit 1 below this, for CI
 
 | Preset | Focus |
 | --- | --- |
+| `full` | The default: every preset below, 97 questions in one request per file |
 | `readable-code` | Names, comments, control flow, time to understand |
 | `clean-code` | Small functions, one level of abstraction, honest error handling |
 | `solid` | The five object-oriented design principles |

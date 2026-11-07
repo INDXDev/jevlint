@@ -7,6 +7,7 @@ import { confirm, multiselect, select, text } from '@clack/prompts';
 import { defineCommand } from 'citty';
 import { saveDefaultPresets, UserError, writeFileAtomic } from '../config.ts';
 import {
+  auditChoices,
   createPreset,
   editablePreset,
   installPreset,
@@ -25,10 +26,11 @@ const REPO_ARG = {
   description: 'Write into .jevlint/presets/ instead of your user presets',
 } as const;
 
-function formatPreset({ name, description, questions, patterns, rules }: Preset): string {
+function formatPreset({ name, description, includes, questions, patterns, rules }: Preset): string {
   return [
     `${name}: ${description}`,
     '',
+    ...includes.map((included) => `  includes ${included}`),
     ...questions.map(({ id, title }) => `  ${name}.${id}  ${title}`),
     ...[...patterns, ...rules].map(({ id, message }) => `  ${id}  ${message}`),
   ].join('\n');
@@ -240,7 +242,7 @@ function parseNames(values: string[]): string[] {
 
 async function pickDefaults(): Promise<string[]> {
   const { defaults, presets } = await presetTable();
-  const forAudits = presets.filter(({ used_by }) => used_by === 'audit');
+  const forAudits = auditChoices(presets);
   return answered(
     await multiselect<string>({
       message: 'Which presets should files be audited against by default?',
