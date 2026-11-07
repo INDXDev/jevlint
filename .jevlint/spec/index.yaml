@@ -1,0 +1,57 @@
+version: 1
+name: jevlint
+description: >
+  jevlint is a model-based linter CLI in TypeScript, published to npm with a library API. It scores
+  every source file with local AST metrics and a decision model's answers to preset questions, ranks
+  files by score, git churn and size so the first is the one to refactor, reviews changes and
+  architecture, checks code and documents against a checklist spec, and hands the worst files to
+  coding agents such as Claude Code or Codex. It treats the repository it audits as untrusted input.
+checklist:
+  - id: layers-point-down
+    text: "A module never imports from a layer above it; the layers from top to bottom are interface, pipeline, engines, infrastructure and contracts (src/types.ts)."
+    source: docs/architecture.md#layers
+  - id: scoring-pure
+    text: "src/scoring.ts performs no I/O."
+    source: docs/architecture.md#layers
+  - id: ai-sdk-in-decision
+    text: "Only modules in src/decision/ import the ai or @ai-sdk packages."
+    source: docs/architecture.md#layers
+  - id: terminal-only-interface
+    text: "Only interface-layer modules write to the terminal; core modules return data or throw UserError."
+    source: docs/architecture.md#layers
+  - id: user-error
+    text: "A problem the user can fix is thrown as UserError, and any other error is treated as a bug."
+    source: docs/architecture.md#code-conventions
+  - id: plain-functions
+    text: "Code uses plain functions and data, and a class only for an error type."
+    source: docs/architecture.md#code-conventions
+  - id: snake-case-config
+    text: "Config keys are used in snake_case exactly as written in TOML, with no mapping layer."
+    source: docs/architecture.md#code-conventions
+  - id: doc-comments
+    text: "Every exported symbol has a short doc comment that says what it is for."
+    source: docs/architecture.md#code-conventions
+  - id: why-comments
+    text: "Inline comments explain why, never what."
+    source: docs/architecture.md#code-conventions
+  - id: stdout-results
+    text: "Results go to stdout, and progress, notices and warnings go to stderr."
+    source: docs/cli.md
+  - id: no-telemetry
+    text: "jevlint has no telemetry and sends nothing to a server of its own."
+    source: docs/security.md#what-leaves-your-machine
+  - id: control-characters
+    text: "Control characters and bidirectional overrides in repository paths, names and messages are printed as ? in terminal output, while --json keeps the original text."
+    source: docs/security.md#untrusted-repositories
+  - id: no-write-through-symlink
+    text: "A file written to the repository replaces a symlink at its destination rather than writing through it."
+    source: docs/security.md#untrusted-repositories
+  - id: tests-no-real-provider
+    text: "Tests never call a real provider API."
+    source: docs/architecture.md#folder-structure
+  - id: tests-named-after-module
+    text: "Each test file is named after the module it covers."
+    source: docs/architecture.md#folder-structure
+  - id: presets-are-data
+    text: "Built-in presets are TOML files in presets/ and contain no code."
+    source: docs/architecture.md#folder-structure

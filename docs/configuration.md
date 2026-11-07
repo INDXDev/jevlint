@@ -125,7 +125,7 @@ Used by [`jevlint spec`](spec-driven-development.md). These are the defaults:
 ```toml
 [spec]
 dir = ".jevlint/spec"                  # where the checklist YAML lives, inside the root
-docs = ["README.md", "docs/**/*.md"]   # documents the spec is compiled from and compared with
+docs = ["README.md", "docs/**/*.md", "docs/**/*.html"]   # documents the spec is compiled from and compared with
 ```
 
 `docs` is not limited by `include` or by source extensions, but `.gitignore`, `exclude` and the

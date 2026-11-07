@@ -9,7 +9,7 @@ and the results it returns. It is the single source of truth for the feature. Fo
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `spec.dir` | `".jevlint/spec"` | Directory holding the spec, relative to the root |
-| `spec.docs` | `["README.md", "docs/**/*.md"]` | Globs, relative to the root, for the documents the spec is compiled from and compared with |
+| `spec.docs` | `["README.md", "docs/**/*.md", "docs/**/*.html"]` | Globs, relative to the root, for the documents the spec is compiled from and compared with |
 
 Both may be set in `jevlint.toml` or in user config. `spec.dir` must stay inside the root, and a
 symlink that leads out of it is refused.

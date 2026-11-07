@@ -58,12 +58,12 @@ the answers stay focused and the cost stays low.
 ### 1. Point jevlint at your documents
 
 By default the spec lives in `.jevlint/spec/`, and the documents it is compiled from are `README.md`
-and `docs/**/*.md`. Change either in `jevlint.toml`:
+and the Markdown and HTML files under `docs/`. Change either in `jevlint.toml`:
 
 ```toml
 [spec]
 dir = ".jevlint/spec"
-docs = ["README.md", "docs/**/*.md"]
+docs = ["README.md", "docs/**/*.md", "docs/**/*.html"]
 ```
 
 ### 2. Compile the spec with a coding agent
@@ -172,4 +172,5 @@ files. See [Security and privacy](security.md).
   likely one. Split such files, or move the shared rule to the project checklist.
 - The answers come from a model, so they can be wrong. Read a violation before acting on it, and use
   `--no-cache` to ask again.
-- A long file or document is truncated at `max_file_chars`, as in an audit.
+- A long file or document is truncated at `max_file_chars`, as in an audit. HTML is sent with its
+  tags, so a heavy generated page reaches that limit sooner than its text alone would.

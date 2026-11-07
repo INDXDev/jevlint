@@ -186,7 +186,7 @@ const DEFAULTS = {
     claude: { command: ['claude', '-p', '--permission-mode', 'acceptEdits'] },
     codex: { command: ['codex', 'exec', '--sandbox', 'workspace-write', '-'] },
   },
-  spec: { dir: '.jevlint/spec', docs: ['README.md', 'docs/**/*.md'] },
+  spec: { dir: '.jevlint/spec', docs: ['README.md', 'docs/**/*.md', 'docs/**/*.html'] },
 };
 
 const xdgDir = (variable: string, fallback: string) =>
