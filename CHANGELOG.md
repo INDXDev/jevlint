@@ -4,6 +4,8 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+## 0.2.2 - 2026-11-07
+
 - Presets now work beyond `audit`. `prompt`, `fix`, `explain` and `baseline` take a preset name among
   their arguments or `--preset`, as in `jevlint prompt security --copy`, and `pr`, `commits`, `hook`
   and `test` take `--preset`. `test --record` refuses it, as a record covers every fixture.

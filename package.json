@@ -1,6 +1,6 @@
 {
   "name": "@indxjp/jevlint",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A model-based linter: ranks every file in your repo by what to refactor first, using AST metrics and decision models.",
   "keywords": [
     "linter",
