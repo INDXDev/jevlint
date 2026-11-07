@@ -1,6 +1,6 @@
 id: scoring
-title: Scoring and ranking
-summary: The pure formulas in src/scoring.ts that convert AST findings and model answers into compliance, file scores, the line-weighted repository score and the churn and size priority that orders the ranking.
+title: "Scoring, AST metrics and pins"
+summary: "How jevlint scores a file and ranks files, as docs/scoring.md describes: the AST metrics and their limits, pattern and rule penalties, model compliance, the file and repository scores, the refactor priority, and jevlint-score pins. Code in src/scoring.ts, src/ast/ and src/directives.ts."
 checklist:
   - id: sub-score
     text: "Each AST metric's sub-score is min(1, limit / worst value in the file)."
@@ -32,24 +32,72 @@ checklist:
   - id: norms
     text: "churn_norm is log(1 + commits) / log(1 + max_commits) with commits counted over churn_days, and size_norm is the same calculation on line counts."
     source: docs/scoring.md#priority
-  - id: priority-defaults
-    text: "Priority defaults are churn 0.5, size 0.25 and churn_days 180."
-    source: docs/configuration.md#full-example
   - id: no-git-churn
     text: "Outside a git repository, churn is 0."
     source: docs/scoring.md#priority
   - id: scale
     text: "Scores run from 0 to 1 internally and are displayed on scoring.scale with scoring.precision decimal places."
     source: docs/scoring.md#scale
-  - id: weak-answer
-    text: "An answer with compliance below 0.7 is weak."
-    source: docs/cli.md#output-formats
-  - id: fail-under
-    text: "An audit exits 1 when the repository score is below fail_under, and fail_under 0 disables the check."
-    source: docs/configuration.md#full-example
   - id: after-cache
     text: "Weights, scoring and priority settings apply after the cache, so changing them sends no request."
     source: docs/caching.md#what-invalidates-an-entry
-  - id: zero-weight
-    text: "A question with weight 0 is not asked."
-    source: docs/presets.md#tuning
+  - id: cognitive-complexity
+    text: "Each branch or loop adds 1 plus its nesting depth to cognitive complexity, and each run of logical operators adds 1."
+    source: docs/scoring.md#ast-score
+  - id: receiver-not-param
+    text: "A receiver such as self is not counted as a parameter."
+    source: docs/scoring.md#ast-score
+  - id: exact-languages
+    text: "TypeScript, JavaScript, Python, Go and Rust get exact metrics from an ast-grep grammar."
+    source: docs/scoring.md#languages-without-a-grammar
+  - id: fallback-lexical
+    text: "A source file with no grammar gets the same metrics approximated from keywords and indentation, in one pass and with no dependency."
+    source: docs/architecture.md#design-decisions
+  - id: fallback-function-detection
+    text: "The fallback finds functions by keywords such as def, func and function, by assignments of them, and by C-style declarations followed by a block."
+    source: docs/scoring.md#languages-without-a-grammar
+  - id: fallback-no-complexity
+    text: "In the fallback, case labels, do loops and ternaries add no complexity."
+    source: docs/scoring.md#languages-without-a-grammar
+  - id: fallback-unplaced
+    text: "The fallback does not measure code it cannot place in a function."
+    source: docs/scoring.md#languages-without-a-grammar
+  - id: fallback-no-function
+    text: "analyzeGeneric returns null when it finds no function, and such a file within max_file_lines gets no AST score."
+    source: docs/code-reference.md#engines
+  - id: fallback-approximate
+    text: "A fallback result is marked approximate, and the terminal shows its score as AST ~."
+    source: docs/scoring.md#languages-without-a-grammar
+  - id: fallback-no-patterns
+    text: "[[patterns]] and [[rules]] do not apply to files with no grammar."
+    source: docs/scoring.md#languages-without-a-grammar
+  - id: two-forms
+    text: "jevlint-score <value> pins the whole file, and jevlint-score <preset>.<id> <value> pins one question."
+    source: docs/scoring.md#pinning-scores
+  - id: syntax
+    text: "A pin is a comment on a line of its own using //, #, -- or /* */, and requires a reason after ' -- '."
+    source: docs/scoring.md#pinning-scores
+  - id: scale-values
+    text: "Pin values use the configured scale."
+    source: docs/scoring.md#pinning-scores
+  - id: removed-before-sending
+    text: "jevlint-score lines are removed from a file or rule match before it is sent to a model, so a pin does not change the cache key."
+    source: docs/scoring.md#pinning-scores
+  - id: whole-file-effect
+    text: "A whole-file pin sets the file score to the pinned value, sends no model request, runs no semantic rules, and gives the file priority 0."
+    source: docs/scoring.md#pinning-scores
+  - id: whole-file-ast
+    text: "AST analysis still runs on a file with a whole-file pin."
+    source: docs/scoring.md#pinning-scores
+  - id: question-pin
+    text: "A question pin replaces that question's answer, and the file score is recalculated with it."
+    source: docs/scoring.md#pinning-scores
+  - id: malformed
+    text: "A malformed pin, or one for an unknown question, is ignored and shown as a warning in jevlint explain."
+    source: docs/scoring.md#pinning-scores
+  - id: counts-in-repo
+    text: "Pinned scores count towards the repository score."
+    source: docs/scoring.md#pinning-scores
+  - id: ignore-pins
+    text: "--ignore-pins scores files as if no jevlint-score comment existed."
+    source: docs/cli.md#jevlint-audit-paths

@@ -1,6 +1,6 @@
 id: caching
-title: Answer cache
-summary: Stores raw model answers on disk under content-addressed SHA-256 keys in src/cache.ts, and optionally reads and writes them through an S3-compatible bucket signed with SigV4 in src/remote-cache.ts, backing jevlint cache.
+title: "Answer cache"
+summary: "The model answer cache, as docs/caching.md describes: content-addressed answers on disk, the shared S3-compatible bucket, and jevlint cache. Code in src/cache.ts and src/remote-cache.ts."
 checklist:
   - id: location
     text: "The cache lives in ~/.cache/jevlint/, moved by JEVLINT_CACHE_DIR, XDG_CACHE_HOME or cache.dir."
@@ -50,9 +50,9 @@ checklist:
   - id: ast-only-no-bucket
     text: "--ast-only never touches the bucket."
     source: docs/caching.md#share-the-cache-through-object-storage
-  - id: sigv4
-    text: "Bucket GET and PUT requests are signed with SigV4 using node:crypto, with no AWS SDK."
-    source: docs/architecture.md#design-decisions
   - id: clear-local-only
     text: "cache clear deletes only the local directory, and cache info shows the location, entry count, size and bucket."
     source: docs/cli.md#jevlint-cache
+  - id: ast-not-cached
+    text: "AST analysis always runs fresh and is never cached."
+    source: docs/caching.md#what-invalidates-an-entry

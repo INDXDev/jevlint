@@ -1,6 +1,6 @@
 id: presets
-title: Presets
-summary: Loads and validates principle presets of questions, patterns and rules from the repository, user and built-in sources in src/presets.ts, applies weights and includes, picks presets named in arguments, and backs the jevlint preset command.
+title: "Presets, rules and fixtures"
+summary: "Principle presets, as docs/presets.md describes: the built-in presets, writing questions with levels and weights, [[patterns]] and [[rules]], the preset commands, and testing questions with fixtures and jevlint test. Code in src/presets.ts, src/rules.ts and src/fixtures.ts."
 checklist:
   - id: lookup-order
     text: "When preset names collide, the repository preset wins over the user preset, which wins over the built-in one."
@@ -35,18 +35,9 @@ checklist:
   - id: preset-arguments
     text: "An argument that names a preset and no existing path selects that preset, replacing the configured ones for that run."
     source: docs/presets.md#choosing-presets
-  - id: close-name
-    text: "An argument that is neither a path nor a preset but close to a preset name stops with a suggestion."
-    source: docs/cli.md#jevlint-audit-paths
-  - id: builtin-not-removable
-    text: "Built-in presets cannot be removed."
-    source: docs/cli.md#jevlint-preset
   - id: edit-copies-builtin
     text: "preset edit copies a built-in preset to the user presets, or to .jevlint/presets/ with --repo, before opening it."
     source: docs/cli.md#jevlint-preset
-  - id: editor-no-shell
-    text: "preset new and preset edit start $VISUAL or $EDITOR without a shell, passing the preset's path as one argument."
-    source: docs/security.md#untrusted-repositories
   - id: repo-symlink
     text: "A symlink in .jevlint/presets/ that leads outside the repository is an error."
     source: docs/security.md#untrusted-repositories
@@ -59,3 +50,66 @@ checklist:
   - id: install-locations
     text: "preset add copies a file to ~/.config/jevlint/presets/, or to .jevlint/presets/ with --repo."
     source: docs/presets.md#installing-presets
+  - id: required-fields
+    text: "A rule requires id, language, pattern, question, message and fix."
+    source: docs/presets.md#semantic-rules
+  - id: id-not-builtin
+    text: "A rule id is unique in its preset or config and is not a built-in finding such as nesting."
+    source: docs/presets.md#semantic-rules
+  - id: yes-violation
+    text: "A yes answer to a rule's question means a violation."
+    source: docs/presets.md#semantic-rules
+  - id: threshold
+    text: "A match is reported when its probability is at or above threshold, which defaults to 0.8."
+    source: docs/presets.md#semantic-rules
+  - id: matched-text-only
+    text: "The model sees only the matched text, with no path or surrounding code, and with pins removed."
+    source: docs/presets.md#semantic-rules
+  - id: one-request-per-match
+    text: "Each match is one request, made through decideFile with the match as its state."
+    source: docs/architecture.md#design-decisions
+  - id: max-matches
+    text: "At most max_rule_matches matches per rule are judged in a file, in source order, and a warning says when the rest were skipped."
+    source: docs/presets.md#semantic-rules
+  - id: hit-is-finding
+    text: "A hit is an AST finding with the rule's id, a probability and a fix, and no value or limit."
+    source: docs/json-output.md#notes
+  - id: tuning-free
+    text: "Changing threshold, message or fix sends no new request."
+    source: docs/presets.md#semantic-rules
+  - id: when-skipped
+    text: "Rules do not run with --ast-only, with no key, on a file with a whole-file pin, or on a file with no grammar."
+    source: docs/presets.md#semantic-rules
+  - id: bad-pattern
+    text: "A pattern that ast-grep rejects is an error naming the rule."
+    source: docs/presets.md#semantic-rules
+  - id: failed-request
+    text: "A failed rule request is a warning on the file, and its match counts as no hit."
+    source: docs/presets.md#semantic-rules
+  - id: layout
+    text: "Fixtures live in .jevlint/fixtures/<full question id>/ and are named good-*.<ext> or bad-*.<ext>, and anything else there is ignored."
+    source: docs/presets.md#testing-a-question
+  - id: thresholds
+    text: "A good fixture passes at compliance 0.7 or more, and a bad fixture passes below 0.7."
+    source: docs/cli.md#jevlint-test-questions
+  - id: own-question
+    text: "Each fixture is sent with only its own question."
+    source: docs/cli.md#jevlint-test-questions
+  - id: active-only
+    text: "Named question ids must be active and have fixtures, and fixture directories naming no active question get a warning."
+    source: docs/cli.md#jevlint-test-questions
+  - id: record
+    text: "--record writes every fixture's provider, model and compliance to .jevlint/calibration.json with no timestamps, and takes no question ids or --preset."
+    source: docs/presets.md#testing-a-question
+  - id: drift-limit
+    text: "--drift lists fixtures whose compliance moved by --drift-limit or more, default 0.1."
+    source: docs/cli.md#jevlint-test-questions
+  - id: symlinks
+    text: "test refuses a fixture, fixture directory, .jevlint or record that links outside the repository."
+    source: docs/security.md#untrusted-repositories
+  - id: zero-weight
+    text: "A question with weight 0 is not asked."
+    source: docs/presets.md#tuning
+  - id: repository-wins-presets
+    text: "The presets key in jevlint.toml wins over the user config."
+    source: docs/presets.md#choosing-presets

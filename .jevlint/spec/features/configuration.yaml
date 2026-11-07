@@ -1,6 +1,6 @@
 id: configuration
-title: Configuration
-summary: Finds the root and merges built-in defaults, the user config.toml, the repository jevlint.toml and flags into one validated config, refusing user-only keys in a repository, and backs jevlint config and jevlint init.
+title: "Configuration and file discovery"
+summary: "The settings in jevlint.toml and the user config.toml, as docs/configuration.md describes: config layers, defaults, user-only keys, init and config show, and which files an audit reads through include, exclude, .gitignore and the built-in exclusions. Code in src/config.ts and src/files.ts."
 checklist:
   - id: layer-order
     text: "Config layers apply in the order defaults, user config, repository config, flags, and later layers win."
@@ -35,18 +35,51 @@ checklist:
   - id: base-url-env
     text: "JEVLINT_BASE_URL overrides provider.base_url."
     source: docs/configuration.md#environment-variables
-  - id: base-url-own-provider
-    text: "A base_url in the user config applies only to the provider named beside it."
-    source: docs/security.md#untrusted-repositories
-  - id: repository-wins-presets
-    text: "The presets key in jevlint.toml wins over the user config."
-    source: docs/presets.md#choosing-presets
   - id: config-show
     text: "config show prints the merged config as TOML without secrets, and config path prints the config files in the order they apply."
     source: docs/cli.md#jevlint-config
-  - id: init-flags
-    text: "init writes jevlint.toml, or ~/.config/jevlint/config.toml with --user, accepts defaults with --yes, and replaces an existing file only with --force."
-    source: docs/cli.md#jevlint-init
-  - id: init-full-first
-    text: "init asks for the provider and default presets, with full selected first."
-    source: docs/cli.md#jevlint-init
+  - id: source-extensions
+    text: "Only files with an extension in SOURCE_EXTENSIONS are audited, and include or path arguments cannot widen this."
+    source: docs/configuration.md#files-that-are-always-excluded
+  - id: secret-files
+    text: "Files matching .env*, *.pem, *.key, *.p12, *.pfx, id_rsa*, *credentials* or *secret* are never read."
+    source: docs/configuration.md#files-that-are-always-excluded
+  - id: generated-files
+    text: "node_modules, dist, build, vendor, target, coverage and *.min.* are never read."
+    source: docs/configuration.md#files-that-are-always-excluded
+  - id: fixtures-excluded
+    text: ".jevlint/fixtures/ is never audited."
+    source: docs/configuration.md#files-that-are-always-excluded
+  - id: binary-files
+    text: "Binary files are never read."
+    source: docs/configuration.md#files-that-are-always-excluded
+  - id: exclude-adds
+    text: "exclude globs add to .gitignore and the built-in exclusions rather than replacing them."
+    source: docs/configuration.md#full-example
+  - id: warn-file-count
+    text: "When more than warn_file_count files are in scope, a warning goes to stderr and the run carries on."
+    source: docs/troubleshooting.md#a-warning-about-the-home-directory-or-the-number-of-files
+  - id: limits
+    text: "Default limits are max_fan_out 12, max_hub_links 5, max_directory_files 20, max_class_methods 20, max_class_lines 300 and max_inheritance_depth 3."
+    source: docs/configuration.md#architecture-limits
+  - id: hub-links
+    text: "A file's hub links are the lower of its import count and its user count."
+    source: docs/configuration.md#architecture-limits
+  - id: debug-stack
+    text: "With DEBUG set to any value, an unexpected error prints its stack trace."
+    source: docs/configuration.md#environment-variables
+  - id: truncate
+    text: "Content longer than max_file_chars is cut before sending, and the file gets a warning."
+    source: docs/configuration.md#top-level-keys
+  - id: priority-defaults
+    text: "Priority defaults are churn 0.5, size 0.25 and churn_days 180."
+    source: docs/configuration.md#full-example
+  - id: fail-under
+    text: "An audit exits 1 when the repository score is below fail_under, and fail_under 0 disables the check."
+    source: docs/configuration.md#full-example
+  - id: metric-limits
+    text: "Default limits are max_cognitive_complexity 15, max_nesting 4, max_function_lines 60, max_params 4 and max_file_lines 400."
+    source: docs/configuration.md#full-example
+  - id: concurrency
+    text: "Parallel provider requests are capped at concurrency."
+    source: docs/configuration.md#top-level-keys

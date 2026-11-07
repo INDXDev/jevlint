@@ -1,37 +1,13 @@
 id: reports
-title: Audit output
-summary: Renders an audit and a dry run for people and tools, in src/report.ts and src/formats.ts, as the terminal table, explain, the JSON report, SARIF 2.1.0 and GitHub workflow commands.
+title: "Output formats"
+summary: "The machine-readable reports, as docs/json-output.md and the CI guide docs/ci.md describe: the --json report and its fields, dry runs, explain, SARIF 2.1.0 for code scanning and GitHub workflow annotations. Code in src/report.ts and src/formats.ts."
 checklist:
-  - id: top-default
-    text: "audit shows 20 rows by default, set by --top, while --json always includes every file."
-    source: docs/cli.md#jevlint-audit-paths
   - id: json-sorted
     text: "audit --json prints one object whose files are sorted by priority, highest first."
     source: docs/json-output.md
   - id: json-alias
     text: "--format json is the same as --json."
     source: docs/json-output.md
-  - id: formats
-    text: "--format accepts text, json, sarif and github, and --dry-run accepts only text and json."
-    source: docs/cli.md#jevlint-audit-paths
-  - id: format-exit-code
-    text: "--format never changes the exit code."
-    source: docs/cli.md#output-formats
-  - id: ci-issue-placement
-    text: "SARIF and github formats list AST findings on their line, and weak, unpinned answers on line 1 of their file with the question id as the rule."
-    source: docs/cli.md#output-formats
-  - id: sarif-one-run
-    text: "--format sarif prints a SARIF 2.1.0 log with one run, with percent-encoded paths."
-    source: docs/cli.md#output-formats
-  - id: github-warning
-    text: "--format github prints one ::warning workflow command per issue."
-    source: docs/cli.md#output-formats
-  - id: github-escaping
-    text: "--format github escapes line breaks in repository text and : and , in properties, and removes other control characters."
-    source: docs/security.md#untrusted-repositories
-  - id: relative-paths
-    text: "Paths in output are relative to the jevlint root."
-    source: docs/cli.md#output-formats
   - id: json-score-ranges
     text: "In JSON, top-level and file score use the configured scale, while ast.score, model.score, compliance and presets values run from 0 to 1."
     source: docs/json-output.md#notes
@@ -50,9 +26,15 @@ checklist:
   - id: dry-run-json
     text: "audit --dry-run --json prints files, skipped, chars, estimatedTokens and estimatedCostUsd."
     source: docs/json-output.md#dry-run
-  - id: dry-run-no-requests
-    text: "--dry-run lists files and estimates tokens and cost with no provider requests."
-    source: docs/cli.md#jevlint-audit-paths
-  - id: explain
-    text: "explain shows a file's score, its worst AST findings with line numbers, and every question's compliance, worst first, and --json prints one entry of files."
-    source: docs/cli.md#jevlint-explain-file
+  - id: new-json
+    text: "audit --new --json keeps only files with something new, and only the new findings and answers in them, while scores, skipped and usage still describe the whole run."
+    source: docs/json-output.md#new-issues
+  - id: json-array
+    text: "pr --json and commits --json print an array with one object per change, newest first, with before null for a new file."
+    source: docs/json-output.md#change-reviews
+  - id: rule-usage
+    text: "A file with a rule answer carries ruleUsage with inputTokens, cacheHits and modelCalls, which usage includes."
+    source: docs/json-output.md#notes
+  - id: json-results
+    text: "test --json results hold question, file, expected, compliance and passed, sorted by question then file, plus recorded and moved with --drift."
+    source: docs/json-output.md#fixture-results

@@ -1,6 +1,6 @@
 id: spec
-title: Spec-driven development
-summary: jevlint spec, in src/spec/, loads the YAML checklist spec from .jevlint/spec/, prints the compile prompt for a coding agent, and judges code files (check) and documents (drift) against it in two requests each.
+title: "Spec-driven development"
+summary: "Spec-driven development, as docs/spec-driven-development.md and docs/spec-reference.md describe: the YAML checklist spec in .jevlint/spec/, jevlint spec compile, check, drift and list, and their questions and results. Code in src/spec/."
 checklist:
   - id: defaults
     text: "spec.dir defaults to .jevlint/spec and spec.docs to README.md, docs/**/*.md and docs/**/*.html."
@@ -62,6 +62,9 @@ checklist:
   - id: check-score
     text: "A file's spec score is satisfied items over satisfied plus violated items on scoring.scale, and is null when no item applied."
     source: docs/spec-reference.md#check
+  - id: threshold
+    text: "A violates or contradicts verdict less confident than spec.threshold, default 0, is dropped as if unanswered, while satisfies and agrees are kept at any confidence."
+    source: docs/spec-reference.md#check
   - id: check-order
     text: "spec check lists files by number of violations, most first, then by score, lowest first."
     source: docs/spec-reference.md#check
@@ -74,8 +77,11 @@ checklist:
   - id: drift-discovery
     text: "spec drift reads files matching spec.docs with .gitignore, exclude and the built-in exclusions, but not include or the source-extension filter."
     source: docs/spec-reference.md#drift
+  - id: check-report-all
+    text: "The spec check report lists every file with its checklist, routing confidence, verdict counts and score, and --verbose adds every item's verdict and confidence."
+    source: docs/spec-reference.md#check
   - id: drift-checklist-first
-    text: "drift's compare state puts the routed checklist before the document, so truncation cuts the document, never the checklist."
+    text: "drift's compare state puts the routed checklist, then every item of the other checklists, before the document, so truncation cuts the document, never a checklist."
     source: docs/spec-reference.md#drift
   - id: drift-options
     text: "Each drift item question offers agrees, contradicts and absent, and uncovered is a boolean question."
@@ -96,8 +102,50 @@ checklist:
     text: "spec check and spec drift need a decision model and have no AST-only fallback."
     source: docs/spec-driven-development.md#commands
   - id: ids-not-paths
-    text: "Feature ids are never used to build a path."
+    text: "jevlint finds feature files by listing features/ and checks each id against its file name, rather than building a path from an id."
     source: docs/spec-reference.md#security
   - id: decide-state
     text: "Spec requests go through decideState, so the cache key covers the provider, model, endpoint, every question with its options, and the state."
     source: docs/architecture.md#design-decisions
+  - id: drift-report-all
+    text: "The spec drift report lists every document with its checklist, routing confidence, verdict counts and uncovered score, and --verbose adds every item's verdict and confidence."
+    source: docs/spec-reference.md#drift
+  - id: accept-uncovered
+    text: "A document named in accept_uncovered, with a required reason, is still asked but never counts as uncovered, and a full run warns about an entry that names no document."
+    source: docs/spec-reference.md#accepting-an-uncovered-document
+  - id: compile-named-docs
+    text: "spec compile with document paths lists only those documents in the prompt, instead of every file matching spec.docs."
+    source: docs/spec-driven-development.md#2-compile-the-spec-with-a-coding-agent
+  - id: compile-keep-ids
+    text: "When a spec already exists, the compile prompt tells the agent to update its files in place and keep the id of every item whose meaning did not change."
+    source: docs/spec-driven-development.md#5-keep-the-three-in-agreement
+  - id: fix-prompts
+    text: "spec check --copy and spec drift --copy print the report as usual and also copy a prompt asking a coding agent to fix what was found."
+    source: docs/spec-driven-development.md#4-check-the-documents-against-the-spec
+  - id: truncation
+    text: "A code file or document longer than max_file_chars is cut before it is sent, and gets a truncation warning."
+    source: docs/spec-driven-development.md#limits
+  - id: one-feature-per-file
+    text: "Each file or document is routed to exactly one feature, or to global."
+    source: docs/spec-driven-development.md#limits
+  - id: check-prompt
+    text: "The check fix prompt lists each file's violated items and the unimplemented items, and tells the agent to change the code, never the spec or the documents."
+    source: docs/spec-reference.md#fix-prompts
+  - id: drift-prompt
+    text: "The drift fix prompt tells the agent to change the documents or the spec, never the code, and never to add to accept_uncovered."
+    source: docs/spec-reference.md#fix-prompts
+  - id: prompt-paths-only
+    text: "Fix prompts name paths and quote item texts, never file contents, and with nothing found a fix prompt is one line saying so."
+    source: docs/spec-reference.md#fix-prompts
+  - id: json-feature
+    text: 'In spec JSON, feature is "global" for a file or document routed to no feature, and null when it got no answer.'
+    source: docs/spec-reference.md#json-output
+  - id: json-items-order
+    text: "In spec check JSON, a file's items list every judged item, project items first."
+    source: docs/spec-reference.md#json-output
+  - id: list-json
+    text: "spec list --json prints dir, index and features, with the keys of the YAML files."
+    source: docs/spec-reference.md#json-output
+  - id: docs-keep-secret-exclusions
+    text: "spec.docs cannot widen document discovery past the built-in secret exclusions, so even **/* never sends .env or a key file."
+    source: docs/spec-reference.md#security

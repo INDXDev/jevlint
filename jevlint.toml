@@ -1,1 +1,4 @@
 exclude = ["examples/**", "test/**"]
+
+[spec]
+threshold = 0.8

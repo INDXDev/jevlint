@@ -2,10 +2,8 @@ version: 1
 name: jevlint
 description: >
   jevlint is a model-based linter CLI in TypeScript, published to npm with a library API. It scores
-  every source file with local AST metrics and a decision model's answers to preset questions, ranks
-  files by score, git churn and size so the first is the one to refactor, reviews changes and
-  architecture, checks code and documents against a checklist spec, and hands the worst files to
-  coding agents such as Claude Code or Codex. It treats the repository it audits as untrusted input.
+  source files with local AST metrics and a decision model, and ranks what to refactor first. It treats
+  the repository it audits as untrusted input.
 checklist:
   - id: layers-point-down
     text: "A module never imports from a layer above it; the layers from top to bottom are interface, pipeline, engines, infrastructure and contracts (src/types.ts)."
@@ -17,7 +15,7 @@ checklist:
     text: "Only modules in src/decision/ import the ai or @ai-sdk packages."
     source: docs/architecture.md#layers
   - id: terminal-only-interface
-    text: "Only interface-layer modules write to the terminal; core modules return data or throw UserError."
+    text: "Inside jevlint's own src/, only interface-layer modules write to the terminal; core modules and the library API return data or throw UserError."
     source: docs/architecture.md#layers
   - id: user-error
     text: "A problem the user can fix is thrown as UserError, and any other error is treated as a bug."
@@ -35,10 +33,10 @@ checklist:
     text: "Inline comments explain why, never what."
     source: docs/architecture.md#code-conventions
   - id: stdout-results
-    text: "Results go to stdout, and progress, notices and warnings go to stderr."
+    text: "The CLI prints results to stdout, and progress, notices and warnings to stderr, while the library API prints nothing and returns warnings as data."
     source: docs/cli.md
   - id: no-telemetry
-    text: "jevlint has no telemetry and sends nothing to a server of its own."
+    text: "jevlint has no telemetry: code leaves the machine only for the configured model provider or cache bucket, never for a server run by jevlint."
     source: docs/security.md#what-leaves-your-machine
   - id: control-characters
     text: "Control characters and bidirectional overrides in repository paths, names and messages are printed as ? in terminal output, while --json keeps the original text."
@@ -55,3 +53,113 @@ checklist:
   - id: presets-are-data
     text: "Built-in presets are TOML files in presets/ and contain no code."
     source: docs/architecture.md#folder-structure
+  - id: rerun-audit
+    text: "prompt, fix and explain re-run audit() rather than reading a stored report."
+    source: docs/architecture.md#design-decisions
+  - id: sigv4
+    text: "Bucket GET and PUT requests are signed with SigV4 using node:crypto, with no AWS SDK."
+    source: docs/architecture.md#design-decisions
+  - id: user-error-no-stack
+    text: "A UserError prints its message without a stack trace and exits with code 2."
+    source: docs/code-reference.md#usererror
+  - id: validated
+    text: ".jevlint/baseline.json is validated before use."
+    source: docs/security.md#untrusted-repositories
+  - id: symlink-outside
+    text: "A symlink to the baseline, or from .jevlint, that leads outside the repository is an error for reading and for writing."
+    source: docs/security.md#untrusted-repositories
+  - id: unsafe-paths
+    text: "A changed path containing .., .git or .gitignore is not written to the snapshot directory."
+    source: docs/security.md#untrusted-repositories
+  - id: intent-diff-tree
+    text: "--intent reads diffs with git diff-tree with external diff and textconv programs off."
+    source: docs/security.md#untrusted-repositories
+  - id: lazy-fetch-off
+    text: "pr and commits read blobs with lazy fetching off, so in a partial clone a file whose old version is missing looks new, and --intent stops with an error."
+    source: docs/security.md#untrusted-repositories
+  - id: resolve-links
+    text: "hook resolves links in the path it is given, and passes any file outside the root unread."
+    source: docs/security.md#untrusted-repositories
+  - id: hooks-path
+    text: "init --pre-commit refuses a core.hooksPath that leads out of the repository, even through a symlink."
+    source: docs/security.md#untrusted-repositories
+  - id: base-url-own-provider
+    text: "A base_url in the user config applies only to the provider named beside it."
+    source: docs/security.md#untrusted-repositories
+  - id: gitignore-from-top
+    text: ".gitignore files apply from the top of the git repository down, even when jevlint.toml is in a subdirectory."
+    source: docs/security.md#protecting-secrets-in-code
+  - id: no-info-exclude
+    text: ".git/info/exclude and core.excludesFile are not applied."
+    source: docs/security.md#protecting-secrets-in-code
+  - id: no-symlink-escape
+    text: "Discovery never follows a symlink out of the root, even through include."
+    source: docs/security.md#untrusted-repositories
+  - id: warn-home
+    text: "When the root is the home directory and no paths were given, a warning goes to stderr and the run carries on."
+    source: docs/troubleshooting.md#a-warning-about-the-home-directory-or-the-number-of-files
+  - id: editor-no-shell
+    text: "preset new and preset edit start $VISUAL or $EDITOR without a shell, passing the preset's path as one argument."
+    source: docs/security.md#untrusted-repositories
+  - id: raw-source-lines
+    text: "Matches come from the raw source, so their line numbers are true."
+    source: docs/architecture.md#design-decisions
+  - id: record-validated
+    text: "jevlint test validates .jevlint/calibration.json before using it."
+    source: docs/security.md#untrusted-repositories
+  - id: one-jev-path
+    text: "cloudflare, microsoft and compatible reuse the TypeSafe provider with a different base URL."
+    source: docs/architecture.md#design-decisions
+  - id: one-request
+    text: "An audit sends each file on its own, with every active question in a single request, and semantic rules add one request per match."
+    source: docs/concepts.md#one-file-one-request
+  - id: never-printed
+    text: "Keys are never printed by auth list, config show or error messages."
+    source: docs/security.md#api-keys
+  - id: no-dotenv
+    text: "jevlint does not read a .env file."
+    source: docs/ci.md#review-with-a-model
+  - id: github-escaping
+    text: "--format github escapes line breaks in repository text and : and , in properties, and removes other control characters."
+    source: docs/security.md#untrusted-repositories
+  - id: pattern-finding
+    text: "Each [[patterns]] match is a finding with a line number."
+    source: docs/extending.md#ast-patterns
+  - id: parser-location
+    text: "Grammars are registered from dist/parsers/, or from node_modules when running from source."
+    source: docs/architecture.md#design-decisions
+  - id: sequential-matches
+    text: "A semantic rule's matches within one file are judged one at a time, so concurrency stays the limit for the whole run."
+    source: docs/architecture.md#design-decisions
+  - id: bare-repository
+    text: "git runs with safe.bareRepository=explicit, so a bare repository committed inside the tree is ignored."
+    source: docs/security.md#untrusted-repositories
+  - id: git-log-safe
+    text: "git log runs with signature display and lazy fetching off, so a repository's git config cannot start gpg.program or an upload pack."
+    source: docs/security.md#untrusted-repositories
+  - id: env-key-not-allowed
+    text: "When a provider's key is set in the environment but environment keys were never allowed, pr ignores it, prints a notice on stderr naming jevlint auth env on, runs AST-only and exits 0."
+    source: docs/ci.md#review-with-a-model
+  - id: pr-annotations
+    text: "pr --format github annotates only what the pull request made worse."
+    source: docs/ci.md#annotate-a-pull-request
+  - id: patterns-anywhere
+    text: "[[patterns]] entries may be set in jevlint.toml or in a preset."
+    source: docs/extending.md#ast-patterns
+  - id: library-audit-json
+    text: "The library's audit() returns the same report object that --json prints."
+    source: docs/extending.md#library-api
+  - id: grammar-adds
+    text: "A language listed only in SOURCE_EXTENSIONS gets approximate metrics and the model, and an ast-grep grammar adds exact metrics, [[patterns]], [[rules]] and the architecture review."
+    source: docs/extending.md#adding-a-language
+accept_uncovered:
+  - path: docs/README.md
+    reason: A table of links to the other pages; it states no rules of its own.
+  - path: README.md
+    reason: The project overview; it summarises the other pages, where each rule is stated and checked.
+  - path: docs/getting-started.md
+    reason: A tutorial that walks through commands documented in cli.md, configuration.md and providers.md.
+  - path: docs/concepts.md
+    reason: Explains how the parts fit together; the rules it mentions are stated in the topic pages.
+  - path: docs/troubleshooting.md
+    reason: Symptoms and fixes that point to the pages where each behaviour is specified.

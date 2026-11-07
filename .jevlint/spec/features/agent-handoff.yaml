@@ -1,9 +1,9 @@
 id: agent-handoff
-title: Agent hand-off
-summary: Turns audit findings into a Markdown fix prompt with jevlint prompt in src/prompt.ts, and with jevlint fix in src/agent.ts runs a coding agent such as Claude Code or Codex on the worst files one at a time and re-scores them.
+title: "Agent hand-off"
+summary: "Handing the worst files to a coding agent, as docs/agents.md describes: jevlint prompt prints a fix prompt, and jevlint fix runs Claude Code, Codex or another agent on them. Code in src/prompt.ts and src/agent.ts."
 checklist:
   - id: prompt-contents
-    text: "The fix prompt names each file with its score, its AST findings with line numbers and its weakest principles with fix guidance, and tells the agent to preserve behaviour and run the tests."
+    text: "The prompt jevlint prompt prints names each file with its score, AST findings with line numbers and the weakest principles with fix guidance, and instructs the agent to preserve behaviour and run the tests."
     source: docs/agents.md#copy-and-paste
   - id: no-file-contents
     text: "The fix prompt contains file paths but no file contents."
@@ -14,9 +14,6 @@ checklist:
   - id: no-pin-edits
     text: "The prompt tells agents not to add or change jevlint-score comments."
     source: docs/agents.md#copy-and-paste
-  - id: prompt-top
-    text: "prompt and fix take the highest-priority files with issues when no files are named, one by default, or --top."
-    source: docs/cli.md#jevlint-prompt-files
   - id: prompt-copy
     text: "prompt --copy copies the prompt to the clipboard instead of printing it."
     source: docs/cli.md#jevlint-prompt-files
@@ -41,6 +38,6 @@ checklist:
   - id: user-only-agents
     text: "Agents are configured only in the user config."
     source: docs/agents.md#adding-an-agent
-  - id: rerun-audit
-    text: "prompt, fix and explain re-run audit() rather than reading a stored report."
-    source: docs/architecture.md#design-decisions
+  - id: custom-agent
+    text: "Any command that reads a prompt from stdin can be added as an agent under [agents.<name>] and run with fix --agent <name>."
+    source: docs/agents.md#adding-an-agent
