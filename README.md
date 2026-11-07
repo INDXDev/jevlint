@@ -267,6 +267,7 @@ fail_under = 60    # exit 1 below this, for CI
 | `kiss-dry-yagni` | Simplicity, duplication, speculative code |
 | `security` | Input validation, injection, secrets, access checks, safe failure |
 | `documentation` | File purpose, doc comments on public code, stated contracts, accurate docs |
+| `bug-hunt` | 43 known defect classes, from CWE and other taxonomies, to rank where bugs hide |
 
 Presets paraphrase publicly discussed principles in our own words. They are not affiliated with or
 endorsed by the original authors or publishers. See [docs/presets.md](docs/presets.md).

@@ -40,6 +40,12 @@ beforeEach(async () => {
 afterEach(() => rm(dir, { recursive: true }));
 
 describe('decideFile', () => {
+  it('gives every request a time limit', async () => {
+    const doDecide = vi.fn<MockModel['doDecide']>(answer);
+    await decideFile({ resolved: resolvedWith(doDecide), questions, source: 's', config });
+    expect(doDecide.mock.calls[0]?.[0].abortSignal).toBeInstanceOf(AbortSignal);
+  });
+
   it('asks once for identical files in flight, and counts the tokens once', async () => {
     const doDecide = vi.fn<MockModel['doDecide']>(answer);
     const options = { resolved: resolvedWith(doDecide), questions, source: 'same', config };

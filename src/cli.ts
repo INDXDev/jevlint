@@ -131,6 +131,9 @@ function asUsageError(error: Error, command: CommandDef): Error {
 const PRESET_EXAMPLES = `Examples:
   jevlint audit security            Audit with one preset
   jevlint audit security solid src  Two presets, on src only
+  jevlint audit bug-hunt            Rank files by how likely they are to hide bugs
+  jevlint prompt security --copy    Build a fix prompt from one preset
+  jevlint pr 42 --preset bug-hunt   Review a pull request with one preset
   jevlint preset                    Pick a preset, then show, edit or make it a default
   jevlint preset default            Choose the presets every audit uses
   jevlint preset new house-style    Write your own preset`;
@@ -139,9 +142,9 @@ const PRESET_EXAMPLES = `Examples:
 async function helpFooter(command: CommandDef): Promise<string> {
   const name = commandName(command);
   if (name === 'jevlint') {
-    return 'Presets choose what an audit checks. See them with: jevlint preset list';
+    return 'Presets choose what a command checks. See them with: jevlint preset list';
   }
-  if (!['jevlint audit', 'jevlint init', 'jevlint preset'].includes(name)) return '';
+  if (name !== 'jevlint preset' && !('preset' in ((command.args ?? {}) as ArgsDef))) return '';
   // Help must still work in a directory whose config is broken.
   const list = await formatPresetList().catch(() => 'Run jevlint preset list to see them.');
   return `Presets:\n\n${list}\n\n${PRESET_EXAMPLES}`;

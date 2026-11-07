@@ -4,7 +4,9 @@ import { UserError } from '../config.ts';
 import { DEFAULT_DRIFT_LIMIT, testFixtures } from '../fixtures.ts';
 import { formatFixtures, withoutControlCharacters } from '../report.ts';
 import {
+  PRESET_ARG,
   parseThreshold,
+  presetOverride,
   printFallbackNotice,
   printJson,
   projectConfig,
@@ -23,6 +25,7 @@ export const testCommand = defineCommand({
       required: false,
       description: 'Question ids to test, as <preset>.<id> (default: all with fixtures)',
     },
+    preset: PRESET_ARG,
     json: { type: 'boolean', description: 'Print the results as JSON' },
     record: { type: 'boolean', description: 'Write the results to .jevlint/calibration.json' },
     drift: { type: 'boolean', description: 'Ask afresh and compare with the record' },
@@ -42,7 +45,10 @@ export const testCommand = defineCommand({
     if (record && questionIds.length > 0) {
       throw new UserError('--record covers every fixture, so it takes no question ids.');
     }
-    const config = await projectConfig();
+    if (record && args.preset !== undefined) {
+      throw new UserError('--record covers every fixture, so it takes no --preset.');
+    }
+    const config = await projectConfig(presetOverride(args.preset));
     const report = await withSpinner((onProgress) =>
       testFixtures(config, { questionIds, record, drift, driftLimit, onProgress }),
     );

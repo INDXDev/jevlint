@@ -8,15 +8,18 @@ import type { Change } from './types.ts';
 const MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
 const SHORT_SHA_LENGTH = 7;
 const LOG_FIELDS = 4;
+const GH_TIMEOUT_MS = 60_000;
+const FETCH_TIMEOUT_MS = 5 * 60_000;
 
 const execFileAsync = promisify(execFile);
 
-async function git(root: string, args: string[]): Promise<string> {
+async function git(root: string, args: string[], timeout = 0): Promise<string> {
   // A clone can deliver a bare repository as plain files, with a config naming programs to run.
   const safe = ['-c', 'safe.bareRepository=explicit', '-c', 'core.fsmonitor=false'];
   const { stdout } = await execFileAsync('git', [...safe, ...args], {
     cwd: root,
     maxBuffer: MAX_OUTPUT_BYTES,
+    timeout,
     // A lazy fetch runs the upload-pack program named in the repository's own config.
     env: { ...process.env, GIT_NO_LAZY_FETCH: '1' },
   });
@@ -179,12 +182,16 @@ export async function commitsFrom(
 
 function ghFailure(
   number: number | undefined,
-  error: NodeJS.ErrnoException & { stderr?: string },
+  error: NodeJS.ErrnoException & { stderr?: string; signal?: string },
 ): UserError {
   if (error.code === 'ENOENT') {
     return new UserError('jevlint pr needs the GitHub CLI: https://cli.github.com');
   }
   const subject = number ? `pull request #${number}` : "this branch's pull request";
+  // A killed process has nothing on stderr, and a stalled network is what kills it.
+  if (error.signal) {
+    return new UserError(`gh stopped reading ${subject}. It has ${GH_TIMEOUT_MS / 1000} seconds.`);
+  }
   return new UserError(`gh could not read ${subject}: ${error.stderr?.trim()}`);
 }
 
@@ -201,21 +208,26 @@ export async function pullRequestChange(root: string, requested?: number): Promi
   const target = requested === undefined ? [] : [String(requested)];
   const { stdout } = await execFileAsync('gh', ['pr', 'view', ...target, '--json', fields], {
     cwd: root,
+    timeout: GH_TIMEOUT_MS,
   }).catch((error) => {
     throw ghFailure(requested, error);
   });
   const { number, title, body, baseRefName, baseRefOid, headRefOid } = JSON.parse(stdout);
-  await git(root, [
-    'fetch',
-    '--quiet',
-    '--no-tags',
-    '--no-write-fetch-head',
-    '--no-recurse-submodules',
-    'origin',
-    `refs/pull/${number}/head`,
-    `refs/heads/${baseRefName}`,
+  await git(
+    root,
+    [
+      'fetch',
+      '--quiet',
+      '--no-tags',
+      '--no-write-fetch-head',
+      '--no-recurse-submodules',
+      'origin',
+      `refs/pull/${number}/head`,
+      `refs/heads/${baseRefName}`,
+    ],
+    FETCH_TIMEOUT_MS,
     // Commits gh named may already be here, as when the pull request's repository is not `origin`.
-  ]).catch(() => undefined);
+  ).catch(() => undefined);
   const base = await git(root, ['merge-base', baseRefOid, headRefOid]).catch(() => {
     throw new UserError(
       `Could not find the commits of pull request #${number}. Run: git fetch <remote> pull/${number}/head ${baseRefName}, with full history.`,

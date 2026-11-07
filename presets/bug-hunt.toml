@@ -1,0 +1,940 @@
+name = "bug-hunt"
+description = "Code shapes that breed bugs: absent values, unhandled failures, edge cases, races, leaks and misused interfaces"
+source = "Defect classes catalogued by MITRE CWE, IBM Orthogonal Defect Classification, Beizer's bug taxonomy, the SEI CERT coding standards and the SpotBugs bug patterns. Independent paraphrase, not affiliated with or endorsed by any of them."
+
+# Questions are grouped by Orthogonal Defect Classification type, with the closest CWE entries noted.
+# A model answering yes or no leans towards yes on a file the question does not apply to, so each
+# question has an explicit level for that, and asks for specific code before it counts as a defect.
+
+# Assignment and initialization
+
+# CWE-476
+[[questions]]
+id = "null-dereference"
+type = "score"
+title = "Possibly absent values are checked before use"
+instructions = "Does this file use a value that can be null, undefined, None, nil or empty, such as a lookup result, an optional field or a failed find, without first checking that it is there? A check earlier on the same path, or a type that rules out absence, does not count."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Handle the absent case where the value is obtained: return early, use a default that is correct, or make the type say the value is always present."
+
+# CWE-457, CWE-665, CWE-908
+[[questions]]
+id = "uninitialized-state"
+type = "score"
+title = "State is fully set before it is read"
+instructions = "Can a variable, field or object be read before every path has given it a real value, for example when it is set only inside one branch or in a later setup step? Language defaults that are the intended value do not count."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Give the value its final form where it is declared or constructed, so no reader can see it half set."
+
+# CWE-563, CWE-1109
+[[questions]]
+id = "reused-variable"
+type = "score"
+title = "Each variable means one thing"
+instructions = "Is a variable shadowed by an inner one of the same name, reused for a second purpose, or assigned a value that is overwritten before anything reads it, in a way that could make the code read the wrong value?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 1
+fix = "Give each meaning its own name, and delete assignments that nothing reads."
+
+# CWE-374, CWE-375
+[[questions]]
+id = "shared-mutable-state"
+type = "score"
+title = "Mutable data is not shared by accident"
+instructions = "Does the code keep, return or pass on a reference to a mutable list, map or object that another part can change unexpectedly, such as an internal collection handed to callers, a shallow copy treated as deep, or a mutable default shared between calls?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Copy at the boundary, or return an immutable view, so that only the owner can change the data."
+
+# Beizer: data bugs
+[[questions]]
+id = "stale-derived-state"
+type = "score"
+title = "Derived values cannot fall out of step"
+instructions = "Does the file store a value that is derived from other state, such as a cached total, count or flag, and change the source on some path without updating the copy?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Compute the value when it is needed, or update it in the one function that changes its source."
+
+# Checking
+
+# CWE-252
+[[questions]]
+id = "unchecked-result"
+type = "score"
+title = "Results that report failure are checked"
+instructions = "Does the code ignore a return value or status that reports failure, such as an error return, a boolean success flag, a short read or write count, or an HTTP status? Calls that throw on failure do not count."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Check the result at the call, and stop or recover explicitly when it reports failure."
+
+# CWE-390, CWE-391
+[[questions]]
+id = "swallowed-error"
+type = "score"
+title = "Caught errors are acted on"
+instructions = "Does a catch, except, rescue or error branch discard a failure, by being empty, by only logging it and carrying on as if it had worked, or by returning a value callers cannot tell from success? An expected failure that is handled on purpose does not count."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Rethrow the error, or return something the caller must handle. Keep an ignored failure only for a stated reason."
+
+# CWE-396
+[[questions]]
+id = "broad-catch"
+type = "score"
+title = "Handlers catch only what they can handle"
+instructions = "Does a handler catch every kind of error around a large block, so that programming mistakes are treated like the expected failure? A top-level handler that reports the error and stops does not count."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Catch the specific failure you expect, around the smallest block that can raise it, and let the rest propagate."
+
+# CWE-460
+[[questions]]
+id = "partial-failure"
+type = "score"
+title = "A failed step leaves state consistent"
+instructions = "Does a multi-step update leave data, files or memory half changed if a later step fails, with no transaction, rollback or ordering that makes the failure safe?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Make the steps atomic: use a transaction, build the result aside and swap it in, or undo the earlier steps on failure."
+
+# CWE-248
+[[questions]]
+id = "dropped-async-failure"
+type = "score"
+title = "Asynchronous work is awaited or handled"
+instructions = "Does the code start asynchronous work and neither wait for it nor handle its failure, such as a promise without await or catch, an async callback passed to something that ignores its result, or a goroutine or task whose error goes nowhere?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Await the work, or attach a handler that deals with its failure. Run a batch with an explicit join such as Promise.all."
+
+# CWE-754
+[[questions]]
+id = "missing-edge-input"
+type = "score"
+title = "Empty and extreme inputs are handled"
+instructions = "Does logic break on a legal edge input it does not consider: an empty list or string, a single element, zero, a negative number, or the largest allowed value? Look for reading the first element, reducing without a start value, and averages."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Decide what the edge input means, handle it first, and add a test for it."
+
+# CWE-125, CWE-129
+[[questions]]
+id = "unchecked-index"
+type = "score"
+title = "Indexes are known to be in range"
+instructions = "Does the code index an array, string or buffer with a computed or outside value, or take a fixed position from split or parsed data, without knowing that the position exists?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Check the length first, or use an access that returns an explicit absent value."
+
+# Algorithm and method
+
+# CWE-193
+[[questions]]
+id = "off-by-one"
+type = "score"
+title = "Loop and range bounds are right"
+instructions = "Is any loop bound, slice, range or length calculation likely to be off by one, such as <= where < is meant, a mix of inclusive and exclusive ends, or a missed first or last element?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Use half-open ranges consistently, or iterate over the collection itself instead of its indexes."
+
+# CWE-190, CWE-191
+[[questions]]
+id = "integer-overflow"
+type = "score"
+title = "Arithmetic stays within its type"
+instructions = "Can arithmetic on sizes, counts, money or timestamps overflow, wrap or lose exactness for values the program can really meet, including numbers past the safe integer range of the language? Small bounded numbers do not count."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Use a wider or arbitrary-precision type, or use checked arithmetic and reject values out of range."
+
+# CWE-369
+[[questions]]
+id = "division-by-zero"
+type = "score"
+title = "Divisors cannot be zero"
+instructions = "Does the code divide or take a modulo by a value that can be zero, such as a count, a length or a difference, without guarding that case?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Handle the zero case before dividing, and state what the result means there."
+
+# CWE-1077, CWE-1339
+[[questions]]
+id = "float-precision"
+type = "score"
+title = "Exact values are not held in floats"
+instructions = "Are binary floating-point numbers used for money or other exact quantities, compared with == or !=, or accumulated in a way where rounding changes the outcome?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Hold money in integer minor units or a decimal type, and compare floats within a stated tolerance."
+
+# CWE-197, CWE-681
+[[questions]]
+id = "lossy-conversion"
+type = "score"
+title = "Conversions keep the value"
+instructions = "Does a conversion between number types or sizes silently truncate, round or change sign, or does string-to-number parsing accept partial or invalid input, for values the program can really meet?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Use a checked conversion that fails on loss, and validate parsed numbers before use."
+
+# CWE-704
+[[questions]]
+id = "type-coercion"
+type = "score"
+title = "Types are not coerced by accident"
+instructions = "Does the code depend on implicit coercion or an unchecked cast, such as loose equality, truthiness that treats 0 or an empty string as missing, adding a number to a string, or casting to a type that was never verified?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Compare with strict equality, test for absence explicitly, and verify a type before narrowing it."
+
+# CWE-480, CWE-481, CWE-783
+[[questions]]
+id = "wrong-operator"
+type = "score"
+title = "Operators are the intended ones"
+instructions = "Is there an operator that looks like a slip: assignment in a condition, & for &&, a mixed-up comparison, or an expression whose operator precedence differs from what its layout suggests?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Correct the operator, and add parentheses wherever precedence is not obvious."
+
+# CWE-570, CWE-571
+[[questions]]
+id = "inverted-logic"
+type = "score"
+title = "Conditions can be both true and false"
+instructions = "Is any condition always true or always false, contradictory, inverted relative to the code it guards, or a negated compound whose meaning looks wrong, such as x != a || x != b?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Rewrite the condition positively, name its parts, and test both of its outcomes."
+
+# CWE-478, CWE-484
+[[questions]]
+id = "missing-case"
+type = "score"
+title = "Every case is handled"
+instructions = "Does a switch, match or if-else chain over a set of values miss a case, have no default for values it cannot rule out, or fall through without saying that it means to?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Handle each case explicitly, and make the default fail loudly, or use an exhaustive match the compiler checks."
+
+# SpotBugs: duplicate branches
+[[questions]]
+id = "copy-paste-slip"
+type = "score"
+title = "Near-duplicate code has been fully adapted"
+instructions = "Do near-identical lines or blocks show a copy-and-paste slip: a name not updated in one copy, both branches of a condition doing the same thing, or the same expression on both sides of an operator?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Fix the stale copy, then fold the copies into one helper so that they cannot diverge."
+
+# CWE-595, CWE-597
+[[questions]]
+id = "reference-equality"
+type = "score"
+title = "Values are compared by value"
+instructions = "Are objects, arrays, strings, dates or boxed numbers compared by identity where their contents are what matters, such as == on Java strings, === on two objects, or `is` on Python numbers?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Compare with the language's value equality, or compare the identifying field."
+
+# CWE-581
+[[questions]]
+id = "equality-contract"
+type = "score"
+title = "Equality, hashing and ordering agree"
+instructions = "Does a type define equality without a matching hash, a comparator that is not consistent, or use a mutable object as a map key or set member?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 1
+fix = "Define equality and hashing together from the same immutable fields, and keep comparators consistent."
+
+# CWE-674, CWE-835
+[[questions]]
+id = "loop-termination"
+type = "score"
+title = "Loops and recursion always end"
+instructions = "Can a loop or recursion run forever or exhaust the stack on some input, because its exit depends on a value that may not change, on a retry with no limit, or on data with cycles or unbounded depth? A server's main loop does not count."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Make progress towards the exit visible on every path, and add a limit where the input decides the depth."
+
+# SpotBugs: modifying a collection while iterating
+[[questions]]
+id = "mutation-during-iteration"
+type = "score"
+title = "Collections are not changed while being walked"
+instructions = "Does a loop add to, remove from or reorder the collection it is iterating over, or does a callback passed to a collection method change that same collection?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Collect the changes and apply them after the loop, or iterate over a copy."
+
+# CWE-185, CWE-1333
+[[questions]]
+id = "regex-correctness"
+type = "score"
+title = "Regular expressions match what they claim"
+instructions = "Does a regular expression look wrong for its purpose: missing anchors on a validation, an unescaped dot, a mistaken character range, or nested repetition that can backtrack for a very long time?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 1
+fix = "Anchor validations, escape literals, remove nested repetition, and test the expression with inputs that must not match."
+
+# Beizer: data bugs. Time zones, calendars and clocks
+[[questions]]
+id = "time-and-dates"
+type = "score"
+title = "Time is handled as time, not as numbers"
+instructions = "Does date or time code assume a time zone, ignore daylight saving, treat every day as 24 hours or every month as 30 days, use a zero-based month wrongly, or measure durations with a wall clock that can jump?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Store instants in UTC, use a date library for calendar arithmetic, and use a monotonic clock for durations."
+
+# CWE-176, CWE-178
+[[questions]]
+id = "text-encoding"
+type = "score"
+title = "Text is treated as text, not bytes"
+instructions = "Does the code confuse bytes with characters, cut a string where it may split a character, assume one encoding, or compare text with case or locale rules that give the wrong answer for non-ASCII input?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 1
+fix = "Decode at the boundary with a stated encoding, and use Unicode-aware operations for length, slicing and comparison."
+
+# Timing and serialization
+
+# CWE-362, CWE-366, CWE-820
+[[questions]]
+id = "data-race"
+type = "score"
+title = "Shared state is protected"
+instructions = "Is mutable state reachable from more than one thread, goroutine, worker or request handler without a lock, atomic or message passing? Module-level variables changed by handlers count. State that is read-only after startup does not."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Give the state one owner, or guard every access with the same lock or an atomic operation."
+
+# CWE-367
+[[questions]]
+id = "check-then-act"
+type = "score"
+title = "Checks and actions happen as one step"
+instructions = "Does the code check a condition and then act on it as a separate step, while another process, request or task could change it between them? Examples are exists-then-create, read-then-update and balance-then-withdraw."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Use one atomic operation: a conditional update, a unique constraint, an exclusive create, or a lock around both steps."
+
+# CWE-609, CWE-667, CWE-833
+[[questions]]
+id = "lock-discipline"
+type = "score"
+title = "Locks are held correctly"
+instructions = "Can a lock stay held on an error path, be taken in inconsistent orders, be held across a slow or blocking call, or be bypassed by double-checked initialisation?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Release locks in a scoped construct, take several locks in one fixed order, and do slow work outside the lock."
+
+# Lost updates between suspension points
+[[questions]]
+id = "async-interleaving"
+type = "score"
+title = "State stays valid across await"
+instructions = "Does asynchronous code read state, wait, and then write back or decide on what it read, so that a concurrent call can interleave and an update is lost or a stale value is used?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Re-read after waiting, make the update a single step, or run the callers one at a time."
+
+# CWE-1088
+[[questions]]
+id = "missing-timeout"
+type = "score"
+title = "Remote calls have a time limit"
+instructions = "Does the code call a network service, database, subprocess or queue with no timeout or cancellation, so that a stalled peer would hang it forever? A timeout set in a shared client that is visible here does not count."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Set an explicit timeout or deadline on each remote call, and handle its expiry."
+
+# Fallacies of distributed computing: the network is reliable
+[[questions]]
+id = "unsafe-retry"
+type = "score"
+title = "Retries cannot repeat a side effect"
+instructions = "Does the code retry, or could it receive twice, an operation with a side effect, such as a charge, an email or an insert, without an idempotency key or de-duplication? Also count retry loops with no backoff."
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Make the operation idempotent with a key, and retry only what is safe, with a limit and backoff."
+
+# Resource management
+
+# CWE-404, CWE-772
+[[questions]]
+id = "resource-leak"
+type = "score"
+title = "Resources are released on every path"
+instructions = "Is a file, socket, connection, lock, timer, subscription or listener acquired and not released on every path, including early returns and exceptions?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Tie release to scope with with, using, defer, RAII or finally, right where the resource is acquired."
+
+# CWE-416, CWE-672
+[[questions]]
+id = "use-after-release"
+type = "score"
+title = "Nothing is used after it is released"
+instructions = "Can the code use a resource or object after it was closed, freed, cancelled or returned to a pool, or release it twice?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 3
+fix = "Give each resource one owner and narrow its scope, so that nothing can reach it after release."
+
+# CWE-400, CWE-770
+[[questions]]
+id = "unbounded-growth"
+type = "score"
+title = "Memory and queues have limits"
+instructions = "Can a cache, queue, buffer, list or map grow without limit over the life of the process, or does the code load a whole input of unknown size into memory?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Add a size limit with eviction or backpressure, and stream large inputs."
+
+# Interface
+
+# CWE-628, CWE-683
+[[questions]]
+id = "argument-mixup"
+type = "score"
+title = "Arguments cannot be swapped unnoticed"
+instructions = "Does a call pass arguments that look to be in the wrong order or in the wrong position, or does a function take several neighbouring parameters of the same type or boolean flags that are easy to swap?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Use named parameters, an options object or distinct types for arguments that are easy to confuse."
+
+# NASA Mars Climate Orbiter: mixed units
+[[questions]]
+id = "unit-mismatch"
+type = "score"
+title = "Units are explicit"
+instructions = "Are quantities with units, such as seconds and milliseconds, cents and whole currency, bytes and kilobytes, or degrees and radians, passed or combined with no sign of which unit they are in, so that a mix-up is plausible?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Put the unit in the name or the type, and convert only at the boundary."
+
+# CWE-440, SpotBugs: return value ignored
+[[questions]]
+id = "misused-api"
+type = "score"
+title = "Library calls are used as they behave"
+instructions = "Does the code misread how a call behaves: ignoring the result of a function that returns a new value and changes nothing, relying on one that changes its input in place, sorting numbers with a default text sort, or using a deprecated call with known traps?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Check the documented behaviour, use the returned value, and pick the call that does what the code means."
+
+# Relationship
+
+# CWE-696
+[[questions]]
+id = "order-dependence"
+type = "score"
+title = "Steps cannot run in the wrong order"
+instructions = "Does correctness depend on calling things in a particular order that nothing enforces, such as init before use, or a validate step before a save, or does a test or module depend on the state another left behind?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Make the wrong order impossible: have each step return what the next one needs, or merge the steps."
+
+# CWE-372
+[[questions]]
+id = "impossible-states"
+type = "score"
+title = "Invalid state combinations cannot be represented"
+instructions = "Do several flags or optional fields together describe a state, so that contradictory combinations can exist, such as loading and failed both set, or a status that can jump to a step it should not reach?"
+levels = [
+  "Yes: specific code here has this defect",
+  "Probably: specific code here looks like this defect",
+  "Only a doubtful spot, with no line that clearly has this defect",
+  "No, or this file has no code where this defect could occur",
+]
+weight = 2
+fix = "Replace the flags with one explicit state type, and allow only the valid transitions."
+
+# Patterns need no model, so they run with --ast-only and give a line number.
+
+[[patterns]]
+id = "async-foreach-ts"
+language = "typescript"
+pattern = "$A.forEach(async ($$$P) => { $$$B })"
+message = "forEach ignores the promises of an async callback, so failures and ordering are lost"
+
+[[patterns]]
+id = "async-foreach-fn-ts"
+language = "typescript"
+pattern = "$A.forEach(async function ($$$P) { $$$B })"
+message = "forEach ignores the promises of an async callback, so failures and ordering are lost"
+
+[[patterns]]
+id = "async-promise-executor-ts"
+language = "typescript"
+pattern = "new Promise(async ($$$P) => { $$$B })"
+message = "A throw in an async executor never rejects this promise"
+
+[[patterns]]
+id = "empty-catch-ts"
+language = "typescript"
+pattern = "try { $$$A } catch ($E) { }"
+message = "An empty catch hides the failure"
+
+[[patterns]]
+id = "empty-catch-bare-ts"
+language = "typescript"
+pattern = "try { $$$A } catch { }"
+message = "An empty catch hides the failure"
+
+[[patterns]]
+id = "nan-comparison-ts"
+language = "typescript"
+pattern = "$A === NaN"
+message = "Nothing equals NaN, so this is always false. Use Number.isNaN"
+
+[[patterns]]
+id = "nan-comparison-not-ts"
+language = "typescript"
+pattern = "$A !== NaN"
+message = "Nothing equals NaN, so this is always true. Use Number.isNaN"
+
+[[patterns]]
+id = "self-comparison-ts"
+language = "typescript"
+pattern = "$A === $A"
+message = "A value compared with itself is usually a copy-and-paste slip"
+
+[[patterns]]
+id = "assignment-in-condition-ts"
+language = "typescript"
+pattern = "if ($A = $B) { $$$C }"
+message = "This assigns inside a condition. Was === meant?"
+
+[[patterns]]
+id = "async-foreach-tsx"
+language = "tsx"
+pattern = "$A.forEach(async ($$$P) => { $$$B })"
+message = "forEach ignores the promises of an async callback, so failures and ordering are lost"
+
+[[patterns]]
+id = "async-foreach-fn-tsx"
+language = "tsx"
+pattern = "$A.forEach(async function ($$$P) { $$$B })"
+message = "forEach ignores the promises of an async callback, so failures and ordering are lost"
+
+[[patterns]]
+id = "async-promise-executor-tsx"
+language = "tsx"
+pattern = "new Promise(async ($$$P) => { $$$B })"
+message = "A throw in an async executor never rejects this promise"
+
+[[patterns]]
+id = "empty-catch-tsx"
+language = "tsx"
+pattern = "try { $$$A } catch ($E) { }"
+message = "An empty catch hides the failure"
+
+[[patterns]]
+id = "empty-catch-bare-tsx"
+language = "tsx"
+pattern = "try { $$$A } catch { }"
+message = "An empty catch hides the failure"
+
+[[patterns]]
+id = "nan-comparison-tsx"
+language = "tsx"
+pattern = "$A === NaN"
+message = "Nothing equals NaN, so this is always false. Use Number.isNaN"
+
+[[patterns]]
+id = "nan-comparison-not-tsx"
+language = "tsx"
+pattern = "$A !== NaN"
+message = "Nothing equals NaN, so this is always true. Use Number.isNaN"
+
+[[patterns]]
+id = "self-comparison-tsx"
+language = "tsx"
+pattern = "$A === $A"
+message = "A value compared with itself is usually a copy-and-paste slip"
+
+[[patterns]]
+id = "assignment-in-condition-tsx"
+language = "tsx"
+pattern = "if ($A = $B) { $$$C }"
+message = "This assigns inside a condition. Was === meant?"
+
+[[patterns]]
+id = "async-foreach-js"
+language = "javascript"
+pattern = "$A.forEach(async ($$$P) => { $$$B })"
+message = "forEach ignores the promises of an async callback, so failures and ordering are lost"
+
+[[patterns]]
+id = "async-foreach-fn-js"
+language = "javascript"
+pattern = "$A.forEach(async function ($$$P) { $$$B })"
+message = "forEach ignores the promises of an async callback, so failures and ordering are lost"
+
+[[patterns]]
+id = "async-promise-executor-js"
+language = "javascript"
+pattern = "new Promise(async ($$$P) => { $$$B })"
+message = "A throw in an async executor never rejects this promise"
+
+[[patterns]]
+id = "empty-catch-js"
+language = "javascript"
+pattern = "try { $$$A } catch ($E) { }"
+message = "An empty catch hides the failure"
+
+[[patterns]]
+id = "empty-catch-bare-js"
+language = "javascript"
+pattern = "try { $$$A } catch { }"
+message = "An empty catch hides the failure"
+
+[[patterns]]
+id = "nan-comparison-js"
+language = "javascript"
+pattern = "$A === NaN"
+message = "Nothing equals NaN, so this is always false. Use Number.isNaN"
+
+[[patterns]]
+id = "nan-comparison-not-js"
+language = "javascript"
+pattern = "$A !== NaN"
+message = "Nothing equals NaN, so this is always true. Use Number.isNaN"
+
+[[patterns]]
+id = "self-comparison-js"
+language = "javascript"
+pattern = "$A === $A"
+message = "A value compared with itself is usually a copy-and-paste slip"
+
+[[patterns]]
+id = "assignment-in-condition-js"
+language = "javascript"
+pattern = "if ($A = $B) { $$$C }"
+message = "This assigns inside a condition. Was === meant?"
+
+[[patterns]]
+id = "mutable-default-py"
+language = "python"
+pattern = "def $F($$$A, $P=[], $$$B): $$$C"
+message = "A mutable default is shared between calls"
+
+[[patterns]]
+id = "mutable-default-py"
+language = "python"
+pattern = "def $F($$$A, $P=[]): $$$C"
+message = "A mutable default is shared between calls"
+
+[[patterns]]
+id = "mutable-default-py"
+language = "python"
+pattern = "def $F($$$A, $P={}, $$$B): $$$C"
+message = "A mutable default is shared between calls"
+
+[[patterns]]
+id = "mutable-default-py"
+language = "python"
+pattern = "def $F($$$A, $P={}): $$$C"
+message = "A mutable default is shared between calls"
+
+[[patterns]]
+id = "bare-except-py"
+language = "python"
+pattern = """
+try:
+    $$$A
+except:
+    $$$B"""
+message = "A bare except also catches KeyboardInterrupt and SystemExit"
+
+[[patterns]]
+id = "except-pass-py"
+language = "python"
+pattern = """
+try:
+    $$$A
+except $E:
+    pass"""
+message = "This except hides the failure"
+
+[[patterns]]
+id = "open-without-close-py"
+language = "python"
+pattern = "open($$$A).read()"
+message = "This file is never closed. Use a with block"
+
+[[patterns]]
+id = "naive-utcnow-py"
+language = "python"
+pattern = "datetime.utcnow()"
+message = "utcnow returns a naive datetime that later code reads as local time"
+
+[[patterns]]
+id = "self-comparison-py"
+language = "python"
+pattern = "$A == $A"
+message = "A value compared with itself is usually a copy-and-paste slip"
+
+[[patterns]]
+id = "assert-tuple-py"
+language = "python"
+pattern = "assert ($A, $B)"
+message = "A non-empty tuple is always true, so this assert never fails"
+
+[[patterns]]
+id = "discarded-second-result-go"
+language = "go"
+pattern = "$V, _ := $F($$$A)"
+message = "The second result is discarded, and it is usually an error"
+
+[[patterns]]
+id = "discarded-result-go"
+language = "go"
+pattern = "_ = $F($$$A)"
+message = "The result is discarded, and it is usually an error"
+
+[[patterns]]
+id = "self-comparison-go"
+language = "go"
+pattern = "$A == $A"
+message = "A value compared with itself is usually a copy-and-paste slip"
+
+[[patterns]]
+id = "unwrap-rs"
+language = "rust"
+pattern = "$A.unwrap()"
+message = "unwrap panics on None or Err. Outside tests, handle the case or use expect with a reason"
+
+[[patterns]]
+id = "todo-rs"
+language = "rust"
+pattern = "todo!($$$A)"
+message = "todo! panics if this path is reached"
+
+[[patterns]]
+id = "unimplemented-rs"
+language = "rust"
+pattern = "unimplemented!($$$A)"
+message = "unimplemented! panics if this path is reached"
+
+[[patterns]]
+id = "self-comparison-rs"
+language = "rust"
+pattern = "$A == $A"
+message = "A value compared with itself is usually a copy-and-paste slip"

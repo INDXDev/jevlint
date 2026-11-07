@@ -10,6 +10,8 @@ import type { ModelTarget, ResolvedModel } from './providers.ts';
 export const PROVIDER_ERROR = 'Provider error:';
 
 const MAX_RETRIES = 3;
+// Covers all the retries of one file, so that a stalled provider costs a warning, not the whole run.
+const REQUEST_TIMEOUT_MS = 5 * 60_000;
 const CLOUDFLARE_MAX_QUESTIONS = 64;
 
 // The SDK prints provider warnings to the console, and core modules must stay silent.
@@ -91,6 +93,7 @@ async function ask(
     state: content,
     questions,
     maxRetries: MAX_RETRIES,
+    abortSignal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   }).catch((error) => {
     throw translateError(error, resolved);
   });

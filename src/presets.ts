@@ -1,6 +1,6 @@
 /** Loads and validates presets from the repository, the user and the built-in set. */
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, realpath, rm } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, realpath, rm } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -247,6 +247,13 @@ async function writePresetFile(
   await mkdir(dir, { recursive: true });
   if (options.repo) await assertInRepo(dir, options.root);
   const destination = join(dir, `${name}.toml`);
+  // Presets are found by declared name, so the file of this name can hold a different preset.
+  // Not followed, because a link planted here may lead out of the repository.
+  const isFile = (await ifExists(lstat(destination)))?.isFile();
+  const held = isFile ? parsePreset(await readFile(destination, 'utf8'), destination).name : name;
+  if (held !== name) {
+    throw new UserError(`${destination} holds the preset "${held}". Move that file first.`);
+  }
   // Atomic, so a symlink planted at the destination is replaced rather than written through.
   await writeFileAtomic(destination, toml);
   return destination;

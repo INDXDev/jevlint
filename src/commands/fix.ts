@@ -10,10 +10,13 @@ import {
   answered,
   auditProject,
   FILE_SELECTION_ARGS,
+  PRESET_ARG,
   PROMPT_IO,
   parseCount,
+  presetOverride,
   projectConfig,
   selectFiles,
+  splitPositionals,
 } from './shared.ts';
 
 async function confirmPlan(files: FileReport[], agent: string): Promise<void> {
@@ -29,13 +32,15 @@ export const fixCommand = defineCommand({
   meta: { name: 'jevlint fix', description: 'Run an agent on the worst files, then re-score them' },
   args: {
     ...FILE_SELECTION_ARGS,
+    preset: PRESET_ARG,
     agent: { type: 'string', valueHint: 'name', description: 'Agent to run, such as claude' },
     yes: { type: 'boolean', description: 'Skip the confirmation. Required outside a terminal' },
     'allow-dirty': { type: 'boolean', description: 'Run even if the git working tree has changes' },
   },
   async run({ args }) {
     const top = parseCount('--top', args.top);
-    const config = await projectConfig();
+    const { named, paths } = await splitPositionals(args._);
+    const config = await projectConfig(presetOverride(args.preset, named));
     const command = resolveAgent(config, args.agent);
     if (!args.yes && !process.stdin.isTTY) {
       throw new UserError('Pass --yes to run fix outside a terminal.');
@@ -46,8 +51,8 @@ export const fixCommand = defineCommand({
       );
     }
 
-    const report = await auditProject(config, { paths: args._ });
-    const files = selectFiles(report, args._, top);
+    const report = await auditProject(config, { paths });
+    const files = selectFiles(report, paths, top);
     if (files.length === 0)
       return console.error('Nothing to fix in the selected files. Pinned scores are left out.');
     if (!args.yes) await confirmPlan(files, String(args.agent));

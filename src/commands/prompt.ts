@@ -7,9 +7,12 @@ import { withoutEscapes } from '../report.ts';
 import {
   auditProject,
   FILE_SELECTION_ARGS,
+  PRESET_ARG,
   parseCount,
+  presetOverride,
   projectConfig,
   selectFiles,
+  splitPositionals,
 } from './shared.ts';
 
 /** The `prompt` command. */
@@ -17,13 +20,15 @@ export const promptCommand = defineCommand({
   meta: { name: 'jevlint prompt', description: 'Print or copy a fix prompt for a coding agent' },
   args: {
     ...FILE_SELECTION_ARGS,
+    preset: PRESET_ARG,
     copy: { type: 'boolean', description: 'Copy to the clipboard instead of printing' },
   },
   async run({ args }) {
     const top = parseCount('--top', args.top);
-    const config = await projectConfig();
-    const report = await auditProject(config, { paths: args._ });
-    const files = selectFiles(report, args._, top);
+    const { named, paths } = await splitPositionals(args._);
+    const config = await projectConfig(presetOverride(args.preset, named));
+    const report = await auditProject(config, { paths });
+    const files = selectFiles(report, paths, top);
     const prompt = withoutEscapes(renderPrompt(files, report));
     if (!args.copy || files.length === 0) return console.log(prompt);
     await clipboard.write(prompt).catch((error: Error) => {

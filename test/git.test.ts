@@ -369,6 +369,11 @@ describe('changes to review', () => {
       await expect(pullRequestChange(dir, 7)).rejects.toThrow('no such pull request');
     });
 
+    it('says so when gh is stopped, as a timeout does', async () => {
+      fakeGh('kill -TERM $$');
+      await expect(pullRequestChange(dir, 7)).rejects.toThrow('gh stopped reading');
+    });
+
     it('says gh is needed when it is missing', async () => {
       vi.stubEnv('PATH', tempDir());
       await expect(pullRequestChange(dir, 7)).rejects.toThrow('GitHub CLI');
