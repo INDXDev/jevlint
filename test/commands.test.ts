@@ -314,6 +314,69 @@ describe('jevlint test', () => {
   });
 });
 
+describe('spec', () => {
+  const INDEX = 'version: 1\nname: Shop\ndescription: An online shop.\n';
+  const LOGIN =
+    'id: login\ntitle: Login\nsummary: Signs customers in.\nchecklist:\n  - id: lockout\n    text: Five failed sign-ins lock the account.\n';
+  const validSpec = {
+    '.jevlint/spec/index.yaml': INDEX,
+    '.jevlint/spec/features/login.yaml': LOGIN,
+  };
+
+  it('lists a valid spec and exits 0', () => {
+    const { status, stdout } = jevlint(project(validSpec), 'spec', 'list');
+    expect(status).toBe(0);
+    expect(stdout).toContain('login.lockout');
+    const json = jevlint(project(validSpec), 'spec', 'list', '--json');
+    expect(JSON.parse(json.stdout).features[0].id).toBe('login');
+  });
+
+  it('exits 2 for an invalid spec, naming the file', () => {
+    const cwd = project({ ...validSpec, '.jevlint/spec/features/login.yaml': 'id: Login\n' });
+    const { status, stderr } = jevlint(cwd, 'spec', 'list');
+    expect(status).toBe(2);
+    expect(stderr).toContain('login.yaml');
+  });
+
+  it.each([['list'], ['check'], ['drift']])(
+    '%s exits 2 with no spec, and says to compile',
+    (sub) => {
+      const { status, stderr } = jevlint(project(), 'spec', sub);
+      expect(status).toBe(2);
+      expect(stderr).toContain('jevlint spec compile');
+    },
+  );
+
+  it('compiles a prompt naming the documents, never their contents', () => {
+    const cwd = project({ 'README.md': 'SECRET README', 'docs/auth.md': 'SECRET AUTH' });
+    const { status, stdout } = jevlint(cwd, 'spec', 'compile');
+    expect(status).toBe(0);
+    expect(stdout).toContain('`README.md`');
+    expect(stdout).toContain('`docs/auth.md`');
+    expect(stdout).not.toContain('SECRET');
+  });
+
+  it('compiles despite an invalid spec, and says why it failed', () => {
+    const cwd = project({ 'README.md': '', '.jevlint/spec/index.yaml': 'version: 2\n' });
+    const { status, stdout } = jevlint(cwd, 'spec', 'compile');
+    expect(status).toBe(0);
+    expect(stdout).toContain('failed to load');
+  });
+
+  it('exits 2 for a named document that does not exist', () => {
+    const { status, stderr } = jevlint(project(), 'spec', 'compile', 'nope.md');
+    expect(status).toBe(2);
+    expect(stderr).toContain('nope.md');
+  });
+
+  it('exits 2 for check with no key, as it needs a model', () => {
+    const cwd = project({ ...validSpec, 'a.ts': 'const a = 1;\n' });
+    const { status, stderr } = jevlint(cwd, 'spec', 'check');
+    expect(status).toBe(2);
+    expect(stderr).toContain('needs a decision model');
+  });
+});
+
 describe('usesProviderKey', () => {
   it.each([
     ['jevlint audit', [], true],
@@ -321,6 +384,9 @@ describe('usesProviderKey', () => {
     ['jevlint pr', ['7'], true],
     ['jevlint commits', [], true],
     ['jevlint test', [], true],
+    ['jevlint spec check', [], true],
+    ['jevlint spec drift', [], true],
+    ['jevlint spec compile', [], false],
     ['jevlint pr', ['7', '--ast-only'], false],
     ['jevlint audit', ['--ast-only'], false],
     ['jevlint architecture', ['--ast-only'], false],

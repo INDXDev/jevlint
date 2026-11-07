@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Config, loadConfig, UserError } from '../src/config.ts';
-import { discoverFiles } from '../src/files.ts';
+import { discoverDocs, discoverFiles } from '../src/files.ts';
 
 let home: string;
 let root: string;
@@ -203,4 +203,44 @@ describe('discoverFiles', () => {
       expect(await discoverFiles(await configWith())).toEqual(['a.ts', 'locked.ts']);
     },
   );
+});
+
+describe('discoverDocs', () => {
+  const docsConfig = (docs: string[]) =>
+    configWith({ spec: { dir: '.jevlint/spec', docs } } as Partial<Config>);
+
+  it('finds the README and docs, ignoring include and the extension filter', async () => {
+    await write({ 'README.md': '', 'docs/a.md': '', 'docs/deep/b.md': '', 'src/a.ts': '' });
+    const config = await configWith({ include: ['src/**'] });
+    expect(await discoverDocs(config)).toEqual(['README.md', 'docs/a.md', 'docs/deep/b.md']);
+  });
+
+  it('keeps the built-in exclusions even for every file', async () => {
+    await write({
+      'README.md': '',
+      '.env': 'x',
+      id_rsa: 'x',
+      'my-secret.md': 'x',
+      '.gitignore': '!.env\n',
+    });
+    expect(await discoverDocs(await docsConfig(['**/*']))).toEqual(['.gitignore', 'README.md']);
+  });
+
+  it('respects .gitignore and narrows by paths', async () => {
+    await write({
+      '.gitignore': 'docs/private.md\n',
+      'README.md': '',
+      'docs/a.md': '',
+      'docs/private.md': '',
+    });
+    const config = await configWith();
+    expect(await discoverDocs(config)).toEqual(['README.md', 'docs/a.md']);
+    expect(await discoverDocs(config, ['docs'])).toEqual(['docs/a.md']);
+  });
+
+  it('drops patterns that point above the root', async () => {
+    await writeFile(join(home, 'outside.md'), '');
+    await write({ 'README.md': '' });
+    expect(await discoverDocs(await docsConfig(['../*.md', 'README.md']))).toEqual(['README.md']);
+  });
 });

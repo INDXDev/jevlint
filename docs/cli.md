@@ -12,7 +12,7 @@ Results go to stdout, and progress and notices go to stderr, so pipes stay clean
 | Code | Meaning |
 | --- | --- |
 | 0 | Success |
-| 1 | The repository score is below `fail_under`, `audit --new` found something new, `hook --staged` found the staged change made something worse, or [`jevlint test`](#jevlint-test-questions) found a fixture that failed or moved |
+| 1 | The repository score is below `fail_under`, `audit --new` found something new, `hook --staged` found the staged change made something worse, or [`jevlint test`](#jevlint-test-questions) found a fixture that failed or moved, `spec check` found a violated or unimplemented item, or `spec drift` found drift |
 | 2 | Usage or config error, a rejected API key, a refused [cache bucket](caching.md#share-the-cache-through-object-storage), or a Node.js without the required security fixes. With `fail_under` or `--new` set, also: no file was scored, every provider request failed, or a key in the environment was never allowed. `hook` also uses it as a gate: an edit made a file worse, which is the code Claude Code feeds back to the agent |
 
 ## `jevlint audit [paths...]`
@@ -100,6 +100,22 @@ Reviews the codebase, each directory and each class, and ranks them worst to bes
 | `--json` | Print the [JSON report](json-output.md#architecture-report) |
 | `--ast-only` | Use AST analysis only, with no network |
 | `--no-cache` | Ignore cached decisions, and do not store new ones |
+
+## `jevlint spec`
+
+Keeps documents, a checklist spec and code in agreement. See
+[Spec-driven development](spec-driven-development.md) for the guide and the
+[spec reference](spec-reference.md) for the format and the questions.
+
+| Command | What it does |
+| --- | --- |
+| `jevlint spec compile [docs...]` | Print a prompt that tells a coding agent to write or update the spec from the documents. `--copy` copies it instead. Makes no network call |
+| `jevlint spec check [paths...]` | Judge code files against the spec. Exits 1 when an item is violated or unimplemented |
+| `jevlint spec drift [docs...]` | Compare documents with the spec. Exits 1 on a contradiction, an uncovered document, an unbacked item or an undocumented feature |
+| `jevlint spec list` | Load and print the spec. Exits 2 when it does not load |
+
+`check`, `drift` and `list` take `--json` (see [JSON output](json-output.md#spec-reports)). `check`
+and `drift` take `--no-cache`, and need a decision model.
 
 ## `jevlint pr [number]`
 

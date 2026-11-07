@@ -120,6 +120,20 @@ In Claude Code, install the plugin for a skill and `/jevlint:audit`, `/jevlint:e
 
 See [Coding agents](docs/agents.md).
 
+## Keep documents and code in agreement
+
+`jevlint spec` turns your documents into a checklist, then checks code and documents against it:
+
+```sh
+jevlint spec compile --copy   # a prompt for your agent: write .jevlint/spec from the docs
+jevlint spec check            # which files violate an item, and which items nothing implements
+jevlint spec drift            # where the docs and the checklist disagree
+```
+
+The checklist is YAML with two levels: a project checklist, and one per feature. Each file is first
+routed to its feature, then judged against that feature's items only. See
+[Spec-driven development](docs/spec-driven-development.md).
+
 ## Write your own rule
 
 An ast-grep pattern decides which code is looked at. One question decides whether it is a problem,
@@ -219,6 +233,7 @@ first two projects above. jevlint, jev-lint and @hazymoon/jevlint all use
 | `jevlint baseline [paths...]` | Record today's issues, so `audit --new` reports only what is new. |
 | `jevlint test [questions...]` | Run preset fixtures, record their answers, and detect drift. |
 | `jevlint hook` | Report what an edit or a staged change made worse, for agents and pre-commit. |
+| `jevlint spec compile\|check\|drift\|list` | Spec-driven development: compile documents into a checklist, then check code and documents against it. |
 | `jevlint prompt [files...]` | Print or copy a fix prompt for a coding agent. |
 | `jevlint fix [files...] --agent <name>` | Run an agent on the worst files, then re-score them. |
 | `jevlint init` | Create a repository or user config. |
@@ -287,6 +302,7 @@ Start with the [documentation index](docs/README.md).
 - [Presets](docs/presets.md)
 - [Scoring](docs/scoring.md)
 - [Architecture review](docs/architecture-review.md)
+- [Spec-driven development](docs/spec-driven-development.md) and the [spec reference](docs/spec-reference.md)
 - [Coding agents](docs/agents.md)
 - [Caching](docs/caching.md)
 - [Continuous integration](docs/ci.md)

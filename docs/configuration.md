@@ -118,6 +118,19 @@ max_class_lines = 300
 max_inheritance_depth = 3
 ```
 
+## Spec
+
+Used by [`jevlint spec`](spec-driven-development.md). These are the defaults:
+
+```toml
+[spec]
+dir = ".jevlint/spec"                  # where the checklist YAML lives, inside the root
+docs = ["README.md", "docs/**/*.md"]   # documents the spec is compiled from and compared with
+```
+
+`docs` is not limited by `include` or by source extensions, but `.gitignore`, `exclude` and the
+always-excluded files below still apply.
+
 ## Files that are always excluded
 
 jevlint reads source code only. A file must have a known source extension, such as `.ts`, `.py`,

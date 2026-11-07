@@ -91,6 +91,8 @@ const KEY_COMMANDS = [
   'fix',
   'pr',
   'prompt',
+  'spec check',
+  'spec drift',
   'test',
 ].map((name) => `jevlint ${name}`);
 

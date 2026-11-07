@@ -4,6 +4,15 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- **`jevlint spec`, for spec-driven development.** A spec is a checklist in YAML, kept in
+  `.jevlint/spec/`: a project checklist in `index.yaml` and one file per feature. `spec compile`
+  prints a prompt that has a coding agent write or update it from your documents. `spec check` routes
+  each code file to a feature with one choice question, then judges it against that feature's items,
+  and lists the items nothing implements. `spec drift` does the same for documents, and finds
+  contradictions, requirements the checklist misses, and items no document states. `[spec] dir` and
+  `docs` in `jevlint.toml` set where the spec and the documents are. See
+  [Spec-driven development](docs/spec-driven-development.md).
+
 ## 0.2.3 - 2026-11-07
 
 - **The default preset is now `full`**, a new built-in that runs every audit preset at once: 97

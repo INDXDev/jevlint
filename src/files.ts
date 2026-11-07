@@ -130,21 +130,23 @@ export async function excludedPaths(config: Config, paths: string[]): Promise<st
   );
 }
 
-/**
- * Lists auditable files as sorted, root-relative posix paths. `paths` (files or directories,
- * relative to the root or absolute) narrows the result but never bypasses an exclusion.
- */
-export async function discoverFiles(config: Config, paths?: string[]): Promise<string[]> {
+/** Walks `patterns` and keeps what discovery may read, narrowed to `paths`, sorted. */
+async function discover(
+  config: Config,
+  patterns: string[],
+  keep: (file: string) => boolean,
+  paths?: string[],
+): Promise<string[]> {
   const { root } = config;
   const targets = paths && (await Promise.all(paths.map((path) => toRootRelative(root, path))));
   const rules = await loadIgnoreRules(config);
   // Kept apart from `rules` so a `!.env` in a repository's ignore lists cannot re-include secrets.
   const alwaysExcluded = ignore().add(ALWAYS_EXCLUDED);
 
-  const candidates = (await walk(config.include, root))
-    // A repository's `include` is untrusted and may point above the root.
+  const candidates = (await walk(patterns, root))
+    // A repository's patterns are untrusted and may point above the root.
     .filter((file) => !file.startsWith('../'))
-    .filter((file) => SOURCE_EXTENSIONS.has(extname(file).toLowerCase()))
+    .filter(keep)
     .filter((file) => !alwaysExcluded.ignores(file))
     .filter((file) => !rules.some((rule) => matchesRules(rule, file)))
     .filter((file) => !targets || targets.some((target) => isUnder(file, target)));
@@ -156,4 +158,21 @@ export async function discoverFiles(config: Config, paths?: string[]): Promise<s
     if (await isAuditable(realRoot, file)) files.push(file);
   }
   return files;
+}
+
+/**
+ * Lists auditable files as sorted, root-relative posix paths. `paths` (files or directories,
+ * relative to the root or absolute) narrows the result but never bypasses an exclusion.
+ */
+export function discoverFiles(config: Config, paths?: string[]): Promise<string[]> {
+  const isSource = (file: string) => SOURCE_EXTENSIONS.has(extname(file).toLowerCase());
+  return discover(config, config.include, isSource, paths);
+}
+
+/**
+ * Lists the documents matching `spec.docs`, as `discoverFiles` lists code, but with neither
+ * `include` nor the source-extension filter, so Markdown is read.
+ */
+export function discoverDocs(config: Config, paths?: string[]): Promise<string[]> {
+  return discover(config, config.spec.docs, () => true, paths);
 }
