@@ -137,6 +137,25 @@ it lowered. `usage` includes the `--intent` request.
 Each result has `question`, `file`, `expected` (`good` or `bad`), `compliance` from 0 to 1 and
 `passed`. With `--drift` it also has `recorded`, which is `null` with no record, and `moved`.
 
+## Quickfix
+
+`jevlint quickfix --json` prints one object, after every agent has run. With nothing to fix, `files`
+is empty.
+
+| Key | Holds |
+| --- | --- |
+| `files` | One entry per file an agent worked on, in the order they ran |
+
+Each entry has `path`, `score` before the fix, on the configured scale, and `diffs`, one per file the
+agent changed:
+
+| Key | Holds |
+| --- | --- |
+| `path` | Relative to the root, with forward slashes |
+| `status` | `added`, `modified` or `deleted` |
+| `additions`, `deletions` | Lines added and removed |
+| `patch` | A git-style unified diff with the original text, which `git apply` accepts. A binary file has a `Binary files … differ` line instead of hunks |
+
 ## Architecture report
 
 `jevlint architecture --json` prints one object to stdout:

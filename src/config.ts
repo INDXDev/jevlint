@@ -130,7 +130,13 @@ const configSchema = z.strictObject({
   weights: z.record(z.string(), weight),
   patterns: z.array(astPatternSchema),
   rules: astRulesSchema,
-  agents: z.record(z.string(), z.strictObject({ command: z.array(z.string()).min(1) })),
+  agents: z.record(
+    z.string(),
+    z.strictObject({
+      command: z.array(z.string()).min(1),
+      quickfix_command: z.array(z.string()).min(1).optional(),
+    }),
+  ),
   cache,
   spec,
 });
@@ -187,8 +193,32 @@ const DEFAULTS = {
   patterns: [],
   rules: [],
   agents: {
-    claude: { command: ['claude', '-p', '--permission-mode', 'acceptEdits'] },
-    codex: { command: ['codex', 'exec', '--sandbox', 'workspace-write', '-'] },
+    claude: {
+      command: ['claude', '-p', '--permission-mode', 'acceptEdits'],
+      // File tools only, and few turns, because a quick fix edits and stops.
+      quickfix_command: [
+        'claude',
+        '-p',
+        '--permission-mode',
+        'acceptEdits',
+        '--tools',
+        'Read,Edit,Write,Glob,Grep',
+        '--max-turns',
+        '10',
+      ],
+    },
+    codex: {
+      command: ['codex', 'exec', '--sandbox', 'workspace-write', '-'],
+      quickfix_command: [
+        'codex',
+        'exec',
+        '--sandbox',
+        'workspace-write',
+        '-c',
+        'model_reasoning_effort="low"',
+        '-',
+      ],
+    },
   },
   spec: {
     dir: '.jevlint/spec',

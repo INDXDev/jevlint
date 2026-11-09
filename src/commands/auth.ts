@@ -89,6 +89,7 @@ const KEY_COMMANDS = [
   'commits',
   'explain',
   'fix',
+  'quickfix',
   'pr',
   'prompt',
   'spec check',

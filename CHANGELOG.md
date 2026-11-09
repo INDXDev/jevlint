@@ -4,6 +4,13 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- **`jevlint quickfix`.** Runs a coding agent on the worst file with the same issues as `prompt`, but
+  instructions to only edit files: no tests, builds or other commands, no commits, and one turn or a
+  few. It then prints what changed as a git-style diff, coloured in a terminal with the changed words
+  highlighted, or as a plain patch that `git apply` accepts when redirected, with a `--stat` style
+  summary on stderr. It takes the same flags as `fix`, plus `--json`. Each agent can set a
+  `quickfix_command`, and the built-in Claude Code and Codex ones keep the run short.
+
 ## 0.2.4 - 2026-11-08
 
 - **`jevlint spec`, for spec-driven development.** A spec is a checklist in YAML, kept in

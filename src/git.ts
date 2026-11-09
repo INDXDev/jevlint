@@ -55,6 +55,22 @@ export async function isClean(root: string): Promise<boolean> {
   );
 }
 
+/**
+ * Lists files under the root that differ from the index or are untracked and not ignored,
+ * root-relative. Empty outside a git repository.
+ */
+export async function workingTreeChanges(root: string): Promise<string[]> {
+  // `ls-files`, because its paths are relative to the root, as status's are not.
+  const names = await git(root, [
+    'ls-files',
+    '-z',
+    '--modified',
+    '--others',
+    '--exclude-standard',
+  ]).catch(() => '');
+  return [...new Set(names.split('\0').filter(Boolean))];
+}
+
 type Commits = Pick<Change, 'base' | 'head'>;
 
 const commitRange = ({ base, head }: Commits) => (base ? [base, head] : ['--root', head]);

@@ -19,7 +19,8 @@ cli.ts ── commands/* ── audit.ts ─┬─ files.ts          discover
                   ├─ report.ts     terminal output
                   ├─ formats.ts    SARIF and workflow commands
                   ├─ prompt.ts     agent prompt
-                  └─ agent.ts      run an agent
+                  ├─ agent.ts      run an agent
+                  └─ diff.ts       show what an agent changed
 ```
 
 ## Folder structure
@@ -60,7 +61,7 @@ Dependencies point downward only. A module never imports from a layer above it.
 
 | Layer | Modules | May use |
 | --- | --- | --- |
-| Interface | `cli.ts`, `commands/`, `report.ts`, `formats.ts`, `prompt.ts`, `agent.ts`, `architecture/terminal.ts`, `architecture/html.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
+| Interface | `cli.ts`, `commands/`, `report.ts`, `formats.ts`, `prompt.ts`, `agent.ts`, `diff.ts`, `architecture/terminal.ts`, `architecture/html.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
 | Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `fixtures.ts`, `architecture/review.ts`, `spec/check.ts`, `spec/drift.ts` | Everything below |
 | Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts`, `spec/questions.ts` | Infrastructure, contracts |
 | Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `node-version.ts`, `spec/load.ts` | Contracts |
@@ -129,7 +130,8 @@ Three rules keep these layers clean:
 | `src/report.ts` | Formats reports for the terminal |
 | `src/formats.ts` | Renders findings as SARIF and GitHub workflow commands |
 | `src/prompt.ts` | Renders fix prompts |
-| `src/agent.ts` | Resolves and runs an agent, then re-scores the file |
+| `src/agent.ts` | Resolves and runs an agent, then re-scores the file, or collects what it changed for `quickfix` |
+| `src/diff.ts` | Turns contents before and after into git-style diffs, plain or coloured with changed words highlighted |
 | `src/types.ts` | Contracts shared between modules |
 | `presets/*.toml` | Built-in presets, as data rather than code |
 
@@ -162,6 +164,11 @@ source. On a platform with no prebuilt parser, that language gets the lexical fa
 **Presets are data.** New principles need no code, and users get the same power as maintainers.
 
 **Scoring is pure and runs after the cache.** Only raw answers are cached, so tuning weights is free.
+
+**`quickfix` diffs in JavaScript, not with `git diff`.** A repository's config can make `git diff`
+run external diff and textconv programs, and jsdiff writes git-style patches that `git apply` takes.
+Git only finds which files changed. Colour is added after the patch is made, so a redirected run
+gets a plain patch.
 
 **`prompt`, `fix` and `explain` re-run `audit()`.** The cache makes this cheap, and it removes stale
 state and a separate report store.
@@ -209,5 +216,6 @@ the YAML is the single source of truth that both other commands read.
 | `tinyglobby`, `ignore` | File discovery |
 | `p-limit` | Concurrency |
 | `clipboardy` | Clipboard |
+| `diff` | Line and word diffs for `quickfix` |
 
 Development uses TypeScript, tsdown, Vitest and Biome.

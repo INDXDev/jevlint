@@ -78,9 +78,12 @@ threshold = 0.8         # report at or above this probability
 
 [agents.claude]         # user config only
 command = ["claude", "-p", "--permission-mode", "acceptEdits"]
+# What `quickfix` runs instead, if set: file tools only, and few turns
+quickfix_command = ["claude", "-p", "--permission-mode", "acceptEdits", "--tools", "Read,Edit,Write,Glob,Grep", "--max-turns", "10"]
 
 [agents.codex]          # user config only
 command = ["codex", "exec", "--sandbox", "workspace-write", "-"]
+quickfix_command = ["codex", "exec", "--sandbox", "workspace-write", "-c", 'model_reasoning_effort="low"', "-"]
 
 [cache]                 # user config only
 dir = "~/.cache/jevlint"
@@ -158,7 +161,7 @@ These keys work only in your user config. In `jevlint.toml` they are a config er
 | Key | Why |
 | --- | --- |
 | `provider.base_url` | A cloned repository could send your API key to its own server |
-| `agents` | A cloned repository could run arbitrary commands through `fix` |
+| `agents` | A cloned repository could run arbitrary commands through `fix` or `quickfix` |
 | `cache` | `cache clear` deletes this directory, and a bucket's answers set your scores |
 | `max_rule_matches` | It caps what a repository's [rules](presets.md#semantic-rules) can spend of your money |
 

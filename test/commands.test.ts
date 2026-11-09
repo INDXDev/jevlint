@@ -381,6 +381,7 @@ describe('usesProviderKey', () => {
   it.each([
     ['jevlint audit', [], true],
     ['jevlint fix', [], true],
+    ['jevlint quickfix', [], true],
     ['jevlint pr', ['7'], true],
     ['jevlint commits', [], true],
     ['jevlint test', [], true],
@@ -760,6 +761,72 @@ describe('control characters from the repository', () => {
     );
     expect(status).toBe(0);
     expect(stdout).toContain('a?[2Jb');
+    expect(stdout).not.toContain('\u001b');
+  });
+});
+
+describe('quickfix', () => {
+  const FIXED = 'export const f = 1;\n';
+  const writes = (content: string) =>
+    `require('node:fs').writeFileSync('a.ts', ${JSON.stringify(content)}); console.log('chatter');`;
+
+  const quickfix = (script: string, files: Record<string, string>, ...flags: string[]) => {
+    const home = tempDir();
+    mkdirSync(join(home, 'jevlint'));
+    const command = JSON.stringify([process.execPath, '-e', script]);
+    writeFileSync(
+      join(home, 'jevlint/config.toml'),
+      `[agents.stub]\nquickfix_command = ${command}\ncommand = ["false"]\n`,
+    );
+    const cwd = project(files);
+    return jevlintAt(home, cwd, 'quickfix', '--agent', 'stub', '--yes', '--allow-dirty', ...flags);
+  };
+
+  it('prints a plain patch on stdout, and the agent and the summary on stderr', () => {
+    const { status, stdout, stderr } = quickfix(writes(FIXED), { 'a.ts': MESSY });
+    expect(status).toBe(0);
+    expect(stdout).toMatch(/^diff --git a\/a\.ts b\/a\.ts\n--- a\/a\.ts\n\+\+\+ b\/a\.ts\n@@ /);
+    expect(stdout).toContain('+export const f = 1;');
+    expect(stdout).not.toContain('chatter');
+    expect(stdout).not.toContain('\u001b');
+    expect(stderr).toContain('chatter');
+    expect(stderr).toContain('1 file changed, 1 insertions(+), 1 deletions(-)');
+  });
+
+  it('prints each file and its diffs as JSON', () => {
+    const { status, stdout } = quickfix(writes(FIXED), { 'a.ts': MESSY }, '--json');
+    expect(status).toBe(0);
+    const [file] = JSON.parse(stdout).files;
+    expect(file.path).toBe('a.ts');
+    expect(file.diffs).toMatchObject([{ path: 'a.ts', status: 'modified', additions: 1 }]);
+  });
+
+  it('shows what a failed agent changed, then exits 2', () => {
+    const { status, stdout, stderr } = quickfix(`${writes(FIXED)} process.exit(3);`, {
+      'a.ts': MESSY,
+    });
+    expect(status).toBe(2);
+    expect(stdout).toContain('+export const f = 1;');
+    expect(stderr).toContain('Agent exited with code 3 on a.ts. Its changes so far are shown.');
+  });
+
+  it('says when the agent changed nothing', () => {
+    const { status, stderr } = quickfix('', { 'a.ts': MESSY });
+    expect(status).toBe(0);
+    expect(stderr).toContain('stub changed nothing for a.ts.');
+  });
+
+  it('runs no agent when nothing needs fixing', () => {
+    const { status, stdout, stderr } = quickfix('process.exit(9)', { 'a.ts': FIXED }, '--json');
+    expect(status).toBe(0);
+    expect(stderr).toContain('Nothing to fix');
+    expect(JSON.parse(stdout)).toEqual({ files: [] });
+  });
+
+  it('keeps escape sequences from the repository out of the diff', () => {
+    const { status, stdout } = quickfix(writes('y\u001b[2J\n'), { 'a.ts': MESSY });
+    expect(status).toBe(0);
+    expect(stdout).toContain('+y?[2J');
     expect(stdout).not.toContain('\u001b');
   });
 });

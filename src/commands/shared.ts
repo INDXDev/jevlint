@@ -2,16 +2,17 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import { isCancel, spinner } from '@clack/prompts';
+import { confirm, isCancel, spinner } from '@clack/prompts';
 import { type AuditOptions, audit, PROVIDER_ERROR } from '../audit.ts';
 import { type Config, type ConfigOverrides, loadConfig, UserError } from '../config.ts';
 import { envKeysAllowed, KEY_ENV } from '../credentials.ts';
 import { createDecisionModel } from '../decision/providers.ts';
 import { discoverFiles } from '../files.ts';
 import { OUTPUT_FORMATS, type OutputFormat } from '../formats.ts';
+import { isClean } from '../git.ts';
 import { presetsInArgs } from '../presets.ts';
 import { hasIssues } from '../prompt.ts';
-import { withoutControlCharacters } from '../report.ts';
+import { formatScore, withoutControlCharacters } from '../report.ts';
 import type { AuditReport, FileReport } from '../types.ts';
 
 /** Sends clack prompts to stderr, so stdout carries only results. */
@@ -40,6 +41,33 @@ export const PRESET_ARG = {
   valueHint: 'names',
   description: 'Comma-separated presets, replacing the configured ones',
 } as const;
+
+/** The arguments of commands that run a coding agent on the worst files: `fix` and `quickfix`. */
+export const AGENT_RUN_ARGS = {
+  ...FILE_SELECTION_ARGS,
+  preset: PRESET_ARG,
+  agent: { type: 'string', valueHint: 'name', description: 'Agent to run, such as claude' },
+  yes: { type: 'boolean', description: 'Skip the confirmation. Required outside a terminal' },
+  'allow-dirty': { type: 'boolean', description: 'Run even if the git working tree has changes' },
+} as const;
+
+/** The parsed `AGENT_RUN_ARGS`. */
+export interface AgentRunFlags {
+  _: string[];
+  top?: string;
+  preset?: string;
+  agent?: string;
+  yes?: boolean;
+  'allow-dirty'?: boolean;
+}
+
+/** What an agent run works on, after its checks and confirmation. `files` is empty with nothing to fix. */
+export interface AgentRun {
+  config: Config;
+  command: string[];
+  report: AuditReport;
+  files: FileReport[];
+}
 
 /** Loads the config for the current directory. */
 export function projectConfig(overrides?: ConfigOverrides): Promise<Config> {
@@ -227,6 +255,41 @@ export function selectFiles(
 ): FileReport[] {
   const files = report.files.filter(hasIssues);
   return files.slice(0, top ?? (named.length > 0 ? files.length : 1));
+}
+
+async function confirmPlan(files: FileReport[], agent: string): Promise<void> {
+  for (const { score, path } of withoutControlCharacters(files)) {
+    console.error(`  ${formatScore(score)}  ${path}`);
+  }
+  const message = `Let ${agent} edit ${files.length === 1 ? 'this file' : `these ${files.length} files`}?`;
+  if (!answered(await confirm({ message, ...PROMPT_IO }))) throw new UserError('Cancelled.');
+}
+
+/**
+ * Prepares an agent run: checks the flags and the working tree, audits, picks the files and asks
+ * before going on. `resolve` picks the agent's command from the config.
+ */
+export async function prepareAgentRun(
+  args: AgentRunFlags,
+  resolve: (config: Config, name: string | undefined) => string[],
+  verb: string,
+): Promise<AgentRun> {
+  const top = parseCount('--top', args.top);
+  const { named, paths } = await splitPositionals(args._);
+  const config = await projectConfig(presetOverride(args.preset, named));
+  const command = resolve(config, args.agent);
+  if (!args.yes && !process.stdin.isTTY) {
+    throw new UserError(`Pass --yes to run ${verb} outside a terminal.`);
+  }
+  if (!args['allow-dirty'] && !(await isClean(config.root))) {
+    throw new UserError(
+      'The git working tree is not clean. Commit or stash your changes, or pass --allow-dirty.',
+    );
+  }
+  const report = await auditProject(config, { paths });
+  const files = selectFiles(report, paths, top);
+  if (files.length > 0 && !args.yes) await confirmPlan(files, String(args.agent));
+  return { config, command, report, files };
 }
 
 /** Unwraps a clack answer, treating Ctrl-C as the end of the command. */

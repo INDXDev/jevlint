@@ -47,15 +47,52 @@ git.
 
 Files run one at a time so that agents do not conflict. Stop early if an agent exits with an error.
 
+## `jevlint quickfix`
+
+```sh
+jevlint quickfix --agent claude
+jevlint quickfix src/orders/process.ts --agent codex
+jevlint quickfix --agent claude --yes > quickfix.patch
+```
+
+`quickfix` is `fix` made quick. It reuses the audit, so the cache answers it, and sends the same
+issues as `prompt`. The instructions are different: edit only, preserve behaviour and public APIs,
+run no tests, builds or other commands, do not commit, and finish in one turn or a few at most.
+It does not re-score the file. It prints what the agent changed instead:
+
+- The diff goes to stdout, coloured in a terminal, with the words that changed within a line
+  highlighted. Redirected, it is a plain patch that `git apply` accepts.
+- A summary, one line per file as `git diff --stat` prints it, goes to stderr with the agent's own
+  output, so stdout stays a patch.
+- `--json` prints each file with its score and diffs instead.
+
+The diff covers the file and any file the agent added or changed that git saw as unchanged before
+the run. With `--allow-dirty`, edits to files that already had changes, other than the one being
+fixed, are not shown.
+
+It runs each agent's `quickfix_command`, or its `command` when there is none. The built-in ones keep
+the run short: Claude Code gets only the file tools and at most 10 turns, and Codex reasons at low
+effort.
+
 ## Default agents
 
 ```toml
 [agents.claude]
 command = ["claude", "-p", "--permission-mode", "acceptEdits"]
+quickfix_command = [
+  "claude", "-p", "--permission-mode", "acceptEdits",
+  "--tools", "Read,Edit,Write,Glob,Grep", "--max-turns", "10",
+]
 
 [agents.codex]
 command = ["codex", "exec", "--sandbox", "workspace-write", "-"]
+quickfix_command = [
+  "codex", "exec", "--sandbox", "workspace-write", "-c", 'model_reasoning_effort="low"', "-",
+]
 ```
+
+If you change an agent's `command`, change its `quickfix_command` too, because each falls back to
+the default separately.
 
 ## Adding an agent
 

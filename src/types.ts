@@ -181,6 +181,17 @@ export interface AuditReport {
   };
 }
 
+/** One file an agent changed, as `jevlint quickfix --json` prints it. */
+export interface FileDiff {
+  /** Relative to the report root, with forward slashes. */
+  path: string;
+  status: 'added' | 'modified' | 'deleted';
+  additions: number;
+  deletions: number;
+  /** A git-style unified diff, which `git apply` accepts. Binary files have no hunks. */
+  patch: string;
+}
+
 /** Two commits to compare. A null base means a root commit, where every file is new. */
 export interface Change {
   title: string;

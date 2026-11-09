@@ -272,6 +272,33 @@ Runs a coding agent, one file at a time, then re-scores each file. See
 | `--yes` | Skip the confirmation. Required when not running in a terminal |
 | `--allow-dirty` | Run even if the git working tree has changes |
 
+## `jevlint quickfix [files...]`
+
+Runs a coding agent on the worst file, or the files you name, with a prompt that allows only file
+edits, then prints what it changed as a git-style diff. It takes the same flags as `fix`, plus
+`--json`. See [Coding agents](agents.md#jevlint-quickfix).
+
+| Flag | Description |
+| --- | --- |
+| `--agent <name>` | Agent to run. Built-in: `claude`, `codex` |
+| `--top <n>` | Number of files with issues to fix (default 1) |
+| `--preset <names>` | Comma-separated presets, replacing the configured ones |
+| `--yes` | Skip the confirmation. Required when not running in a terminal |
+| `--allow-dirty` | Run even if the git working tree has changes |
+| `--json` | Print each file with its score and diffs as [JSON](json-output.md#quickfix) |
+
+The diff goes to stdout and a `git diff --stat` style summary to stderr, with the agent's own output.
+In a terminal the diff is coloured, and the words that changed within a line are highlighted. Piped
+or redirected, it is a plain patch that `git apply` accepts:
+
+```sh
+jevlint quickfix --agent claude
+jevlint quickfix clean-code src/orders/process.ts --agent codex --yes
+jevlint quickfix --agent claude --yes > quickfix.patch
+```
+
+If the agent exits with an error, `quickfix` still prints what it changed, then exits 2.
+
 ## `jevlint hook`
 
 Reports what an edit or a commit is about to make worse, for [agent hooks](agents.md#check-every-edit)

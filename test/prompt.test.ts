@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasIssues, renderPrompt } from '../src/prompt.ts';
+import { hasIssues, renderPrompt, renderQuickfixPrompt } from '../src/prompt.ts';
 import type { AuditReport, FileReport } from '../src/types.ts';
 
 const messy: FileReport = {
@@ -121,5 +121,26 @@ describe('pinned scores', () => {
 
   it('tells agents not to touch pins', () => {
     expect(renderPrompt([messy], report)).toContain('jevlint-score');
+  });
+});
+
+describe('renderQuickfixPrompt', () => {
+  const report = { presets: ['clean-code'], scale: 100 } as unknown as AuditReport;
+
+  it('names the same issues as the fix prompt', () => {
+    const quick = renderQuickfixPrompt(messy, report);
+    expect(quick).toContain('`src/orders/process.ts:40`: nesting depth 6 (max 4) in charge');
+    expect(quick).toContain('**Names carry meaning**');
+    expect(quick.split('## How to work')[0]).toBe(
+      renderPrompt([messy], report).split('## How to work')[0],
+    );
+  });
+
+  it('asks for edits only, in few turns', () => {
+    const quick = renderQuickfixPrompt(messy, report);
+    expect(quick).toContain('Do not run tests');
+    expect(quick).toContain('Do not commit');
+    expect(quick).toContain('in a few at most');
+    expect(quick).not.toContain("Run the project's tests");
   });
 });

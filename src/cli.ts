@@ -17,6 +17,7 @@ import { hookCommand } from './commands/hook.ts';
 import { initCommand } from './commands/init.ts';
 import { formatPresetList, presetCommand } from './commands/preset.ts';
 import { promptCommand } from './commands/prompt.ts';
+import { quickfixCommand } from './commands/quickfix.ts';
 import { commitsCommand, prCommand } from './commands/review.ts';
 import { specCommand } from './commands/spec.ts';
 import { testCommand } from './commands/test.ts';
@@ -39,6 +40,7 @@ const subCommands = {
   prompt: promptCommand,
   spec: specCommand,
   fix: fixCommand,
+  quickfix: quickfixCommand,
   hook: hookCommand,
   init: initCommand,
   auth: authCommand,

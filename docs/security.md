@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | `audit --ast-only`, `baseline --ast-only`, `architecture --ast-only`, `commits --ast-only`, `hook` | Nothing | |
 | `audit --dry-run` | Nothing, unless `cache.remote` is set | |
-| `audit`, `baseline`, `explain`, `prompt`, `fix` | File contents, up to `max_file_chars`, and preset questions. For each [semantic rule](presets.md#semantic-rules), the matched code and the rule's question | Your configured provider |
+| `audit`, `baseline`, `explain`, `prompt`, `fix`, `quickfix` | File contents, up to `max_file_chars`, and preset questions. For each [semantic rule](presets.md#semantic-rules), the matched code and the rule's question | Your configured provider |
 | `pr`, `commits`, `hook --model` | The same, for changed files on both sides of the change | Your configured provider |
 | `pr --intent`, `commits --intent` | Also each change's message, its unified diff, and `AGENTS.md` or `CLAUDE.md` from the base commit, up to `max_file_chars` | Your configured provider |
 | `test` | Fixture contents, up to `max_file_chars`, and one question each | Your configured provider |
@@ -15,7 +15,7 @@
 | `spec drift` | Document contents, the checklist they are compared with and every other checklist item, up to `max_file_chars` | Your configured provider |
 | `spec compile`, `spec list` | Nothing | |
 | `architecture` | Paths, line counts, top-level names and internal dependencies, but no file contents | Your configured provider |
-| `fix` | The prompt, plus whatever the agent reads | The agent's provider |
+| `fix`, `quickfix` | The prompt, plus whatever the agent reads | The agent's provider |
 | Any model run, `--dry-run`, with `cache.remote` set | Entry keys, numeric answers and token counts, but no source code | Your cache bucket |
 
 jevlint has no telemetry and no server of its own. Each provider has its own retention policy, so
@@ -134,9 +134,11 @@ Some risks remain:
   `--intent`, where a message can also imitate the section labels, or be long enough to crowd the diff
   out, which shows as a truncation warning. Fixtures and a calibration record from an untrusted
   repository prove nothing either.
-- `jevlint fix` runs an agent over repository content that could carry prompt injection. Only use
-  `fix` on code you trust, and review every diff. Its clean-tree check runs `git status`, which can
-  run programs a repository's `.git/config` names.
+- `jevlint fix` and `jevlint quickfix` run an agent over repository content that could carry prompt
+  injection. Only use them on code you trust, and review every diff. Their clean-tree check runs
+  `git status`, and `quickfix` finds changed files with `git ls-files`, both of which can run programs
+  a repository's `.git/config` names. `quickfix` makes the diff itself, so no diff or textconv
+  program runs, and prints it without escape sequences. `--json` keeps the original text.
 - `jevlint pr` runs `gh` and `git fetch`, which can run programs a repository's `.git/config` names,
   such as `core.sshCommand`. Only use it in a clone you made yourself.
 - `pr` and `commits` read blobs with lazy fetching off, so in a partial clone a file's missing old
