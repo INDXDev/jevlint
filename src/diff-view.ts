@@ -77,66 +77,114 @@ function wordSegments(before: string, after: string): [Segment[], Segment[]] | u
   return [side('added'), side('removed')];
 }
 
+/** The colour of a line of this kind: red removed, green added, plain context. */
 function paintFor(kind: Kind, c: Colors): (text: string) => string {
   if (kind === 'removed') return c.red;
   return kind === 'added' ? c.green : (text) => text;
 }
 
+/** Paints a line, with its changed words in reverse video. */
 function paintSegments(segments: Segment[], kind: Kind, c: Colors): string {
   const text = segments.map((part) => (part.changed ? c.inverse(part.text) : part.text)).join('');
   return paintFor(kind, c)(text);
 }
 
-/**
- * Pairs each run of removed lines with the added lines after it, numbering both sides. Equal runs
- * are compared word by word, as git's diff-highlight does.
- */
-function rowsOf(hunk: Hunk): [Side | undefined, Side | undefined][] {
-  const rows: [Side | undefined, Side | undefined][] = [];
-  let oldNumber = hunk.oldStart;
-  let newNumber = hunk.newStart;
-  const lines = hunk.lines.filter((line) => !line.startsWith('\\')).map(shown);
-  let index = 0;
-  while (index < lines.length) {
-    const line = lines[index] as string;
-    if (line.startsWith(' ')) {
-      const segments = whole(line.slice(1));
-      rows.push([
-        { number: oldNumber++, kind: 'context', segments },
-        { number: newNumber++, kind: 'context', segments },
-      ]);
-      index++;
-      continue;
-    }
-    const removed: string[] = [];
-    const added: string[] = [];
-    while (lines[index]?.startsWith('-')) removed.push((lines[index++] as string).slice(1));
-    while (lines[index]?.startsWith('+')) added.push((lines[index++] as string).slice(1));
-    for (let i = 0; i < Math.max(removed.length, added.length); i++) {
-      const [before, after] = [removed[i], added[i]];
-      const words =
-        removed.length === added.length && before !== undefined && after !== undefined
-          ? wordSegments(before, after)
-          : undefined;
-      rows.push([
-        before === undefined
-          ? undefined
-          : { number: oldNumber++, kind: 'removed', segments: words?.[0] ?? whole(before) },
-        after === undefined
-          ? undefined
-          : { number: newNumber++, kind: 'added', segments: words?.[1] ?? whole(after) },
-      ]);
-    }
-  }
-  return rows;
+/** One row of a hunk: the old side on the left and the new on the right. Either may be missing. */
+type Row = [Side | undefined, Side | undefined];
+
+/** Line numbers in the old and the new file. */
+interface LineNumbers {
+  old: number;
+  new: number;
 }
 
-/** jsdiff stores an empty range as starting one line later than git writes it. */
+/** A stretch of a hunk: unchanged lines, then the lines removed, then the lines added after them. */
+interface Block {
+  context: string[];
+  removed: string[];
+  added: string[];
+}
+
+/** The lines from `start` on that begin with `sign`, without the sign. */
+function runOf(lines: string[], start: number, sign: string): string[] {
+  const end = lines.findIndex((line, index) => index >= start && !line.startsWith(sign));
+  return lines.slice(start, end === -1 ? lines.length : end).map((line) => line.slice(1));
+}
+
+/** Splits a hunk's lines, each starting with ` `, `-` or `+`, into blocks. */
+function blocksOf(lines: string[]): Block[] {
+  const blocks: Block[] = [];
+  for (let start = 0; start < lines.length; ) {
+    const context = runOf(lines, start, ' ');
+    const removed = runOf(lines, start + context.length, '-');
+    const added = runOf(lines, start + context.length + removed.length, '+');
+    blocks.push({ context, removed, added });
+    start += context.length + removed.length + added.length;
+  }
+  return blocks;
+}
+
+/** Unchanged lines, the same on both sides, numbered from `first`. */
+function contextRows(lines: string[], first: LineNumbers): Row[] {
+  return lines.map((text, i) => {
+    const segments = whole(text);
+    return [
+      { number: first.old + i, kind: 'context', segments },
+      { number: first.new + i, kind: 'context', segments },
+    ];
+  });
+}
+
+/**
+ * Pairs removed lines with the added lines that replaced them, numbered from `first`. When as many
+ * lines were added as removed, each pair is compared word by word, as git's diff-highlight does.
+ */
+function changeRows(removed: string[], added: string[], first: LineNumbers): Row[] {
+  const lineForLine = removed.length === added.length;
+  return Array.from({ length: Math.max(removed.length, added.length) }, (_, i) => {
+    const before = removed[i];
+    const after = added[i];
+    const words =
+      lineForLine && before !== undefined && after !== undefined
+        ? wordSegments(before, after)
+        : undefined;
+    const left: Side | undefined =
+      before === undefined
+        ? undefined
+        : { number: first.old + i, kind: 'removed', segments: words?.[0] ?? whole(before) };
+    const right: Side | undefined =
+      after === undefined
+        ? undefined
+        : { number: first.new + i, kind: 'added', segments: words?.[1] ?? whole(after) };
+    return [left, right];
+  });
+}
+
+/** A hunk as numbered rows, old beside new. Lines that are not diff lines, as `\ No newline`, are left out. */
+function rowsOf(hunk: Hunk): Row[] {
+  const lines = hunk.lines.filter((line) => /^[ +-]/.test(line)).map(shown);
+  let blockStart: LineNumbers = { old: hunk.oldStart, new: hunk.newStart };
+  return blocksOf(lines).flatMap(({ context, removed, added }) => {
+    const changeStart = {
+      old: blockStart.old + context.length,
+      new: blockStart.new + context.length,
+    };
+    const rows = [...contextRows(context, blockStart), ...changeRows(removed, added, changeStart)];
+    blockStart = { old: changeStart.old + removed.length, new: changeStart.new + added.length };
+    return rows;
+  });
+}
+
+/** Where a range starts as git writes it: jsdiff stores an empty range one line later. */
+const gitStart = (start: number, count: number) => (count === 0 ? start - 1 : start);
+
+/** A hunk's `@@` header, as git writes it. */
 const rangeOf = ({ oldStart, oldLines, newStart, newLines }: Hunk) =>
-  `@@ -${oldLines === 0 ? oldStart - 1 : oldStart},${oldLines} +${newLines === 0 ? newStart - 1 : newStart},${newLines} @@`;
+  `@@ -${gitStart(oldStart, oldLines)},${oldLines} +${gitStart(newStart, newLines)},${newLines} @@`;
 
 const SIGNS: Record<Kind, string> = { context: ' ', removed: '-', added: '+' };
 
+/** A hunk as git prints it, with changed words highlighted. */
 function unifiedHunk(hunk: Hunk, c: Colors): string[] {
   const header = rangeOf(hunk);
   const line = (side: Side) =>
@@ -163,12 +211,14 @@ function unifiedHunk(hunk: Hunk, c: Colors): string[] {
   return out;
 }
 
+/** The terminal columns a character takes: 0, 1 or 2. */
 function charWidth(char: string): number {
   const code = char.codePointAt(0) ?? 0;
   if (ZERO_WIDTH.includes(code) || COMBINING_MARK.test(char)) return 0;
   return WIDE_RANGES.some(([low = 0, high = 0]) => code >= low && code <= high) ? 2 : 1;
 }
 
+/** The terminal columns text takes, which `length` gets wrong for wide characters. */
 const textWidth = (text: string) => [...text].reduce((sum, char) => sum + charWidth(char), 0);
 
 /** Cuts segments to `width` columns, ending in an ellipsis when cut, then pads them to it. */
@@ -193,20 +243,35 @@ function fit(segments: Segment[], width: number): Segment[] {
   return pad(out, used, width);
 }
 
+/** Pads segments that take `used` columns out to `width`. */
 function pad(segments: Segment[], used: number, width: number): Segment[] {
   return used < width
     ? [...segments, { text: ' '.repeat(width - used), changed: false }]
     : segments;
 }
 
-function splitSide(side: Side | undefined, digits: number, width: number, c: Colors): string {
+/** The size of one side-by-side panel. */
+interface Panel {
+  /** Columns for the line number. */
+  digits: number;
+  /** Columns for the whole panel. */
+  width: number;
+}
+
+/** Room a panel needs besides its text: a space, the sign and a space. */
+const PANEL_GUTTER = 3;
+
+/** One panel of a row: line number, sign and text, cut or padded to the panel's width. */
+function splitSide(side: Side | undefined, panel: Panel, c: Colors): string {
+  const { digits, width } = panel;
   if (!side) return ' '.repeat(width);
   const number = c.dim(String(side.number).padStart(digits));
-  const text = fit(side.segments, width - digits - 3);
+  const text = fit(side.segments, width - digits - PANEL_GUTTER);
   const sign = paintFor(side.kind, c)(SIGNS[side.kind]);
   return `${number} ${sign} ${paintSegments(text, side.kind, c)}`;
 }
 
+/** The highest line number any hunk shows, which sets the width of the number column. */
 function lastLine(hunks: Hunk[]): number {
   return Math.max(
     1,
@@ -216,18 +281,29 @@ function lastLine(hunks: Hunk[]): number {
   );
 }
 
+/** A dim rule across the screen, with a label near its start. */
 function rule(label: string, width: number, c: Colors): string {
-  return c.dim(`── ${label} ${'─'.repeat(Math.max(0, width - label.length - 4))}`);
+  return c.dim(`── ${label} ${'─'.repeat(Math.max(0, width - textWidth(label) - 4))}`);
 }
 
+/** Fewest columns of text a panel keeps, however narrow the terminal. */
+const MIN_PANEL_TEXT = 5;
+/** The ` │ ` between the two panels. */
+const DIVIDER_WIDTH = 3;
+
+/** Hunks as two numbered panels, old on the left, each under a rule with its range. */
 function splitHunks(hunks: Hunk[], width: number, c: Colors): string[] {
   const digits = String(lastLine(hunks)).length;
-  const side = Math.max(digits + 8, Math.floor((width - 3) / 2));
+  const panelWidth = Math.max(
+    digits + PANEL_GUTTER + MIN_PANEL_TEXT,
+    Math.floor((width - DIVIDER_WIDTH) / 2),
+  );
+  const panel: Panel = { digits, width: panelWidth };
+  const divider = c.dim('│');
   return hunks.flatMap((hunk) => [
     rule(rangeOf(hunk), width, c),
     ...rowsOf(hunk).map(
-      ([left, right]) =>
-        `${splitSide(left, digits, side, c)} ${c.dim('│')} ${splitSide(right, digits, side, c)}`,
+      ([left, right]) => `${splitSide(left, panel, c)} ${divider} ${splitSide(right, panel, c)}`,
     ),
   ]);
 }
@@ -238,9 +314,10 @@ const STATUS: Record<FileDiff['status'], string> = {
   deleted: 'deleted',
 };
 
+/** A bold bar across the screen naming a file, its status and its line counts. */
 function fileTitle(diff: FileDiff, width: number, c: Colors): string {
   const label = ` ${shown(diff.path)}  ${STATUS[diff.status]}  +${diff.additions} -${diff.deletions} `;
-  const bar = '━'.repeat(Math.max(3, width - label.length - 3));
+  const bar = '━'.repeat(Math.max(3, width - textWidth(label) - 3));
   return c.bold(`━━━${label}${bar}`);
 }
 
@@ -251,6 +328,7 @@ const headerOf = (patch: string) => {
   return first === -1 ? lines : lines.slice(0, first);
 };
 
+/** One file's diff: unified under git's headers, or split under a title bar. */
 function drawFile(diff: FileDiff, view: DiffView, c: Colors): string[] {
   const [parsed] = parsePatch(diff.patch);
   const hunks = parsed?.hunks ?? [];
@@ -282,15 +360,28 @@ export interface ScoreChange {
   after: number | null;
 }
 
+/** Colours a score delta: green up, red down, dim unchanged. */
+function paintDelta(delta: number, c: Colors): (text: string) => string {
+  if (delta > 0) return c.green;
+  return delta < 0 ? c.red : c.dim;
+}
+
+/** A score change as `score 70 -> 85 (+15)`, just the score when there was none before, or empty. */
 function formatChange({ before, after }: ScoreChange, c: Colors): string {
-  if (before === null || after === null) {
-    return after === null ? '' : `  score ${formatScore(after)}`;
-  }
+  if (after === null) return '';
+  if (before === null) return `  score ${formatScore(after)}`;
   const delta = Math.round((after - before) * 100) / 100;
   const sign = delta > 0 ? `+${delta}` : String(delta);
-  const paint = delta > 0 ? c.green : delta < 0 ? c.red : c.dim;
+  const paint = paintDelta(delta, c);
   return `  score ${formatScore(before)} -> ${formatScore(after)} ${paint(`(${sign})`)}`;
 }
+
+/** What `formatDiffStat` adds after a file that was not just modified. */
+const STAT_NOTE: Record<FileDiff['status'], string> = {
+  added: '  (new)',
+  modified: '',
+  deleted: '  (deleted)',
+};
 
 /** Summarises diffs as `git diff --stat` does, with each file's score change when it is known. */
 export function formatDiffStat(
@@ -299,15 +390,17 @@ export function formatDiffStat(
   scores: Map<string, ScoreChange> = new Map(),
 ): string {
   const c = pc.createColors(color);
-  const width = Math.max(...diffs.map(({ path }) => shown(path).length));
-  const countWidth = Math.max(...diffs.map((d) => `+${d.additions} -${d.deletions}`.length));
+  const plainCounts = ({ additions, deletions }: FileDiff) => `+${additions} -${deletions}`;
+  const pathWidth = Math.max(...diffs.map(({ path }) => textWidth(shown(path))));
+  const countWidth = Math.max(...diffs.map((diff) => plainCounts(diff).length));
   const rows = diffs.map((diff) => {
-    const { path, status, additions, deletions } = diff;
-    const counts = `${c.green(`+${additions}`)} ${c.red(`-${deletions}`)}`;
-    const padding = ' '.repeat(countWidth - `+${additions} -${deletions}`.length);
-    const note = status === 'modified' ? '' : `  (${status === 'added' ? 'new' : 'deleted'})`;
-    const score = scores.get(path);
-    return ` ${shown(path).padEnd(width)} | ${counts}${padding}${score ? formatChange(score, c) : ''}${note}`;
+    const path = shown(diff.path);
+    const pathPadding = ' '.repeat(pathWidth - textWidth(path));
+    const counts = `${c.green(`+${diff.additions}`)} ${c.red(`-${diff.deletions}`)}`;
+    const countPadding = ' '.repeat(countWidth - plainCounts(diff).length);
+    const score = scores.get(diff.path);
+    const scoreNote = score ? formatChange(score, c) : '';
+    return ` ${path}${pathPadding} | ${counts}${countPadding}${scoreNote}${STAT_NOTE[diff.status]}`;
   });
   const sum = (key: 'additions' | 'deletions') => diffs.reduce((total, d) => total + d[key], 0);
   const files = diffs.length === 1 ? '1 file' : `${diffs.length} files`;

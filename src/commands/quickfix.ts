@@ -22,9 +22,9 @@ const PIPED_WIDTH = 160;
 const wantsColor = (stream: NodeJS.WriteStream) => Boolean(stream.isTTY) && !process.env.NO_COLOR;
 
 /** Side by side when asked, or in a terminal wide enough for two panels. */
-function chooseView(sideBySide: boolean | undefined): DiffView {
-  const color = wantsColor(process.stdout);
-  const width = process.stdout.columns || PIPED_WIDTH;
+function chooseView(sideBySide: boolean | undefined, stream: NodeJS.WriteStream): DiffView {
+  const color = wantsColor(stream);
+  const width = stream.columns || PIPED_WIDTH;
   const split = sideBySide ?? (color && width >= SPLIT_MIN_WIDTH);
   return { color, layout: split ? 'split' : 'unified', width };
 }
@@ -46,27 +46,30 @@ async function scoreDiffs(
   });
 }
 
+/** Prints the diffs to stdout, and their summary with each file's score change to stderr. */
 function printDiffs(diffs: FileDiff[], view: DiffView): void {
   console.log(formatDiffs(diffs, view));
   const scores = new Map(
-    diffs.map(({ path, scoreBefore = null, scoreAfter = null }) => [
+    diffs.map(({ path, scoreBefore, scoreAfter }) => [
       path,
-      { before: scoreBefore, after: scoreAfter },
+      { before: scoreBefore ?? null, after: scoreAfter ?? null },
     ]),
   );
   console.error(formatDiffStat(diffs, wantsColor(process.stderr), scores));
+}
+
+/** The file's new score, or null when the agent left it alone or no audit covers it now. */
+function scoreAfterOf(file: FileReport, diffs: FileDiff[]): number | null {
+  return diffs.find(({ path }) => path === file.path)?.scoreAfter ?? null;
 }
 
 /** The commit message: what was refactored, how its score moved, and that nothing was tested. */
 export function commitMessage(file: FileReport, diffs: FileDiff[], agent: string): string {
   // Repository paths stay on one line each, so a name cannot add lines or trailers to the message.
   const path = withoutControlCharacters(file.path);
-  const own = diffs.find((diff) => diff.path === file.path);
-  const after = own?.scoreAfter;
+  const after = scoreAfterOf(file, diffs);
   const score =
-    after === undefined || after === null
-      ? []
-      : [`Score ${formatScore(file.score)} -> ${formatScore(after)}.`];
+    after === null ? [] : [`Score ${formatScore(file.score)} -> ${formatScore(after)}.`];
   const paths = diffs.map((diff) => withoutControlCharacters(diff.path)).join(', ');
   return [
     `Refactor ${path} with jevlint quickfix`,
@@ -108,6 +111,70 @@ async function commitRun(
   return hash;
 }
 
+/** What every file's run shares. */
+interface QuickfixContext {
+  run: AgentRun;
+  view: DiffView;
+  /** Print JSON at the end instead of the diffs. */
+  json: boolean;
+  /** Commit each run that succeeded and changed something. */
+  commit: boolean;
+  /** Each file's latest score, updated as runs re-score files. */
+  known: Map<string, number>;
+}
+
+/** One file's run: what goes in the JSON report, and the agent's exit code. */
+interface FileOutcome {
+  result: QuickfixFileResult;
+  code: number;
+}
+
+/** Whether to commit: only when asked to and inside a git work tree. Says why it will not. */
+async function willCommit(wanted: boolean, root: string): Promise<boolean> {
+  if (!wanted) return false;
+  if (await isWorkTree(root)) return true;
+  console.error('Not committing: this is not a git repository.');
+  return false;
+}
+
+/** `[2/5] ` when there are several files to fix, or nothing for one. */
+function stepLabel(index: number, total: number): string {
+  return total > 1 ? `[${index + 1}/${total}] ` : '';
+}
+
+/**
+ * Runs the agent on one file, then re-scores, shows and commits what it changed. A failed run is
+ * shown but neither re-scored nor committed.
+ */
+async function fixFile(
+  file: FileReport,
+  step: string,
+  context: QuickfixContext,
+): Promise<FileOutcome> {
+  const { run } = context;
+  const agent = run.launch.name;
+  const shownPath = withoutControlCharacters(file.path);
+  console.error(`${step}Running ${agent} on ${shownPath} (score ${formatScore(file.score)})`);
+  const { code, changes, uncommittedBefore } = await quickfixFile(
+    file,
+    run.report,
+    run.config,
+    run.launch,
+  );
+  const unchanged = { path: file.path, score: file.score, after: null, diffs: [], commit: null };
+  const changed = diffFiles(changes);
+  if (changed.length === 0) {
+    console.error(`${agent} changed nothing for ${shownPath}.`);
+    return { result: unchanged, code };
+  }
+  const succeeded = code === 0;
+  const diffs = succeeded ? await scoreDiffs(run, changed, context.known) : changed;
+  if (!context.json) printDiffs(diffs, context.view);
+  const commit =
+    context.commit && succeeded ? await commitRun(run, file, diffs, uncommittedBefore) : null;
+  return { result: { ...unchanged, after: scoreAfterOf(file, diffs), diffs, commit }, code };
+}
+
 /** The `quickfix` command. */
 export const quickfixCommand = defineCommand({
   meta: {
@@ -131,45 +198,29 @@ export const quickfixCommand = defineCommand({
   },
   async run({ args }) {
     const run = await prepareAgentRun(args, 'quickfix');
-    const results: QuickfixFileResult[] = [];
     if (run.files.length === 0) {
       console.error(NOTHING_TO_FIX);
-      if (args.json) printJson({ files: results });
+      if (args.json) printJson({ files: [] });
       return;
     }
-    const view = chooseView(args['side-by-side']);
-    const commit = args.commit !== false && (await isWorkTree(run.config.root));
-    if (args.commit !== false && !commit) {
-      console.error('Not committing: this is not a git repository.');
-    }
-    const known = new Map(run.report.files.map(({ path, score }) => [path, score]));
-
+    const context: QuickfixContext = {
+      run,
+      view: chooseView(args['side-by-side'], process.stdout),
+      json: Boolean(args.json),
+      commit: await willCommit(args.commit !== false, run.config.root),
+      known: new Map(run.report.files.map(({ path, score }) => [path, score])),
+    };
+    const results: QuickfixFileResult[] = [];
     // One file at a time, so each agent sees the last one's edits and no two edit at once.
     for (const [index, file] of run.files.entries()) {
-      const shownPath = withoutControlCharacters(file.path);
-      const step = run.files.length > 1 ? `[${index + 1}/${run.files.length}] ` : '';
-      console.error(
-        `${step}Running ${args.agent} on ${shownPath} (score ${formatScore(file.score)})`,
-      );
-      const result = await quickfixFile(file, run.report, run.config, run.launch);
-      const { code, changes } = result;
-      let diffs = diffFiles(changes);
-      if (code === 0 && diffs.length > 0) diffs = await scoreDiffs(run, diffs, known);
-      const { uncommittedBefore } = result;
-      const after = diffs.find(({ path }) => path === file.path)?.scoreAfter ?? null;
-      if (!args.json && diffs.length > 0) printDiffs(diffs, view);
-      const committed =
-        commit && code === 0 && diffs.length > 0
-          ? await commitRun(run, file, diffs, uncommittedBefore)
-          : null;
-      results.push({ path: file.path, score: file.score, after, diffs, commit: committed });
-      if (diffs.length === 0) console.error(`${args.agent} changed nothing for ${shownPath}.`);
+      const { result, code } = await fixFile(file, stepLabel(index, run.files.length), context);
+      results.push(result);
       if (code !== 0) {
-        if (args.json) printJson({ files: results });
-        const note = diffs.length > 0 ? ' Its changes so far are shown.' : '';
-        throw agentFailure(run.launch, code, shownPath, note);
+        if (context.json) printJson({ files: results });
+        const note = result.diffs.length > 0 ? ' Its changes so far are shown.' : '';
+        throw agentFailure(run.launch, code, withoutControlCharacters(file.path), note);
       }
     }
-    if (args.json) printJson({ files: results });
+    if (context.json) printJson({ files: results });
   },
 });
