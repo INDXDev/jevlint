@@ -137,6 +137,31 @@ it lowered. `usage` includes the `--intent` request.
 Each result has `question`, `file`, `expected` (`good` or `bad`), `compliance` from 0 to 1 and
 `passed`. With `--drift` it also has `recorded`, which is `null` with no record, and `moved`.
 
+## Quickfix
+
+`jevlint quickfix --json` prints one object, after every agent has run. With nothing to fix, `files`
+is empty.
+
+| Key | Holds |
+| --- | --- |
+| `files` | One entry per file an agent worked on, in the order they ran |
+
+Each entry has `path`, `score` before the fix and `after` it, on the configured scale, `commit`,
+the short hash of the commit that holds the run's files or `null` when it was not committed, and
+`diffs`, one per file the agent changed. `after` is `null` when the file was removed, could not be scored, or
+the agent failed, which skips the re-score.
+
+| Key | Holds |
+| --- | --- |
+| `path` | Relative to the root, with forward slashes |
+| `status` | `added`, `modified` or `deleted` |
+| `additions`, `deletions` | Lines added and removed |
+| `patch` | A git-style unified diff with the original text, which `git apply` accepts. A binary file has a `Binary files … differ` line instead of hunks |
+| `scoreBefore` | The file's score before the run, or `null` for a new file or one no audit had scored |
+| `scoreAfter` | The file's score from the re-audit, or `null` for a deleted or unscored file |
+
+`scoreBefore` and `scoreAfter` are left out when the agent failed.
+
 ## Architecture report
 
 `jevlint architecture --json` prints one object to stdout:

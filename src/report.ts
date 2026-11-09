@@ -190,9 +190,11 @@ function formatNext(report: AuditReport, shown: number, presets: string[] = []):
   const top = Math.min(NEXT_PROMPT_TOP, report.files.length);
   // Only known presets get this far, and their names are limited to shell-safe characters.
   const flag = presets.length > 0 ? ` --preset ${presets.join(',')}` : '';
+  const worst = shellQuoted(report.files[0]?.path ?? '');
   const hints = [
-    ` Next: jevlint explain ${shellQuoted(report.files[0]?.path ?? '')}${flag}`,
+    ` Next: jevlint explain ${worst}${flag}`,
     `       jevlint prompt --top ${top} --copy${flag}`,
+    `       jevlint quickfix ${worst} --agent claude${flag}`,
   ];
   const hidden = report.files.length - shown;
   if (hidden > 0) hints.unshift(` ${hidden} more. Show them with --top ${report.files.length}`, '');

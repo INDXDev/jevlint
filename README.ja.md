@@ -117,6 +117,7 @@ TypeSafe を利用できない場合は、`openai`、`cloudflare`、`gateway` �
 jevlint prompt --top 3 --copy      # 任意のエージェントに貼り付ける
 jevlint prompt | claude -p         # またはパイプで渡す
 jevlint fix --agent claude         # またはエージェントを実行し、再スコアする
+jevlint quickfix --agent claude    # または編集だけを行わせ、差分と新しいスコアを表示してコミットする
 ```
 
 Claude Code では、プラグインをインストールすると、スキルと `/jevlint:audit`、`/jevlint:explain`、
@@ -246,6 +247,7 @@ Jev の登場によってリンターは作るべきものとして明白にな�
 | `jevlint spec compile\|check\|drift\|list` | 仕様駆動開発。ドキュメントをチェックリストにコンパイルし、それに照らしてコードとドキュメントを検査します。 |
 | `jevlint prompt [files...]` | コーディングエージェント向けの修正プロンプトを出力、またはコピーします。 |
 | `jevlint fix [files...] --agent <name>` | 最も悪いファイルにエージェントを実行し、再スコアします。 |
+| `jevlint quickfix [files...] --agent <name>` | 最も悪いファイルから 1 つずつ、編集だけをエージェントに行わせ、差分を左右に並べて表示し、再スコアしてファイルごとにコミットします。 |
 | `jevlint init` | リポジトリ設定またはユーザー設定を作成します。 |
 | `jevlint auth set\|list\|remove\|env` | API キーを管理します。 |
 | `jevlint preset [list\|show\|default\|new\|edit\|add\|remove]` | 原則プリセットを選択、表示、作成、管理します。引数なしではメニューを開きます。 |

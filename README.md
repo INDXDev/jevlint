@@ -118,6 +118,7 @@ No TypeSafe access? [Use another provider](docs/providers.md), such as `openai`,
 jevlint prompt --top 3 --copy      # paste into any agent
 jevlint prompt | claude -p         # or pipe it
 jevlint fix --agent claude         # or run the agent, then re-score
+jevlint quickfix --agent claude    # or let it only edit, then see the diff, new score and commit
 ```
 
 In Claude Code, install the plugin for a skill and `/jevlint:audit`, `/jevlint:explain` and
@@ -246,6 +247,7 @@ first two projects above. jevlint, jev-lint and @hazymoon/jevlint all use
 | `jevlint spec compile\|check\|drift\|list` | Spec-driven development: compile documents into a checklist, then check code and documents against it. |
 | `jevlint prompt [files...]` | Print or copy a fix prompt for a coding agent. |
 | `jevlint fix [files...] --agent <name>` | Run an agent on the worst files, then re-score them. |
+| `jevlint quickfix [files...] --agent <name>` | Have an agent only edit the worst files, one at a time, then show the diff side by side, re-score and commit each. |
 | `jevlint init` | Create a repository or user config. |
 | `jevlint auth set\|list\|remove\|env` | Manage API keys. |
 | `jevlint preset [list\|show\|default\|new\|edit\|add\|remove]` | Choose, view, write and manage principle presets. Alone, it opens a menu. |

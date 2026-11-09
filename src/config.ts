@@ -130,7 +130,17 @@ const configSchema = z.strictObject({
   weights: z.record(z.string(), weight),
   patterns: z.array(astPatternSchema),
   rules: astRulesSchema,
-  agents: z.record(z.string(), z.strictObject({ command: z.array(z.string()).min(1) })),
+  agents: z.record(
+    z.string(),
+    z.strictObject({
+      command: z.array(z.string()).min(1),
+      quickfix_command: z.array(z.string()).min(1).optional(),
+      /** Variables with an API key that the agent would use instead of its own login. */
+      key_env: z.array(z.string()).optional(),
+      /** Always leave `key_env` out of the agent's environment, as `--agent-login` does. */
+      use_login: z.boolean().optional(),
+    }),
+  ),
   cache,
   spec,
 });
@@ -187,8 +197,34 @@ const DEFAULTS = {
   patterns: [],
   rules: [],
   agents: {
-    claude: { command: ['claude', '-p', '--permission-mode', 'acceptEdits'] },
-    codex: { command: ['codex', 'exec', '--sandbox', 'workspace-write', '-'] },
+    claude: {
+      command: ['claude', '-p', '--permission-mode', 'acceptEdits'],
+      // File tools only, and few turns, because a quick fix edits and stops.
+      quickfix_command: [
+        'claude',
+        '-p',
+        '--permission-mode',
+        'acceptEdits',
+        '--tools',
+        'Read,Edit,Write,Glob,Grep',
+        '--max-turns',
+        '10',
+      ],
+      key_env: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'],
+    },
+    codex: {
+      command: ['codex', 'exec', '--sandbox', 'workspace-write', '-'],
+      quickfix_command: [
+        'codex',
+        'exec',
+        '--sandbox',
+        'workspace-write',
+        '-c',
+        'model_reasoning_effort="low"',
+        '-',
+      ],
+      key_env: ['OPENAI_API_KEY', 'CODEX_API_KEY'],
+    },
   },
   spec: {
     dir: '.jevlint/spec',

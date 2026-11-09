@@ -181,6 +181,33 @@ export interface AuditReport {
   };
 }
 
+/** One file an agent changed, as `jevlint quickfix --json` prints it. */
+export interface FileDiff {
+  /** Relative to the report root, with forward slashes. */
+  path: string;
+  status: 'added' | 'modified' | 'deleted';
+  additions: number;
+  deletions: number;
+  /** A git-style unified diff, which `git apply` accepts. Binary files have no hunks. */
+  patch: string;
+  /** `quickfix` only: the score before the run, or null for a file no audit had scored. */
+  scoreBefore?: number | null;
+  /** `quickfix` only: the score after re-auditing, or null for a deleted or unscored file. */
+  scoreAfter?: number | null;
+}
+
+/** One file `jevlint quickfix` handed to an agent, as `--json` prints it. */
+export interface QuickfixFileResult {
+  path: string;
+  /** Before the run, on the configured scale. */
+  score: number;
+  /** After the run, or null when it was not re-scored: removed, unscored or the agent failed. */
+  after: number | null;
+  diffs: FileDiff[];
+  /** The short hash of the commit with this run's files, or null when nothing was committed. */
+  commit: string | null;
+}
+
 /** Two commits to compare. A null base means a root commit, where every file is new. */
 export interface Change {
   title: string;

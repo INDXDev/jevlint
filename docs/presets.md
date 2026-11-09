@@ -30,6 +30,7 @@ The same choice works beyond `audit`, for one run of any command that scores fil
 ```sh
 jevlint prompt security --copy        # a fix prompt from one preset
 jevlint fix bug-hunt --agent claude   # fix what it found, and re-score with it
+jevlint quickfix bug-hunt --agent claude  # the same, edits only, with a diff
 jevlint explain security src/a.ts
 jevlint baseline security
 jevlint pr 42 --preset bug-hunt       # pr, commits, hook and test take only --preset

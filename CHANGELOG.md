@@ -4,6 +4,26 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- **`jevlint quickfix`.** Runs a coding agent on the worst file with the same issues as `prompt`, but
+  instructions to only edit files: no tests, builds or other commands, no commits, and one turn or a
+  few. It then prints what changed as a git-style diff, coloured in a terminal with the changed words
+  highlighted, or as a plain patch that `git apply` accepts when redirected, with a `--stat` style
+  summary on stderr. It takes the same flags as `fix`, plus `--json`. Each agent can set a
+  `quickfix_command`, and the built-in Claude Code and Codex ones keep the run short. After each
+  run it re-audits every changed file and shows its score before and after. In a terminal at least
+  120 columns wide the diff is side by side, delta-style, with numbered panels; `--side-by-side`
+  and `--no-side-by-side` choose. With `--top`, files run one at a time, labelled `[1/5]` and so on,
+  and each diff shows only that run's edits.
+  By default it then commits each file's run with `git commit`, one commit per file with the score
+  change in its message, and prints the hash. `--no-commit` leaves the changes in the working tree.
+  It never commits over changes that were there before the run.
+- `audit` suggests `jevlint quickfix <worst file> --agent claude` under its table, beside `explain`
+  and `prompt`.
+- **`--agent-login` for `fix` and `quickfix`.** Leaves the agent's API key variables, such as
+  `ANTHROPIC_API_KEY`, out of its environment, so Claude Code or Codex runs on your subscription
+  login instead of a stale key. `use_login = true` makes it the default for an agent, and `key_env`
+  names the variables. When an agent fails while such a key is set, the error now says so.
+
 ## 0.2.4 - 2026-11-08
 
 - **`jevlint spec`, for spec-driven development.** A spec is a checklist in YAML, kept in

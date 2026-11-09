@@ -103,7 +103,17 @@ jevlint fix --top 1 --agent claude
 ```
 
 `fix` asks for confirmation, requires a clean git working tree, and prints the score before and
-after. It never commits. See [Coding agents](agents.md).
+after. It never commits.
+
+For a faster pass, `quickfix` has the agent only edit files, in a few turns and with no tests, then
+shows the diff, re-scores what changed and commits each file, so you can review or revert them one
+by one:
+
+```sh
+jevlint quickfix --top 3 --agent claude
+```
+
+`audit` suggests both next steps under its table. See [Coding agents](agents.md).
 
 ## Review a change
 

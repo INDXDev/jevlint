@@ -47,15 +47,111 @@ git.
 
 Files run one at a time so that agents do not conflict. Stop early if an agent exits with an error.
 
+## `jevlint quickfix`
+
+```sh
+jevlint quickfix --agent claude
+jevlint quickfix src/orders/process.ts --agent codex
+jevlint quickfix --top 5 --agent claude --yes
+jevlint quickfix --agent claude --yes > quickfix.patch
+```
+
+`quickfix` is `fix` made quick. It reuses the audit, so the cache answers it, and sends the same
+issues as `prompt`. The instructions are different: edit only, preserve behaviour and public APIs,
+run no tests, builds or other commands, do not commit, and finish in one turn or a few at most.
+
+For each file, in priority order and one at a time, `quickfix`:
+
+1. Runs the agent with the edit-only prompt, labelled `[2/5]` and so on when there are several.
+2. Prints what changed. The diff goes to stdout: side by side in a terminal at least 120 columns
+   wide, unified and coloured in a narrower one, and a plain patch that `git apply` accepts when
+   redirected. Either way the words that changed within a line are highlighted.
+3. Re-audits every file it changed, with the same presets, and prints a `git diff --stat` style
+   summary with each file's score before and after to stderr, beside the agent's own output.
+4. Commits that run's files with `git commit`, and prints the hash. The agent itself is told not to
+   commit, so every commit is jevlint's: one per file, named `Refactor <file> with jevlint
+   quickfix`, with the score change and a note that no tests ran. Pass `--no-commit` to keep the
+   changes in the working tree instead.
+
+Commits make each file easy to review or drop on its own: `git show`, `git revert <hash>`, or
+`git reset --soft HEAD~1` for the last one. A run that touches a file you had already changed is
+left uncommitted, so your own edits never end up in jevlint's commit.
+
+`--json` prints each file with its scores, diffs and commit instead. `--side-by-side` forces two panels,
+even in a pipe, and `--no-side-by-side` forces the unified view.
+
+The diff covers the file, every file the agent added, and every file it edited. A file that already
+had changes, from `--allow-dirty` or an earlier file's run, is compared with what it held just before
+this run, so each run shows only its own edits.
+
+It runs each agent's `quickfix_command`, or its `command` when there is none. The built-in ones keep
+the run short: Claude Code gets only the file tools and at most 10 turns, and Codex reasons at low
+effort.
+
+## Use your subscription, not an API key
+
+Claude Code and Codex can run on your Claude or ChatGPT subscription, with no API key. But an API key
+in the environment wins over that login, so a stale key makes the run fail even though you are
+logged in:
+
+```text
+Invalid API key · Fix external API key
+Error: Agent exited with code 1 on src/a.ts. ANTHROPIC_API_KEY is set, and claude uses it instead
+of its own login. If the key was rejected, retry with --agent-login, ...
+```
+
+Pass `--agent-login` to `fix` or `quickfix`, and jevlint leaves the agent's key variables out of the
+environment it starts the agent with. Your shell keeps them.
+
+```sh
+jevlint quickfix src/a.ts --agent claude --agent-login
+```
+
+To make that the default for an agent, set `use_login` in your user config:
+
+```toml
+[agents.claude]
+use_login = true
+```
+
+| Agent | Variables left out | Log in once with |
+| --- | --- | --- |
+| `claude` | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` | `claude`, then `/login`. With no browser, run `claude setup-token` and set `CLAUDE_CODE_OAUTH_TOKEN` |
+| `codex` | `OPENAI_API_KEY`, `CODEX_API_KEY` | `codex login`, or `codex login --device-auth` with no browser |
+
+Why the key wins:
+
+- **Claude Code** in `-p` mode always uses `ANTHROPIC_API_KEY` when it is present, and
+  `ANTHROPIC_AUTH_TOKEN` ranks above it. Only an unset variable falls back to the subscription; an
+  empty one is not documented to. See
+  [Authentication precedence](https://code.claude.com/docs/en/authentication#authentication-precedence).
+  `--bare` never reads the login, so do not add it to a command that should use your subscription.
+- **Codex** `exec` reuses the login saved by `codex login`, but `CODEX_API_KEY` replaces it for a
+  run. See [Non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode).
+
+Each agent's `key_env` lists the variables to leave out, so an agent you add can use this too.
+
 ## Default agents
 
 ```toml
 [agents.claude]
 command = ["claude", "-p", "--permission-mode", "acceptEdits"]
+quickfix_command = [
+  "claude", "-p", "--permission-mode", "acceptEdits",
+  "--tools", "Read,Edit,Write,Glob,Grep", "--max-turns", "10",
+]
+key_env = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]
 
 [agents.codex]
 command = ["codex", "exec", "--sandbox", "workspace-write", "-"]
+quickfix_command = [
+  "codex", "exec", "--sandbox", "workspace-write", "-c", 'model_reasoning_effort="low"', "-",
+]
+key_env = ["OPENAI_API_KEY", "CODEX_API_KEY"]
 ```
+
+If you change an agent's `command`, change its `quickfix_command` too, because each falls back to
+the default separately.
 
 ## Adding an agent
 
@@ -65,6 +161,9 @@ Any command that reads a prompt from stdin works. Add it to your **user** config
 # ~/.config/jevlint/config.toml
 [agents.my-agent]
 command = ["my-agent", "--non-interactive"]
+quickfix_command = ["my-agent", "--non-interactive", "--max-steps", "5"]  # optional
+key_env = ["MY_AGENT_API_KEY"]  # optional: left out with --agent-login
+use_login = false               # optional: true always leaves key_env out
 ```
 
 ```sh

@@ -23,6 +23,19 @@ const INSTRUCTIONS = `## How to work
 7. Do not commit. Leave your changes in the working tree for review.
 8. Finish with a short summary of what changed and anything you chose to leave.`;
 
+const QUICKFIX_INSTRUCTIONS = `## How to work
+
+This is a quick fix: edit files and stop.
+
+1. Work on the file above. Open other files only to keep its callers working.
+2. Preserve behaviour and public APIs. Extracting functions, flattening nesting, renaming locals and splitting the file are in scope. A rewrite is not.
+3. If you move code to a new file, update every import of it, or re-export it from the original file.
+4. Make the smallest clean change that resolves the issues. Leave unrelated code alone.
+5. Fix the cause. Do not suppress findings, add or change jevlint-score comments, or move the mess to another file.
+6. Only read and edit files. Do not run tests, builds, linters, formatters or any other command, and install nothing.
+7. Do not commit, stage or create branches. Leave your changes in the working tree for review.
+8. Finish in one turn if you can, and in a few at most. End with one line saying what changed.`;
+
 /** Returns a file's unpinned answers poor enough to act on, lowest compliance first. */
 export const weakAnswers = (file: Pick<FileReport, 'model'>) =>
   worstAnswers(file).filter(({ compliance }) => compliance < WEAK_COMPLIANCE);
@@ -65,12 +78,20 @@ Refactor ${subject}. jevlint, a code quality linter, audited this repository${pr
 }
 
 /** Renders a Markdown prompt naming paths and problems, never file contents. */
-export function renderPrompt(files: FileReport[], report: AuditReport): string {
+export function renderPrompt(
+  files: FileReport[],
+  report: AuditReport,
+  instructions = INSTRUCTIONS,
+): string {
   const actionable = files.filter(hasIssues);
   if (actionable.length === 0) return NOTHING_TO_FIX;
   return [
     renderIntro(actionable.length, report),
     ...actionable.map((file) => renderFile(file, report.scale)),
-    INSTRUCTIONS,
+    instructions,
   ].join('\n\n');
 }
+
+/** Renders the prompt for `quickfix`: the same issues, for an agent that only edits files. */
+export const renderQuickfixPrompt = (file: FileReport, report: AuditReport) =>
+  renderPrompt([file], report, QUICKFIX_INSTRUCTIONS);

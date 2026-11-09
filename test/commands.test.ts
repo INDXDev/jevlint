@@ -381,6 +381,7 @@ describe('usesProviderKey', () => {
   it.each([
     ['jevlint audit', [], true],
     ['jevlint fix', [], true],
+    ['jevlint quickfix', [], true],
     ['jevlint pr', ['7'], true],
     ['jevlint commits', [], true],
     ['jevlint test', [], true],
@@ -615,6 +616,7 @@ describe('presets outside audit', () => {
     const { stdout } = jevlint(cwd, 'audit', 'bug-hunt', '--ast-only');
     expect(stdout).toContain('Next: jevlint explain a.ts --preset bug-hunt');
     expect(stdout).toContain('jevlint prompt --top 1 --copy --preset bug-hunt');
+    expect(stdout).toContain('jevlint quickfix a.ts --agent claude --preset bug-hunt');
     expect(jevlint(cwd, 'audit', '--ast-only').stdout).toContain('Next: jevlint explain a.ts\n');
   });
 
@@ -760,6 +762,206 @@ describe('control characters from the repository', () => {
     );
     expect(status).toBe(0);
     expect(stdout).toContain('a?[2Jb');
+    expect(stdout).not.toContain('\u001b');
+  });
+});
+
+describe('quickfix', () => {
+  const FIXED = 'export const f = 1;\n';
+  const writes = (content: string) =>
+    `require('node:fs').writeFileSync('a.ts', ${JSON.stringify(content)}); console.log('chatter');`;
+
+  const quickfix = (script: string, files: Record<string, string>, ...flags: string[]) => {
+    const home = tempDir();
+    mkdirSync(join(home, 'jevlint'));
+    const command = JSON.stringify([process.execPath, '-e', script]);
+    writeFileSync(
+      join(home, 'jevlint/config.toml'),
+      `[agents.stub]\nquickfix_command = ${command}\ncommand = ["false"]\n`,
+    );
+    const cwd = project(files);
+    return jevlintAt(home, cwd, 'quickfix', '--agent', 'stub', '--yes', '--allow-dirty', ...flags);
+  };
+
+  /** Runs quickfix in a fresh git repository, after making any `dirty` changes. */
+  const inRepo = (
+    script: string,
+    { dirty = {}, flags = [] }: { dirty?: Record<string, string>; flags?: string[] } = {},
+  ) => {
+    const home = tempDir();
+    mkdirSync(join(home, 'jevlint'));
+    const command = JSON.stringify([process.execPath, '-e', script]);
+    writeFileSync(join(home, 'jevlint/config.toml'), `[agents.stub]\ncommand = ${command}\n`);
+    const cwd = project({ 'a.ts': MESSY });
+    const git = (...args: string[]) =>
+      spawnSync('git', args, { cwd, encoding: 'utf8' }).stdout.trim();
+    git('init', '-q');
+    git('config', 'user.name', 't');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'core.autocrlf', 'false');
+    git('add', '.');
+    git('commit', '-qm', 'first');
+    for (const [path, content] of Object.entries(dirty)) writeFileSync(join(cwd, path), content);
+    return { git, ...jevlintAt(home, cwd, 'quickfix', '--agent', 'stub', '--yes', ...flags) };
+  };
+
+  it('commits each run by default, and says so', () => {
+    const { status, stderr, git } = inRepo(writes(FIXED));
+    expect(status).toBe(0);
+    expect(stderr).toMatch(
+      /Committed ([0-9a-f]{7,}) "Refactor a\.ts with jevlint quickfix" \(1 file\)\. Undo with: git reset --soft HEAD~1/,
+    );
+    expect(stderr).toContain(git('rev-parse', '--short', 'HEAD'));
+    const message = git('log', '-1', '--format=%B');
+    expect(message).toMatch(/^Refactor a\.ts with jevlint quickfix\n\nScore \d+ -> 100\.\n/);
+    expect(message).toContain('stub edited 1 file: a.ts.');
+    expect(message).toContain('jevlint quickfix ran no tests on this change.');
+    expect(git('status', '--porcelain')).toBe('');
+  });
+
+  it('records the commit in JSON', () => {
+    const { stdout, git } = inRepo(writes(FIXED), { flags: ['--json'] });
+    expect(JSON.parse(stdout).files[0].commit).toBe(git('rev-parse', '--short', 'HEAD'));
+  });
+
+  it('leaves the changes uncommitted with --no-commit', () => {
+    const { status, stderr, git } = inRepo(writes(FIXED), { flags: ['--no-commit'] });
+    expect(status).toBe(0);
+    expect(stderr).not.toContain('Committed');
+    expect(git('status', '--porcelain')).toBe('M a.ts');
+    expect(git('rev-list', '--count', 'HEAD')).toBe('1');
+  });
+
+  it('does not commit over changes that were there before the run', () => {
+    const dirty = { 'a.ts': `${MESSY}// mine\n` };
+    const { status, stderr, git } = inRepo(writes(FIXED), { dirty, flags: ['--allow-dirty'] });
+    expect(status).toBe(0);
+    expect(stderr).toContain('Not committed: a.ts already had uncommitted changes');
+    expect(git('rev-list', '--count', 'HEAD')).toBe('1');
+  });
+
+  it('says it cannot commit outside git', () => {
+    const { status, stderr } = quickfix(writes(FIXED), { 'a.ts': MESSY });
+    expect(status).toBe(0);
+    expect(stderr).toContain('Not committing: this is not a git repository.');
+  });
+
+  it('prints a plain patch on stdout, and the agent and the summary on stderr', () => {
+    const { status, stdout, stderr } = quickfix(writes(FIXED), { 'a.ts': MESSY });
+    expect(status).toBe(0);
+    expect(stdout).toMatch(/^diff --git a\/a\.ts b\/a\.ts\n--- a\/a\.ts\n\+\+\+ b\/a\.ts\n@@ /);
+    expect(stdout).toContain('+export const f = 1;');
+    expect(stdout).not.toContain('chatter');
+    expect(stdout).not.toContain('\u001b');
+    expect(stderr).toContain('chatter');
+    expect(stderr).toContain('1 file changed, 1 insertions(+), 1 deletions(-)');
+  });
+
+  it('re-scores what the agent changed with an audit', () => {
+    const { status, stderr } = quickfix(writes(FIXED), { 'a.ts': MESSY });
+    expect(status).toBe(0);
+    expect(stderr).toContain('Re-scoring with jevlint audit');
+    expect(stderr).toMatch(/ a\.ts \| \+1 -1 {2}score \d+ -> 100 \(\+\d+\)/);
+  });
+
+  it('prints each file, its diffs and their scores as JSON', () => {
+    const { status, stdout } = quickfix(writes(FIXED), { 'a.ts': MESSY }, '--json');
+    expect(status).toBe(0);
+    const [file] = JSON.parse(stdout).files;
+    expect(file.path).toBe('a.ts');
+    expect(file.after).toBe(100);
+    expect(file.score).toBeLessThan(100);
+    expect(file.diffs).toMatchObject([
+      { path: 'a.ts', status: 'modified', additions: 1, scoreBefore: file.score, scoreAfter: 100 },
+    ]);
+  });
+
+  it('runs the agent on one file at a time, in priority order', () => {
+    // Each run appends its file's name to a log, so the order and count show.
+    const script = `
+      const fs = require('node:fs');
+      const prompt = fs.readFileSync(0, 'utf8');
+      const path = /## \`([^\`]+)\`/.exec(prompt)[1];
+      fs.appendFileSync('runs.log', path + '\\n');
+      fs.writeFileSync(path, ${JSON.stringify(FIXED)});`;
+    const files = { 'a.ts': MESSY, 'b.ts': MESSY.replace('f(', 'g(') };
+    const { status, stderr } = quickfix(script, files, '--top', '2');
+    expect(status).toBe(0);
+    expect(stderr).toMatch(/\[1\/2\] Running stub on [ab]\.ts/);
+    expect(stderr).toMatch(/\[2\/2\] Running stub on [ab]\.ts/);
+    expect(stderr.match(/Re-scoring/g)).toHaveLength(2);
+  });
+
+  it('shows old and new side by side when asked, even in a pipe', () => {
+    const { status, stdout } = quickfix(writes(FIXED), { 'a.ts': MESSY }, '--side-by-side');
+    expect(status).toBe(0);
+    expect(stdout).toMatch(/^━━━ a\.ts {2}modified {2}\+1 -1 ━+/);
+    expect(stdout).toMatch(/1 - export function f.*│ 1 \+ export const f = 1;/);
+  });
+
+  it('shows what a failed agent changed, then exits 2', () => {
+    const { status, stdout, stderr } = quickfix(`${writes(FIXED)} process.exit(3);`, {
+      'a.ts': MESSY,
+    });
+    expect(status).toBe(2);
+    expect(stdout).toContain('+export const f = 1;');
+    expect(stderr).toContain('Agent exited with code 3 on a.ts. Its changes so far are shown.');
+  });
+
+  it('leaves a key in the environment out with --agent-login, and says so when it fails', () => {
+    const home = tempDir();
+    mkdirSync(join(home, 'jevlint'));
+    // Fails like Claude Code does when the key in the environment is invalid.
+    const script = `${writes(FIXED)} process.exit(process.env.JEVLINT_FAKE_KEY ? 1 : 0);`;
+    const command = JSON.stringify([process.execPath, '-e', script]);
+    const config = `[agents.stub]
+command = ${command}
+key_env = ["JEVLINT_FAKE_KEY"]
+`;
+    writeFileSync(join(home, 'jevlint/config.toml'), config);
+    const run = (...flags: string[]) => {
+      const env = {
+        PATH: process.env.PATH,
+        HOME: home,
+        XDG_CONFIG_HOME: home,
+        XDG_CACHE_HOME: home,
+      };
+      const args = [CLI, 'quickfix', '--agent', 'stub', '--yes', '--allow-dirty', ...flags];
+      const cwd = project({ 'a.ts': MESSY });
+      return spawnSync(process.execPath, args, {
+        cwd,
+        env: { ...env, JEVLINT_FAKE_KEY: 'invalid' },
+        encoding: 'utf8',
+      });
+    };
+    const failed = run();
+    expect(failed.status).toBe(2);
+    expect(failed.stderr).toContain(
+      'JEVLINT_FAKE_KEY is set, and stub uses it instead of its own login.',
+    );
+    expect(failed.stderr).toContain('retry with --agent-login');
+    const passed = run('--agent-login');
+    expect(passed.status).toBe(0);
+    expect(passed.stdout).toContain('+export const f = 1;');
+  });
+
+  it('says when the agent changed nothing', () => {
+    const { status, stderr } = quickfix('', { 'a.ts': MESSY });
+    expect(status).toBe(0);
+    expect(stderr).toContain('stub changed nothing for a.ts.');
+  });
+
+  it('runs no agent when nothing needs fixing', () => {
+    const { status, stdout, stderr } = quickfix('process.exit(9)', { 'a.ts': FIXED }, '--json');
+    expect(status).toBe(0);
+    expect(stderr).toContain('Nothing to fix');
+    expect(JSON.parse(stdout)).toEqual({ files: [] });
+  });
+
+  it('keeps escape sequences from the repository out of the diff', () => {
+    const { status, stdout } = quickfix(writes('y\u001b[2J\n'), { 'a.ts': MESSY });
+    expect(status).toBe(0);
+    expect(stdout).toContain('+y?[2J');
     expect(stdout).not.toContain('\u001b');
   });
 });

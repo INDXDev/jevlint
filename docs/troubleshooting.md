@@ -1,5 +1,11 @@
 # Troubleshooting
 
+## An agent says `Invalid API key` though you are logged in
+
+An API key in your environment, such as `ANTHROPIC_API_KEY`, takes the place of Claude Code's or
+Codex's own login. Retry with `--agent-login`, or set `use_login = true` for the agent. See
+[Use your subscription, not an API key](agents.md#use-your-subscription-not-an-api-key).
+
 ## "No API key found, running AST-only"
 
 No usable key was found for the configured provider or any [fallback](providers.md#fallback). Run `jevlint auth list`, then `jevlint auth set <provider>`,

@@ -55,6 +55,62 @@ export async function isClean(root: string): Promise<boolean> {
   );
 }
 
+/**
+ * Lists files under the root that differ from the index or are untracked and not ignored,
+ * root-relative. Empty outside a git repository.
+ */
+export async function workingTreeChanges(root: string): Promise<string[]> {
+  // `ls-files`, because its paths are relative to the root, as status's are not.
+  const names = await git(root, [
+    'ls-files',
+    '-z',
+    '--modified',
+    '--others',
+    '--exclude-standard',
+  ]).catch(() => '');
+  return [...new Set(names.split('\0').filter(Boolean))];
+}
+
+/** Lists files under the root with changes not yet committed, staged or not. */
+export async function uncommittedFiles(root: string): Promise<string[]> {
+  // Plumbing reads only the index and HEAD's tree, so no filter program runs. No HEAD means none.
+  const staged = await git(root, [
+    'diff-index',
+    '--cached',
+    '--name-only',
+    '-z',
+    '--relative',
+    '--no-renames',
+    'HEAD',
+  ]).catch(() => '');
+  const all = [...(await workingTreeChanges(root)), ...staged.split('\0').filter(Boolean)];
+  return [...new Set(all)];
+}
+
+/** True inside a git working tree. */
+export function isWorkTree(root: string): Promise<boolean> {
+  return git(root, ['rev-parse', '--is-inside-work-tree']).then(
+    (answer) => answer.trim() === 'true',
+    () => false,
+  );
+}
+
+/**
+ * Commits only `paths`, root-relative, including new and deleted files, and returns the short hash.
+ * Anything else already staged stays staged. Hooks and signing run as the user's config says.
+ */
+export async function commitPaths(root: string, paths: string[], message: string): Promise<string> {
+  const pathspecs = paths.map((path) => `:(literal)${path}`);
+  try {
+    await git(root, ['add', '--all', '--', ...pathspecs]);
+    await git(root, ['commit', '--quiet', '--only', '-m', message, '--', ...pathspecs]);
+  } catch (error) {
+    const stderr = (error as { stderr?: string }).stderr?.trim();
+    throw new UserError(`git commit failed${stderr ? `: ${stderr}` : '.'}`);
+  }
+  return (await git(root, ['rev-parse', '--short', 'HEAD'])).trim();
+}
+
 type Commits = Pick<Change, 'base' | 'head'>;
 
 const commitRange = ({ base, head }: Commits) => (base ? [base, head] : ['--root', head]);
