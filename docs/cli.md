@@ -271,6 +271,7 @@ Runs a coding agent, one file at a time, then re-scores each file. See
 | `--preset <names>` | Comma-separated presets, replacing the configured ones |
 | `--yes` | Skip the confirmation. Required when not running in a terminal |
 | `--allow-dirty` | Run even if the git working tree has changes |
+| `--agent-login` | Use the agent's own login, such as a Claude or ChatGPT subscription, instead of an API key in the environment. See [Coding agents](agents.md#use-your-subscription-not-an-api-key) |
 
 ## `jevlint quickfix [files...]`
 
@@ -285,6 +286,7 @@ edits, then prints what it changed as a git-style diff. It takes the same flags 
 | `--preset <names>` | Comma-separated presets, replacing the configured ones |
 | `--yes` | Skip the confirmation. Required when not running in a terminal |
 | `--allow-dirty` | Run even if the git working tree has changes |
+| `--agent-login` | Use the agent's own login, such as a Claude or ChatGPT subscription, instead of an API key in the environment. See [Coding agents](agents.md#use-your-subscription-not-an-api-key) |
 | `--json` | Print each file with its score and diffs as [JSON](json-output.md#quickfix) |
 
 The diff goes to stdout and a `git diff --stat` style summary to stderr, with the agent's own output.
@@ -297,7 +299,8 @@ jevlint quickfix clean-code src/orders/process.ts --agent codex --yes
 jevlint quickfix --agent claude --yes > quickfix.patch
 ```
 
-If the agent exits with an error, `quickfix` still prints what it changed, then exits 2.
+If the agent exits with an error, `quickfix` still prints what it changed, then exits 2. When an
+API key in the environment may be the cause, the error says so and suggests `--agent-login`.
 
 ## `jevlint hook`
 

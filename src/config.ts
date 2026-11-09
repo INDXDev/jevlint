@@ -135,6 +135,10 @@ const configSchema = z.strictObject({
     z.strictObject({
       command: z.array(z.string()).min(1),
       quickfix_command: z.array(z.string()).min(1).optional(),
+      /** Variables with an API key that the agent would use instead of its own login. */
+      key_env: z.array(z.string()).optional(),
+      /** Always leave `key_env` out of the agent's environment, as `--agent-login` does. */
+      use_login: z.boolean().optional(),
     }),
   ),
   cache,
@@ -206,6 +210,7 @@ const DEFAULTS = {
         '--max-turns',
         '10',
       ],
+      key_env: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'],
     },
     codex: {
       command: ['codex', 'exec', '--sandbox', 'workspace-write', '-'],
@@ -218,6 +223,7 @@ const DEFAULTS = {
         'model_reasoning_effort="low"',
         '-',
       ],
+      key_env: ['OPENAI_API_KEY', 'CODEX_API_KEY'],
     },
   },
   spec: {

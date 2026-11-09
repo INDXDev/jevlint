@@ -74,6 +74,49 @@ It runs each agent's `quickfix_command`, or its `command` when there is none. Th
 the run short: Claude Code gets only the file tools and at most 10 turns, and Codex reasons at low
 effort.
 
+## Use your subscription, not an API key
+
+Claude Code and Codex can run on your Claude or ChatGPT subscription, with no API key. But an API key
+in the environment wins over that login, so a stale key makes the run fail even though you are
+logged in:
+
+```text
+Invalid API key · Fix external API key
+Error: Agent exited with code 1 on src/a.ts. ANTHROPIC_API_KEY is set, and claude uses it instead
+of its own login. If the key was rejected, retry with --agent-login, ...
+```
+
+Pass `--agent-login` to `fix` or `quickfix`, and jevlint leaves the agent's key variables out of the
+environment it starts the agent with. Your shell keeps them.
+
+```sh
+jevlint quickfix src/a.ts --agent claude --agent-login
+```
+
+To make that the default for an agent, set `use_login` in your user config:
+
+```toml
+[agents.claude]
+use_login = true
+```
+
+| Agent | Variables left out | Log in once with |
+| --- | --- | --- |
+| `claude` | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` | `claude`, then `/login`. With no browser, run `claude setup-token` and set `CLAUDE_CODE_OAUTH_TOKEN` |
+| `codex` | `OPENAI_API_KEY`, `CODEX_API_KEY` | `codex login`, or `codex login --device-auth` with no browser |
+
+Why the key wins:
+
+- **Claude Code** in `-p` mode always uses `ANTHROPIC_API_KEY` when it is present, and
+  `ANTHROPIC_AUTH_TOKEN` ranks above it. Only an unset variable falls back to the subscription; an
+  empty one is not documented to. See
+  [Authentication precedence](https://code.claude.com/docs/en/authentication#authentication-precedence).
+  `--bare` never reads the login, so do not add it to a command that should use your subscription.
+- **Codex** `exec` reuses the login saved by `codex login`, but `CODEX_API_KEY` replaces it for a
+  run. See [Non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode).
+
+Each agent's `key_env` lists the variables to leave out, so an agent you add can use this too.
+
 ## Default agents
 
 ```toml
@@ -83,12 +126,14 @@ quickfix_command = [
   "claude", "-p", "--permission-mode", "acceptEdits",
   "--tools", "Read,Edit,Write,Glob,Grep", "--max-turns", "10",
 ]
+key_env = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]
 
 [agents.codex]
 command = ["codex", "exec", "--sandbox", "workspace-write", "-"]
 quickfix_command = [
   "codex", "exec", "--sandbox", "workspace-write", "-c", 'model_reasoning_effort="low"', "-",
 ]
+key_env = ["OPENAI_API_KEY", "CODEX_API_KEY"]
 ```
 
 If you change an agent's `command`, change its `quickfix_command` too, because each falls back to
@@ -102,6 +147,9 @@ Any command that reads a prompt from stdin works. Add it to your **user** config
 # ~/.config/jevlint/config.toml
 [agents.my-agent]
 command = ["my-agent", "--non-interactive"]
+quickfix_command = ["my-agent", "--non-interactive", "--max-steps", "5"]  # optional
+key_env = ["MY_AGENT_API_KEY"]  # optional: left out with --agent-login
+use_login = false               # optional: true always leaves key_env out
 ```
 
 ```sh

@@ -810,6 +810,43 @@ describe('quickfix', () => {
     expect(stderr).toContain('Agent exited with code 3 on a.ts. Its changes so far are shown.');
   });
 
+  it('leaves a key in the environment out with --agent-login, and says so when it fails', () => {
+    const home = tempDir();
+    mkdirSync(join(home, 'jevlint'));
+    // Fails like Claude Code does when the key in the environment is invalid.
+    const script = `${writes(FIXED)} process.exit(process.env.JEVLINT_FAKE_KEY ? 1 : 0);`;
+    const command = JSON.stringify([process.execPath, '-e', script]);
+    const config = `[agents.stub]
+command = ${command}
+key_env = ["JEVLINT_FAKE_KEY"]
+`;
+    writeFileSync(join(home, 'jevlint/config.toml'), config);
+    const run = (...flags: string[]) => {
+      const env = {
+        PATH: process.env.PATH,
+        HOME: home,
+        XDG_CONFIG_HOME: home,
+        XDG_CACHE_HOME: home,
+      };
+      const args = [CLI, 'quickfix', '--agent', 'stub', '--yes', '--allow-dirty', ...flags];
+      const cwd = project({ 'a.ts': MESSY });
+      return spawnSync(process.execPath, args, {
+        cwd,
+        env: { ...env, JEVLINT_FAKE_KEY: 'invalid' },
+        encoding: 'utf8',
+      });
+    };
+    const failed = run();
+    expect(failed.status).toBe(2);
+    expect(failed.stderr).toContain(
+      'JEVLINT_FAKE_KEY is set, and stub uses it instead of its own login.',
+    );
+    expect(failed.stderr).toContain('retry with --agent-login');
+    const passed = run('--agent-login');
+    expect(passed.status).toBe(0);
+    expect(passed.stdout).toContain('+export const f = 1;');
+  });
+
   it('says when the agent changed nothing', () => {
     const { status, stderr } = quickfix('', { 'a.ts': MESSY });
     expect(status).toBe(0);

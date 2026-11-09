@@ -1,7 +1,6 @@
 /** `jevlint quickfix`: has a coding agent only edit the worst file, then shows the diff. */
 import { defineCommand } from 'citty';
-import { quickfixFile, resolveQuickfixAgent } from '../agent.ts';
-import { UserError } from '../config.ts';
+import { agentFailure, quickfixFile } from '../agent.ts';
 import { diffFiles, formatDiffStat, formatDiffs } from '../diff.ts';
 import { formatScore, withoutControlCharacters } from '../report.ts';
 import type { FileDiff } from '../types.ts';
@@ -23,7 +22,7 @@ export const quickfixCommand = defineCommand({
     json: { type: 'boolean', description: 'Print each file and its diffs as JSON' },
   },
   async run({ args }) {
-    const run = await prepareAgentRun(args, resolveQuickfixAgent, 'quickfix');
+    const run = await prepareAgentRun(args, 'quickfix');
     const results: { path: string; score: number; diffs: FileDiff[] }[] = [];
     if (run.files.length === 0) {
       console.error(NOTHING_TO_FIX);
@@ -34,7 +33,7 @@ export const quickfixCommand = defineCommand({
     for (const file of run.files) {
       const shownPath = withoutControlCharacters(file.path);
       console.error(`Running ${args.agent} on ${shownPath} (score ${formatScore(file.score)})`);
-      const { code, changes } = await quickfixFile(file, run.report, run.config, run.command);
+      const { code, changes } = await quickfixFile(file, run.report, run.config, run.launch);
       const diffs = diffFiles(changes);
       results.push({ path: file.path, score: file.score, diffs });
       if (!args.json && diffs.length > 0) {
@@ -44,8 +43,8 @@ export const quickfixCommand = defineCommand({
       if (diffs.length === 0) console.error(`${args.agent} changed nothing for ${shownPath}.`);
       if (code !== 0) {
         if (args.json) printJson({ files: results });
-        const shown = diffs.length > 0 ? ' Its changes so far are shown.' : '';
-        throw new UserError(`Agent exited with code ${code} on ${shownPath}.${shown} Stopping.`);
+        const note = diffs.length > 0 ? ' Its changes so far are shown.' : '';
+        throw agentFailure(run.launch, code, shownPath, note);
       }
     }
     if (args.json) printJson({ files: results });

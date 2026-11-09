@@ -20,30 +20,60 @@ function findAgent(config: Config, name: string | undefined): Agent {
   throw new UserError(`${problem} Configured agents: ${configured}`);
 }
 
-/** Looks up a configured agent's command, listing the options when the name is missing or unknown. */
-export const resolveAgent = (config: Config, name: string | undefined): string[] =>
-  findAgent(config, name).command;
-
-/** Looks up the command `quickfix` runs: the agent's `quickfix_command`, else its `command`. */
-export function resolveQuickfixAgent(config: Config, name: string | undefined): string[] {
-  const { command, quickfix_command } = findAgent(config, name);
-  return quickfix_command ?? command;
+/** How to start an agent, for `fix` or `quickfix`. */
+export interface AgentLaunch {
+  name: string;
+  command: string[];
+  /** Variables with an API key that would take the place of the agent's own login. */
+  keyEnv: string[];
+  /** True when `keyEnv` is left out of the agent's environment, so it uses its own login. */
+  login: boolean;
 }
 
-/** Where an agent's own output goes. `stderr` keeps stdout for jevlint's results. */
-export type AgentOutput = 'inherit' | 'stderr';
+/**
+ * Looks up how to start an agent, listing the options when the name is missing or unknown.
+ * `quickfix` runs `quickfix_command` when there is one, and `login` forces the agent's own login.
+ */
+export function launchAgent(
+  config: Config,
+  name: string | undefined,
+  use: 'fix' | 'quickfix',
+  login = false,
+): AgentLaunch {
+  const agent = findAgent(config, name);
+  const command = use === 'quickfix' ? (agent.quickfix_command ?? agent.command) : agent.command;
+  const keyEnv = agent.key_env ?? [];
+  return { name: name as string, command, keyEnv, login: login || agent.use_login === true };
+}
+
+/** How `runAgent` starts the agent. */
+export interface RunAgentOptions {
+  /** `stderr` sends the agent's output there, keeping stdout for jevlint's results. */
+  output?: 'inherit' | 'stderr';
+  /** Variables to leave out of the agent's environment. */
+  unsetEnv?: string[];
+}
+
+/** Windows names variables without regard to case, so `Anthropic_Api_Key` must go too. */
+function envWithout(names: string[]): NodeJS.ProcessEnv {
+  const unset = new Set(names.map((name) => name.toUpperCase()));
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !unset.has(name.toUpperCase())),
+  );
+}
 
 /** Runs an agent with the prompt on stdin, resolving to its exit code. Never uses a shell. */
 export function runAgent(
   command: string[],
   prompt: string,
   cwd: string,
-  output: AgentOutput = 'inherit',
+  { output = 'inherit', unsetEnv = [] }: RunAgentOptions = {},
 ): Promise<number> {
   const [bin = '', ...args] = command;
   const stdout = output === 'stderr' ? 2 : 'inherit';
+  const env = envWithout(unsetEnv);
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { cwd, stdio: ['pipe', stdout, 'inherit'] });
+    const child = spawn(bin, args, { cwd, env, stdio: ['pipe', stdout, 'inherit'] });
     child.on('error', (error: NodeJS.ErrnoException) => {
       const missing = `Agent command not found: ${bin}. Install it, or change its command in your user config.`;
       reject(error.code === 'ENOENT' ? new UserError(missing) : error);
@@ -55,15 +85,41 @@ export function runAgent(
   });
 }
 
+/**
+ * Explains a failed agent. An API key in the environment is the usual cause, because an agent
+ * prefers it to the login of a subscription, so the hint says how to leave it out.
+ */
+export function agentFailure(
+  launch: AgentLaunch,
+  code: number,
+  path: string,
+  note = '',
+): UserError {
+  const keys = launch.login ? [] : launch.keyEnv.filter((name) => process.env[name]);
+  const hint =
+    keys.length > 0
+      ? ` ${keys.join(' and ')} ${keys.length === 1 ? 'is' : 'are'} set, and ${launch.name} uses ${keys.length === 1 ? 'it' : 'them'} instead of its own login. If the key was rejected, retry with --agent-login, or set use_login = true under [agents.${launch.name}] in your user config.`
+      : launch.login
+        ? ` It ran without the API keys in your environment, so it needs its own login. Log in to ${launch.name} once, outside jevlint.`
+        : '';
+  return new UserError(`Agent exited with code ${code} on ${path}.${note}${hint} Stopping.`);
+}
+
+const runOptions = (launch: AgentLaunch, output?: RunAgentOptions['output']) => ({
+  output,
+  unsetEnv: launch.login ? launch.keyEnv : [],
+});
+
 /** Runs an agent on one file and returns its fresh report, or undefined if the file is gone. */
 export async function fixFile(
   file: FileReport,
   report: AuditReport,
   config: Config,
-  command: string[],
+  launch: AgentLaunch,
 ): Promise<FileReport | undefined> {
-  const code = await runAgent(command, renderPrompt([file], report), config.root);
-  if (code !== 0) throw new UserError(`Agent exited with code ${code} on ${file.path}. Stopping.`);
+  const prompt = renderPrompt([file], report);
+  const code = await runAgent(launch.command, prompt, config.root, runOptions(launch));
+  if (code !== 0) throw agentFailure(launch, code, file.path);
   // audit() rejects a named path that does not exist.
   if (!existsSync(join(config.root, file.path))) return undefined;
   const { files } = await audit(config, { paths: [file.path] });
@@ -87,12 +143,13 @@ export async function quickfixFile(
   file: FileReport,
   report: AuditReport,
   config: Config,
-  command: string[],
+  launch: AgentLaunch,
 ): Promise<QuickfixResult> {
   const { root } = config;
   const changedBefore = new Set(await workingTreeChanges(root));
   const before = await contentOf(root, file.path);
-  const code = await runAgent(command, renderQuickfixPrompt(file, report), root, 'stderr');
+  const prompt = renderQuickfixPrompt(file, report);
+  const code = await runAgent(launch.command, prompt, root, runOptions(launch, 'stderr'));
   const others = (await workingTreeChanges(root)).filter(
     (path) => path !== file.path && !changedBefore.has(path),
   );

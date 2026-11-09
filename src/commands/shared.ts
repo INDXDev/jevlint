@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { confirm, isCancel, spinner } from '@clack/prompts';
+import { type AgentLaunch, launchAgent } from '../agent.ts';
 import { type AuditOptions, audit, PROVIDER_ERROR } from '../audit.ts';
 import { type Config, type ConfigOverrides, loadConfig, UserError } from '../config.ts';
 import { envKeysAllowed, KEY_ENV } from '../credentials.ts';
@@ -49,6 +50,11 @@ export const AGENT_RUN_ARGS = {
   agent: { type: 'string', valueHint: 'name', description: 'Agent to run, such as claude' },
   yes: { type: 'boolean', description: 'Skip the confirmation. Required outside a terminal' },
   'allow-dirty': { type: 'boolean', description: 'Run even if the git working tree has changes' },
+  'agent-login': {
+    type: 'boolean',
+    description:
+      "Use the agent's own login, such as a subscription, not an API key in the environment",
+  },
 } as const;
 
 /** The parsed `AGENT_RUN_ARGS`. */
@@ -59,12 +65,13 @@ export interface AgentRunFlags {
   agent?: string;
   yes?: boolean;
   'allow-dirty'?: boolean;
+  'agent-login'?: boolean;
 }
 
 /** What an agent run works on, after its checks and confirmation. `files` is empty with nothing to fix. */
 export interface AgentRun {
   config: Config;
-  command: string[];
+  launch: AgentLaunch;
   report: AuditReport;
   files: FileReport[];
 }
@@ -267,19 +274,18 @@ async function confirmPlan(files: FileReport[], agent: string): Promise<void> {
 
 /**
  * Prepares an agent run: checks the flags and the working tree, audits, picks the files and asks
- * before going on. `resolve` picks the agent's command from the config.
+ * before going on.
  */
 export async function prepareAgentRun(
   args: AgentRunFlags,
-  resolve: (config: Config, name: string | undefined) => string[],
-  verb: string,
+  use: 'fix' | 'quickfix',
 ): Promise<AgentRun> {
   const top = parseCount('--top', args.top);
   const { named, paths } = await splitPositionals(args._);
   const config = await projectConfig(presetOverride(args.preset, named));
-  const command = resolve(config, args.agent);
+  const launch = launchAgent(config, args.agent, use, args['agent-login']);
   if (!args.yes && !process.stdin.isTTY) {
-    throw new UserError(`Pass --yes to run ${verb} outside a terminal.`);
+    throw new UserError(`Pass --yes to run ${use} outside a terminal.`);
   }
   if (!args['allow-dirty'] && !(await isClean(config.root))) {
     throw new UserError(
@@ -289,7 +295,7 @@ export async function prepareAgentRun(
   const report = await auditProject(config, { paths });
   const files = selectFiles(report, paths, top);
   if (files.length > 0 && !args.yes) await confirmPlan(files, String(args.agent));
-  return { config, command, report, files };
+  return { config, launch, report, files };
 }
 
 /** Unwraps a clack answer, treating Ctrl-C as the end of the command. */

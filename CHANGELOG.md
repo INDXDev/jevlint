@@ -10,6 +10,10 @@ This project follows [Semantic Versioning](https://semver.org).
   highlighted, or as a plain patch that `git apply` accepts when redirected, with a `--stat` style
   summary on stderr. It takes the same flags as `fix`, plus `--json`. Each agent can set a
   `quickfix_command`, and the built-in Claude Code and Codex ones keep the run short.
+- **`--agent-login` for `fix` and `quickfix`.** Leaves the agent's API key variables, such as
+  `ANTHROPIC_API_KEY`, out of its environment, so Claude Code or Codex runs on your subscription
+  login instead of a stale key. `use_login = true` makes it the default for an agent, and `key_env`
+  names the variables. When an agent fails while such a key is set, the error now says so.
 
 ## 0.2.4 - 2026-11-08
 
