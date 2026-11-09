@@ -139,6 +139,9 @@ Some risks remain:
   `git status`, and `quickfix` finds changed files with `git ls-files`, both of which can run programs
   a repository's `.git/config` names. `quickfix` makes the diff itself, so no diff or textconv
   program runs, and prints it without escape sequences. `--json` keeps the original text.
+- `quickfix` commits each run with `git add` and `git commit`, which run your hooks and signing
+  program as your git config names them. The commit takes only the files the run changed, and the
+  message keeps each repository path on one line. Pass `--no-commit` to leave committing to you.
 - `jevlint pr` runs `gh` and `git fetch`, which can run programs a repository's `.git/config` names,
   such as `core.sshCommand`. Only use it in a clone you made yourself.
 - `pr` and `commits` read blobs with lazy fetching off, so in a partial clone a file's missing old

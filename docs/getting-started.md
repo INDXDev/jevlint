@@ -106,7 +106,8 @@ jevlint fix --top 1 --agent claude
 after. It never commits.
 
 For a faster pass, `quickfix` has the agent only edit files, in a few turns and with no tests, then
-shows the diff and re-scores what changed:
+shows the diff, re-scores what changed and commits each file, so you can review or revert them one
+by one:
 
 ```sh
 jevlint quickfix --top 3 --agent claude

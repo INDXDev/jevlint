@@ -783,6 +783,69 @@ describe('quickfix', () => {
     return jevlintAt(home, cwd, 'quickfix', '--agent', 'stub', '--yes', '--allow-dirty', ...flags);
   };
 
+  /** Runs quickfix in a fresh git repository, after making any `dirty` changes. */
+  const inRepo = (
+    script: string,
+    { dirty = {}, flags = [] }: { dirty?: Record<string, string>; flags?: string[] } = {},
+  ) => {
+    const home = tempDir();
+    mkdirSync(join(home, 'jevlint'));
+    const command = JSON.stringify([process.execPath, '-e', script]);
+    writeFileSync(join(home, 'jevlint/config.toml'), `[agents.stub]\ncommand = ${command}\n`);
+    const cwd = project({ 'a.ts': MESSY });
+    const git = (...args: string[]) =>
+      spawnSync('git', args, { cwd, encoding: 'utf8' }).stdout.trim();
+    git('init', '-q');
+    git('config', 'user.name', 't');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'core.autocrlf', 'false');
+    git('add', '.');
+    git('commit', '-qm', 'first');
+    for (const [path, content] of Object.entries(dirty)) writeFileSync(join(cwd, path), content);
+    return { git, ...jevlintAt(home, cwd, 'quickfix', '--agent', 'stub', '--yes', ...flags) };
+  };
+
+  it('commits each run by default, and says so', () => {
+    const { status, stderr, git } = inRepo(writes(FIXED));
+    expect(status).toBe(0);
+    expect(stderr).toMatch(
+      /Committed ([0-9a-f]{7,}) "Refactor a\.ts with jevlint quickfix" \(1 file\)\. Undo with: git reset --soft HEAD~1/,
+    );
+    expect(stderr).toContain(git('rev-parse', '--short', 'HEAD'));
+    const message = git('log', '-1', '--format=%B');
+    expect(message).toMatch(/^Refactor a\.ts with jevlint quickfix\n\nScore \d+ -> 100\.\n/);
+    expect(message).toContain('stub edited 1 file: a.ts.');
+    expect(message).toContain('jevlint quickfix ran no tests on this change.');
+    expect(git('status', '--porcelain')).toBe('');
+  });
+
+  it('records the commit in JSON', () => {
+    const { stdout, git } = inRepo(writes(FIXED), { flags: ['--json'] });
+    expect(JSON.parse(stdout).files[0].commit).toBe(git('rev-parse', '--short', 'HEAD'));
+  });
+
+  it('leaves the changes uncommitted with --no-commit', () => {
+    const { status, stderr, git } = inRepo(writes(FIXED), { flags: ['--no-commit'] });
+    expect(status).toBe(0);
+    expect(stderr).not.toContain('Committed');
+    expect(git('status', '--porcelain')).toBe('M a.ts');
+    expect(git('rev-list', '--count', 'HEAD')).toBe('1');
+  });
+
+  it('does not commit over changes that were there before the run', () => {
+    const dirty = { 'a.ts': `${MESSY}// mine\n` };
+    const { status, stderr, git } = inRepo(writes(FIXED), { dirty, flags: ['--allow-dirty'] });
+    expect(status).toBe(0);
+    expect(stderr).toContain('Not committed: a.ts already had uncommitted changes');
+    expect(git('rev-list', '--count', 'HEAD')).toBe('1');
+  });
+
+  it('says it cannot commit outside git', () => {
+    const { status, stderr } = quickfix(writes(FIXED), { 'a.ts': MESSY });
+    expect(status).toBe(0);
+    expect(stderr).toContain('Not committing: this is not a git repository.');
+  });
+
   it('prints a plain patch on stdout, and the agent and the summary on stderr', () => {
     const { status, stdout, stderr } = quickfix(writes(FIXED), { 'a.ts': MESSY });
     expect(status).toBe(0);

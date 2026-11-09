@@ -204,6 +204,8 @@ export interface QuickfixFileResult {
   /** After the run, or null when it was not re-scored: removed, unscored or the agent failed. */
   after: number | null;
   diffs: FileDiff[];
+  /** The short hash of the commit with this run's files, or null when nothing was committed. */
+  commit: string | null;
 }
 
 /** Two commits to compare. A null base means a root commit, where every file is new. */

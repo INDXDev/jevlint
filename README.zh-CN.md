@@ -114,7 +114,7 @@ jevlint audit               # 对整个代码库排序
 jevlint prompt --top 3 --copy      # 粘贴到任意智能体
 jevlint prompt | claude -p         # 或通过管道传入
 jevlint fix --agent claude         # 或直接运行智能体，然后重新评分
-jevlint quickfix --agent claude    # 或只让它编辑文件，然后查看差异和新分数
+jevlint quickfix --agent claude    # 或只让它编辑文件，然后查看差异和新分数并提交
 ```
 
 在 Claude Code 中安装插件，即可获得一个 skill，以及 `/jevlint:audit`、`/jevlint:explain` 和
@@ -239,7 +239,7 @@ jev-lint 和 @hazymoon/jevlint 都使用 [ast-grep](https://ast-grep.github.io) 
 | `jevlint spec compile\|check\|drift\|list` | 规范驱动开发：把文档编译为检查清单，再据此检查代码和文档。 |
 | `jevlint prompt [files...]` | 打印或复制给编码智能体的修复提示词。 |
 | `jevlint fix [files...] --agent <name>` | 对最差的文件运行智能体，然后重新评分。 |
-| `jevlint quickfix [files...] --agent <name>` | 让智能体逐个只编辑最差的文件，然后左右并排显示差异并重新评分。 |
+| `jevlint quickfix [files...] --agent <name>` | 让智能体逐个只编辑最差的文件，然后左右并排显示差异、重新评分并逐个提交。 |
 | `jevlint init` | 创建仓库级或用户级配置。 |
 | `jevlint auth set\|list\|remove\|env` | 管理 API key。 |
 | `jevlint preset [list\|show\|default\|new\|edit\|add\|remove]` | 选择、查看、编写和管理原则预设。不带参数时打开菜单。 |

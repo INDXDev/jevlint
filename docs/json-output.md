@@ -146,8 +146,9 @@ is empty.
 | --- | --- |
 | `files` | One entry per file an agent worked on, in the order they ran |
 
-Each entry has `path`, `score` before the fix and `after` it, on the configured scale, and `diffs`,
-one per file the agent changed. `after` is `null` when the file was removed, could not be scored, or
+Each entry has `path`, `score` before the fix and `after` it, on the configured scale, `commit`,
+the short hash of the commit that holds the run's files or `null` when it was not committed, and
+`diffs`, one per file the agent changed. `after` is `null` when the file was removed, could not be scored, or
 the agent failed, which skips the re-score.
 
 | Key | Holds |

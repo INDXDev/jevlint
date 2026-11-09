@@ -68,8 +68,16 @@ For each file, in priority order and one at a time, `quickfix`:
    redirected. Either way the words that changed within a line are highlighted.
 3. Re-audits every file it changed, with the same presets, and prints a `git diff --stat` style
    summary with each file's score before and after to stderr, beside the agent's own output.
+4. Commits that run's files with `git commit`, and prints the hash. The agent itself is told not to
+   commit, so every commit is jevlint's: one per file, named `Refactor <file> with jevlint
+   quickfix`, with the score change and a note that no tests ran. Pass `--no-commit` to keep the
+   changes in the working tree instead.
 
-`--json` prints each file with its scores and diffs instead. `--side-by-side` forces two panels,
+Commits make each file easy to review or drop on its own: `git show`, `git revert <hash>`, or
+`git reset --soft HEAD~1` for the last one. A run that touches a file you had already changed is
+left uncommitted, so your own edits never end up in jevlint's commit.
+
+`--json` prints each file with its scores, diffs and commit instead. `--side-by-side` forces two panels,
 even in a pipe, and `--no-side-by-side` forces the unified view.
 
 The diff covers the file, every file the agent added, and every file it edited. A file that already

@@ -276,9 +276,10 @@ Runs a coding agent, one file at a time, then re-scores each file. See
 ## `jevlint quickfix [files...]`
 
 Runs a coding agent on the worst file, or the files you name, with a prompt that allows only file
-edits. Then it prints what changed as a diff and re-scores each changed file with an audit. With
-`--top <n>` or several files, it runs the agent on one file at a time, in priority order. It takes
-the same flags as `fix`, plus `--side-by-side` and `--json`. See
+edits. Then it prints what changed as a diff, re-scores each changed file with an audit, and commits
+that file's changes with git. With `--top <n>` or several files, it runs the agent on one file at a
+time, in priority order, with one commit each. It takes the same flags as `fix`, plus
+`--side-by-side`, `--no-commit` and `--json`. See
 [Coding agents](agents.md#jevlint-quickfix).
 
 | Flag | Description |
@@ -290,7 +291,8 @@ the same flags as `fix`, plus `--side-by-side` and `--json`. See
 | `--allow-dirty` | Run even if the git working tree has changes |
 | `--agent-login` | Use the agent's own login, such as a Claude or ChatGPT subscription, instead of an API key in the environment. See [Coding agents](agents.md#use-your-subscription-not-an-api-key) |
 | `--side-by-side` | Show old and new lines in two panels. On by default in a terminal at least 120 columns wide. `--no-side-by-side` turns it off |
-| `--json` | Print each file with its scores and diffs as [JSON](json-output.md#quickfix) |
+| `--no-commit` | Leave the changes in the working tree. By default each file's run is committed |
+| `--json` | Print each file with its scores, diffs and commit as [JSON](json-output.md#quickfix) |
 
 The diff goes to stdout. A `git diff --stat` style summary, with each file's score before and after,
 goes to stderr with the agent's own output:
@@ -313,8 +315,21 @@ jevlint quickfix --top 5 --agent claude --yes      # five files, one agent run e
 jevlint quickfix --agent claude --yes > quickfix.patch
 ```
 
-If the agent exits with an error, `quickfix` still prints what it changed, skips the re-score, and
-exits 2 without going on to the next file. When an
+Each commit is made with the `git` command line, takes only the files that run changed, and is
+announced on stderr:
+
+```text
+Committed 3f2a9c1 "Refactor src/orders/process.ts with jevlint quickfix" (2 files). Undo with: git reset --soft HEAD~1
+```
+
+Its message gives the score before and after, the files, and that no tests ran. Your hooks and
+signing settings apply as for any commit, and a failed commit stops the run with exit code 2.
+`quickfix` does not commit outside a git repository, or a run that touched a file that already had
+uncommitted changes, as `--allow-dirty` allows, because the commit would take in your own edits. It
+says so instead.
+
+If the agent exits with an error, `quickfix` still prints what it changed, skips the re-score and
+the commit, and exits 2 without going on to the next file. When an
 API key in the environment may be the cause, the error says so and suggests `--agent-login`.
 
 ## `jevlint hook`

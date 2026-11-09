@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { audit } from './audit.ts';
 import { type Config, ifExists, readRegularFile, UserError } from './config.ts';
 import type { FileChange } from './diff.ts';
-import { fileAt, workingTreeChanges } from './git.ts';
+import { fileAt, uncommittedFiles, workingTreeChanges } from './git.ts';
 import { renderPrompt, renderQuickfixPrompt } from './prompt.ts';
 import type { AuditReport, FileReport } from './types.ts';
 
@@ -129,10 +129,12 @@ export async function fixFile(
 const contentOf = async (root: string, path: string) =>
   (await ifExists(readRegularFile(join(root, path)))) ?? null;
 
-/** What a quick fix did: the agent's exit code, and every file it changed. */
+/** What a quick fix did: the agent's exit code and every file it changed. */
 export interface QuickfixResult {
   code: number;
   changes: FileChange[];
+  /** Files with uncommitted changes from before the run, which a commit must not take in. */
+  uncommittedBefore: string[];
 }
 
 /**
@@ -147,7 +149,8 @@ export async function quickfixFile(
   launch: AgentLaunch,
 ): Promise<QuickfixResult> {
   const { root } = config;
-  const changedBefore = [...new Set([file.path, ...(await workingTreeChanges(root))])];
+  const uncommittedBefore = await uncommittedFiles(root);
+  const changedBefore = [...new Set([file.path, ...uncommittedBefore])];
   const snapshot = new Map(
     await Promise.all(
       changedBefore.map(async (path) => [path, await contentOf(root, path)] as const),
@@ -165,7 +168,7 @@ export async function quickfixFile(
       after: await contentOf(root, path),
     })),
   );
-  return { code, changes };
+  return { code, changes, uncommittedBefore };
 }
 
 /** Re-audits files an agent left behind, keyed by path. A file no audit covers has no entry. */

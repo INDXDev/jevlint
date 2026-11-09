@@ -14,6 +14,9 @@ This project follows [Semantic Versioning](https://semver.org).
   120 columns wide the diff is side by side, delta-style, with numbered panels; `--side-by-side`
   and `--no-side-by-side` choose. With `--top`, files run one at a time, labelled `[1/5]` and so on,
   and each diff shows only that run's edits.
+  By default it then commits each file's run with `git commit`, one commit per file with the score
+  change in its message, and prints the hash. `--no-commit` leaves the changes in the working tree.
+  It never commits over changes that were there before the run.
 - `audit` suggests `jevlint quickfix <worst file> --agent claude` under its table, beside `explain`
   and `prompt`.
 - **`--agent-login` for `fix` and `quickfix`.** Leaves the agent's API key variables, such as

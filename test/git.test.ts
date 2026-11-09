@@ -8,11 +8,14 @@ import { UserError } from '../src/config.ts';
 import {
   changeDiff,
   commitCounts,
+  commitPaths,
   commitsFrom,
   isClean,
+  isWorkTree,
   pullRequestChange,
   pullRequestOfRef,
   touchedFiles,
+  uncommittedFiles,
 } from '../src/git.ts';
 
 let dir: string;
@@ -75,6 +78,54 @@ describe('inside git', () => {
 
   it('reports no commits for an empty repository', async () => {
     expect(await commitCounts(dir, 30)).toEqual(new Map());
+  });
+
+  it('knows a working tree from a plain directory', async () => {
+    expect(await isWorkTree(dir)).toBe(true);
+    const plain = await mkdtemp(join(tmpdir(), 'jevlint-plain-'));
+    scratch.push(plain);
+    expect(await isWorkTree(plain)).toBe(false);
+  });
+
+  it('lists uncommitted files, staged or not', async () => {
+    await commit(['a.ts', 'b.ts', 'c.ts']);
+    await writeFile(join(dir, 'a.ts'), 'edited');
+    await writeFile(join(dir, 'b.ts'), 'staged');
+    git('add', 'b.ts');
+    await writeFile(join(dir, 'new.ts'), 'new');
+    expect((await uncommittedFiles(dir)).toSorted()).toEqual(['a.ts', 'b.ts', 'new.ts']);
+  });
+
+  it('commits only the named paths, new and deleted ones included', async () => {
+    git('config', 'user.name', 't');
+    git('config', 'user.email', 't@example.com');
+    await commit(['a.ts', 'gone.ts', 'mine.ts']);
+    await writeFile(join(dir, 'a.ts'), 'fixed');
+    await writeFile(join(dir, 'new.ts'), 'new');
+    await rm(join(dir, 'gone.ts'));
+    await writeFile(join(dir, 'mine.ts'), 'staged by the user');
+    git('add', 'mine.ts');
+    const hash = await commitPaths(dir, ['a.ts', 'new.ts', 'gone.ts'], 'Refactor a.ts\n\nBody.');
+    const show = (...args: string[]) =>
+      execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
+    expect(show('rev-parse', '--short', 'HEAD')).toBe(hash);
+    expect(show('log', '-1', '--format=%B')).toBe('Refactor a.ts\n\nBody.');
+    expect(show('show', '--name-status', '--format=', 'HEAD').split('\n').toSorted()).toEqual([
+      'A\tnew.ts',
+      'D\tgone.ts',
+      'M\ta.ts',
+    ]);
+    expect(show('diff', '--cached', '--name-only')).toBe('mine.ts');
+  });
+
+  it('reports a failed commit as something the user can fix', async () => {
+    git('config', 'user.name', 't');
+    git('config', 'user.email', 't@example.com');
+    await commit(['a.ts']);
+    const { script } = await hookScript('pre-commit');
+    git('config', 'core.hooksPath', join(script, '..'));
+    await writeFile(join(dir, 'a.ts'), 'fixed');
+    await expect(commitPaths(dir, ['a.ts'], 'm')).rejects.toThrow(UserError);
   });
 
   it('counts commits per file, including awkward names', async () => {
