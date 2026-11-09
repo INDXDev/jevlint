@@ -4,6 +4,8 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+## 0.2.5 - 2026-11-09
+
 - **`jevlint quickfix`.** Runs a coding agent on the worst file with the same issues as `prompt`, but
   instructions to only edit files: no tests, builds or other commands, no commits, and one turn or a
   few. It then prints what changed as a git-style diff, coloured in a terminal with the changed words
