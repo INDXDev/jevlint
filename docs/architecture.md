@@ -20,7 +20,8 @@ cli.ts ── commands/* ── audit.ts ─┬─ files.ts          discover
                   ├─ formats.ts    SARIF and workflow commands
                   ├─ prompt.ts     agent prompt
                   ├─ agent.ts      run an agent
-                  └─ diff.ts       show what an agent changed
+                  ├─ diff.ts       diff what an agent changed
+                  └─ diff-view.ts  draw it, unified or side by side
 ```
 
 ## Folder structure
@@ -61,7 +62,7 @@ Dependencies point downward only. A module never imports from a layer above it.
 
 | Layer | Modules | May use |
 | --- | --- | --- |
-| Interface | `cli.ts`, `commands/`, `report.ts`, `formats.ts`, `prompt.ts`, `agent.ts`, `diff.ts`, `architecture/terminal.ts`, `architecture/html.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
+| Interface | `cli.ts`, `commands/`, `report.ts`, `formats.ts`, `prompt.ts`, `agent.ts`, `diff.ts`, `diff-view.ts`, `architecture/terminal.ts`, `architecture/html.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
 | Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `fixtures.ts`, `architecture/review.ts`, `spec/check.ts`, `spec/drift.ts` | Everything below |
 | Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts`, `spec/questions.ts` | Infrastructure, contracts |
 | Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `node-version.ts`, `spec/load.ts` | Contracts |
@@ -130,8 +131,9 @@ Three rules keep these layers clean:
 | `src/report.ts` | Formats reports for the terminal |
 | `src/formats.ts` | Renders findings as SARIF and GitHub workflow commands |
 | `src/prompt.ts` | Renders fix prompts |
-| `src/agent.ts` | Resolves and runs an agent, then re-scores the file, or collects what it changed for `quickfix` |
-| `src/diff.ts` | Turns contents before and after into git-style diffs, plain or coloured with changed words highlighted |
+| `src/agent.ts` | Resolves and runs an agent, collects what it changed, and re-scores the files |
+| `src/diff.ts` | Turns contents before and after into git-style patches |
+| `src/diff-view.ts` | Draws patches for a terminal, unified or side by side, with changed words highlighted, and the summary with scores |
 | `src/types.ts` | Contracts shared between modules |
 | `presets/*.toml` | Built-in presets, as data rather than code |
 
@@ -167,8 +169,9 @@ source. On a platform with no prebuilt parser, that language gets the lexical fa
 
 **`quickfix` diffs in JavaScript, not with `git diff`.** A repository's config can make `git diff`
 run external diff and textconv programs, and jsdiff writes git-style patches that `git apply` takes.
-Git only finds which files changed. Colour is added after the patch is made, so a redirected run
-gets a plain patch.
+Git only finds which files changed. Drawing is separate from the patch, in `diff-view.ts`, so a
+redirected run gets the plain patch, and the side-by-side view reuses its hunks. That view is drawn
+in the style of delta, but built in, so no external pager runs on repository text.
 
 **`prompt`, `fix` and `explain` re-run `audit()`.** The cache makes this cheap, and it removes stale
 state and a separate report store.

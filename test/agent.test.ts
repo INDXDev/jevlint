@@ -13,6 +13,7 @@ import {
   runAgent,
 } from '../src/agent.ts';
 import { type Config, loadConfig, UserError } from '../src/config.ts';
+import { diffFiles } from '../src/diff.ts';
 import type { AuditReport, FileReport } from '../src/types.ts';
 
 const node = (script: string) => [process.execPath, '-e', script];
@@ -166,7 +167,7 @@ describe('agentFailure', () => {
 describe('quickfixFile', () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it('returns the edited file and the files the agent added, not ones changed before', async () => {
+  it('diffs each file the agent touched against what it held just before the run', async () => {
     const root = realpathSync(await mkdtemp(join(tmpdir(), 'jevlint-agent-')));
     vi.stubEnv('XDG_CONFIG_HOME', root);
     const git = (...args: string[]) =>
@@ -177,7 +178,9 @@ describe('quickfixFile', () => {
     git('init', '-q');
     git('add', '.');
     git('commit', '-qm', 'first');
+    // Changed before the run, as an earlier file's run or --allow-dirty leaves them.
     await writeFile(join(root, 'mine.ts'), 'mine\n');
+    await writeFile(join(root, 'untouched.ts'), 'mine too\n');
     const config = await loadConfig({ cwd: root });
     const file = { path: 'a.ts', ast: null, model: null } as FileReport;
     const script = `
@@ -190,9 +193,16 @@ describe('quickfixFile', () => {
     const result = await quickfixFile(file, report, config, launch(node(script)));
     await rm(root, { recursive: true });
     expect(result.code).toBe(4);
-    expect(result.changes.toSorted((x, y) => x.path.localeCompare(y.path))).toEqual([
-      { path: 'a.ts', before: 'const a = 1;\n', after: 'const a = 2;\n' },
-      { path: 'b.ts', before: null, after: 'const b = 1;\n' },
-    ]);
+    const changed = diffFiles(result.changes).map(({ path }) => path);
+    expect(changed.toSorted()).toEqual(['a.ts', 'b.ts', 'mine.ts']);
+    const byPath = (path: string) => result.changes.find((change) => change.path === path);
+    expect(byPath('a.ts')).toEqual({
+      path: 'a.ts',
+      before: 'const a = 1;\n',
+      after: 'const a = 2;\n',
+    });
+    expect(byPath('b.ts')).toEqual({ path: 'b.ts', before: null, after: 'const b = 1;\n' });
+    expect(byPath('mine.ts')).toEqual({ path: 'mine.ts', before: 'mine\n', after: 'agent\n' });
+    expect(result.changes[0]?.path).toBe('a.ts');
   });
 });

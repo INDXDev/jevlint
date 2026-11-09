@@ -276,8 +276,10 @@ Runs a coding agent, one file at a time, then re-scores each file. See
 ## `jevlint quickfix [files...]`
 
 Runs a coding agent on the worst file, or the files you name, with a prompt that allows only file
-edits, then prints what it changed as a git-style diff. It takes the same flags as `fix`, plus
-`--json`. See [Coding agents](agents.md#jevlint-quickfix).
+edits. Then it prints what changed as a diff and re-scores each changed file with an audit. With
+`--top <n>` or several files, it runs the agent on one file at a time, in priority order. It takes
+the same flags as `fix`, plus `--side-by-side` and `--json`. See
+[Coding agents](agents.md#jevlint-quickfix).
 
 | Flag | Description |
 | --- | --- |
@@ -287,19 +289,32 @@ edits, then prints what it changed as a git-style diff. It takes the same flags 
 | `--yes` | Skip the confirmation. Required when not running in a terminal |
 | `--allow-dirty` | Run even if the git working tree has changes |
 | `--agent-login` | Use the agent's own login, such as a Claude or ChatGPT subscription, instead of an API key in the environment. See [Coding agents](agents.md#use-your-subscription-not-an-api-key) |
-| `--json` | Print each file with its score and diffs as [JSON](json-output.md#quickfix) |
+| `--side-by-side` | Show old and new lines in two panels. On by default in a terminal at least 120 columns wide. `--no-side-by-side` turns it off |
+| `--json` | Print each file with its scores and diffs as [JSON](json-output.md#quickfix) |
 
-The diff goes to stdout and a `git diff --stat` style summary to stderr, with the agent's own output.
-In a terminal the diff is coloured, and the words that changed within a line are highlighted. Piped
-or redirected, it is a plain patch that `git apply` accepts:
+The diff goes to stdout. A `git diff --stat` style summary, with each file's score before and after,
+goes to stderr with the agent's own output:
+
+```text
+ src/orders/process.ts | +24 -31  score 21 -> 58 (+37)
+ src/orders/charge.ts  | +18 -0   score 92  (new)
+ 2 files changed, 42 insertions(+), 31 deletions(-)
+```
+
+In a terminal the diff is coloured, and the words that changed within a line are highlighted. Wide
+enough, it is side by side, as [delta](https://github.com/dandavison/delta) shows it: a title bar
+per file, and the old lines on the left beside the new ones on the right, each numbered. Piped or
+redirected, it is a plain patch that `git apply` accepts, unless you pass `--side-by-side`:
 
 ```sh
 jevlint quickfix --agent claude
 jevlint quickfix clean-code src/orders/process.ts --agent codex --yes
+jevlint quickfix --top 5 --agent claude --yes      # five files, one agent run each
 jevlint quickfix --agent claude --yes > quickfix.patch
 ```
 
-If the agent exits with an error, `quickfix` still prints what it changed, then exits 2. When an
+If the agent exits with an error, `quickfix` still prints what it changed, skips the re-score, and
+exits 2 without going on to the next file. When an
 API key in the environment may be the cause, the error says so and suggests `--agent-login`.
 
 ## `jevlint hook`

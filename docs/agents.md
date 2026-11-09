@@ -52,23 +52,29 @@ Files run one at a time so that agents do not conflict. Stop early if an agent e
 ```sh
 jevlint quickfix --agent claude
 jevlint quickfix src/orders/process.ts --agent codex
+jevlint quickfix --top 5 --agent claude --yes
 jevlint quickfix --agent claude --yes > quickfix.patch
 ```
 
 `quickfix` is `fix` made quick. It reuses the audit, so the cache answers it, and sends the same
 issues as `prompt`. The instructions are different: edit only, preserve behaviour and public APIs,
 run no tests, builds or other commands, do not commit, and finish in one turn or a few at most.
-It does not re-score the file. It prints what the agent changed instead:
 
-- The diff goes to stdout, coloured in a terminal, with the words that changed within a line
-  highlighted. Redirected, it is a plain patch that `git apply` accepts.
-- A summary, one line per file as `git diff --stat` prints it, goes to stderr with the agent's own
-  output, so stdout stays a patch.
-- `--json` prints each file with its score and diffs instead.
+For each file, in priority order and one at a time, `quickfix`:
 
-The diff covers the file and any file the agent added or changed that git saw as unchanged before
-the run. With `--allow-dirty`, edits to files that already had changes, other than the one being
-fixed, are not shown.
+1. Runs the agent with the edit-only prompt, labelled `[2/5]` and so on when there are several.
+2. Prints what changed. The diff goes to stdout: side by side in a terminal at least 120 columns
+   wide, unified and coloured in a narrower one, and a plain patch that `git apply` accepts when
+   redirected. Either way the words that changed within a line are highlighted.
+3. Re-audits every file it changed, with the same presets, and prints a `git diff --stat` style
+   summary with each file's score before and after to stderr, beside the agent's own output.
+
+`--json` prints each file with its scores and diffs instead. `--side-by-side` forces two panels,
+even in a pipe, and `--no-side-by-side` forces the unified view.
+
+The diff covers the file, every file the agent added, and every file it edited. A file that already
+had changes, from `--allow-dirty` or an earlier file's run, is compared with what it held just before
+this run, so each run shows only its own edits.
 
 It runs each agent's `quickfix_command`, or its `command` when there is none. The built-in ones keep
 the run short: Claude Code gets only the file tools and at most 10 turns, and Codex reasons at low

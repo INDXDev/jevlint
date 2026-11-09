@@ -616,6 +616,7 @@ describe('presets outside audit', () => {
     const { stdout } = jevlint(cwd, 'audit', 'bug-hunt', '--ast-only');
     expect(stdout).toContain('Next: jevlint explain a.ts --preset bug-hunt');
     expect(stdout).toContain('jevlint prompt --top 1 --copy --preset bug-hunt');
+    expect(stdout).toContain('jevlint quickfix a.ts --agent claude --preset bug-hunt');
     expect(jevlint(cwd, 'audit', '--ast-only').stdout).toContain('Next: jevlint explain a.ts\n');
   });
 
@@ -793,12 +794,46 @@ describe('quickfix', () => {
     expect(stderr).toContain('1 file changed, 1 insertions(+), 1 deletions(-)');
   });
 
-  it('prints each file and its diffs as JSON', () => {
+  it('re-scores what the agent changed with an audit', () => {
+    const { status, stderr } = quickfix(writes(FIXED), { 'a.ts': MESSY });
+    expect(status).toBe(0);
+    expect(stderr).toContain('Re-scoring with jevlint audit');
+    expect(stderr).toMatch(/ a\.ts \| \+1 -1 {2}score \d+ -> 100 \(\+\d+\)/);
+  });
+
+  it('prints each file, its diffs and their scores as JSON', () => {
     const { status, stdout } = quickfix(writes(FIXED), { 'a.ts': MESSY }, '--json');
     expect(status).toBe(0);
     const [file] = JSON.parse(stdout).files;
     expect(file.path).toBe('a.ts');
-    expect(file.diffs).toMatchObject([{ path: 'a.ts', status: 'modified', additions: 1 }]);
+    expect(file.after).toBe(100);
+    expect(file.score).toBeLessThan(100);
+    expect(file.diffs).toMatchObject([
+      { path: 'a.ts', status: 'modified', additions: 1, scoreBefore: file.score, scoreAfter: 100 },
+    ]);
+  });
+
+  it('runs the agent on one file at a time, in priority order', () => {
+    // Each run appends its file's name to a log, so the order and count show.
+    const script = `
+      const fs = require('node:fs');
+      const prompt = fs.readFileSync(0, 'utf8');
+      const path = /## \`([^\`]+)\`/.exec(prompt)[1];
+      fs.appendFileSync('runs.log', path + '\\n');
+      fs.writeFileSync(path, ${JSON.stringify(FIXED)});`;
+    const files = { 'a.ts': MESSY, 'b.ts': MESSY.replace('f(', 'g(') };
+    const { status, stderr } = quickfix(script, files, '--top', '2');
+    expect(status).toBe(0);
+    expect(stderr).toMatch(/\[1\/2\] Running stub on [ab]\.ts/);
+    expect(stderr).toMatch(/\[2\/2\] Running stub on [ab]\.ts/);
+    expect(stderr.match(/Re-scoring/g)).toHaveLength(2);
+  });
+
+  it('shows old and new side by side when asked, even in a pipe', () => {
+    const { status, stdout } = quickfix(writes(FIXED), { 'a.ts': MESSY }, '--side-by-side');
+    expect(status).toBe(0);
+    expect(stdout).toMatch(/^━━━ a\.ts {2}modified {2}\+1 -1 ━+/);
+    expect(stdout).toMatch(/1 - export function f.*│ 1 \+ export const f = 1;/);
   });
 
   it('shows what a failed agent changed, then exits 2', () => {

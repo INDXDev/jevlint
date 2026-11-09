@@ -136,8 +136,9 @@ export interface QuickfixResult {
 }
 
 /**
- * Runs an agent on one file with an edit-only prompt, and collects what changed. Other files are
- * found through git and compared with HEAD, so one that was already changed is not seen.
+ * Runs an agent on one file with an edit-only prompt, and collects what changed. Files that
+ * already had changes are read first, so an earlier run's edits are not counted again. Every other
+ * file is compared with HEAD.
  */
 export async function quickfixFile(
   file: FileReport,
@@ -146,20 +147,33 @@ export async function quickfixFile(
   launch: AgentLaunch,
 ): Promise<QuickfixResult> {
   const { root } = config;
-  const changedBefore = new Set(await workingTreeChanges(root));
-  const before = await contentOf(root, file.path);
+  const changedBefore = [...new Set([file.path, ...(await workingTreeChanges(root))])];
+  const snapshot = new Map(
+    await Promise.all(
+      changedBefore.map(async (path) => [path, await contentOf(root, path)] as const),
+    ),
+  );
   const prompt = renderQuickfixPrompt(file, report);
   const code = await runAgent(launch.command, prompt, root, runOptions(launch, 'stderr'));
-  const others = (await workingTreeChanges(root)).filter(
-    (path) => path !== file.path && !changedBefore.has(path),
-  );
+  const paths = [...new Set([...changedBefore, ...(await workingTreeChanges(root))])];
   const changes = await Promise.all(
-    others.map(async (path) => ({
+    paths.map(async (path) => ({
       path,
-      before: (await fileAt(root, 'HEAD', path)) ?? null,
+      before: snapshot.has(path)
+        ? (snapshot.get(path) ?? null)
+        : ((await fileAt(root, 'HEAD', path)) ?? null),
       after: await contentOf(root, path),
     })),
   );
-  const target = { path: file.path, before, after: await contentOf(root, file.path) };
-  return { code, changes: [target, ...changes] };
+  return { code, changes };
+}
+
+/** Re-audits files an agent left behind, keyed by path. A file no audit covers has no entry. */
+export async function rescoreFiles(
+  config: Config,
+  paths: string[],
+): Promise<Map<string, FileReport>> {
+  if (paths.length === 0) return new Map();
+  const { files } = await audit(config, { paths });
+  return new Map(files.map((scored) => [scored.path, scored]));
 }

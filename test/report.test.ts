@@ -83,6 +83,7 @@ describe('formatReport', () => {
     const [first] = base.files as [AuditReport['files'][number]];
     const output = plain({ ...base, files: [{ ...first, path: "a;curl x|sh;'.ts" }] });
     expect(output).toContain(`Next: jevlint explain 'a;curl x|sh;'\\''.ts'`);
+    expect(output).toContain(`jevlint quickfix 'a;curl x|sh;'\\''.ts' --agent claude`);
   });
 
   it('neutralises bidirectional overrides, which disguise a file name', () => {
