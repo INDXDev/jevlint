@@ -1,0 +1,15 @@
+id: audit
+title: Audit pipeline
+summary: >
+  audit() discovers files, measures each with the AST, asks the decision model the active preset
+  questions, judges semantic rule matches, and scores and ranks the result into an AuditReport.
+  planAudit() estimates what a run would send without reaching a provider.
+layer: pipeline
+paths: [src/audit.ts, src/rules.ts]
+key_files:
+  - { path: src/audit.ts, role: "audit, auditFile and planAudit" }
+  - { path: src/rules.ts, role: "judgeRules: one boolean question per pattern match" }
+interface: [audit, planAudit, AuditOptions, AuditPlan]
+depends_on: [ast-metrics, configuration, decision, scoring, repository-access, presets, contracts]
+uses: [p_limit]
+status: current

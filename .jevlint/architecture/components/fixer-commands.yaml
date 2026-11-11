@@ -1,0 +1,19 @@
+id: fixer-commands
+title: Fixer commands and trust
+summary: >
+  Runs the `quickfix.after` commands on the files an agent changed, without a shell and with a
+  timeout, and records which repositories' commands the user approved, fingerprinted by commands,
+  root commits and the files they read.
+layer: infrastructure
+paths: [src/fixers.ts, src/trust.ts]
+key_files:
+  - { path: src/fixers.ts, role: "runFixers and needsRetry" }
+  - { path: src/trust.ts, role: "approval, trust and the fingerprint" }
+interface: [runFixers, needsRetry, approval, trust, untrust, referencedFiles]
+depends_on: [configuration, repository-access]
+uses: [child_process, ignore]
+rules: []
+checklist:
+  - id: approved-only
+    text: "A repository's quickfix.after commands run only when trust.ts approves their current fingerprint, never because of --yes."
+status: current

@@ -1,7 +1,18 @@
 /** Renders an architecture report as one HTML file, with no scripts and no network requests. */
 import { describeFinding, findingHealth, formatScore, worstIssue } from '../report.ts';
-import type { ArchitectureEdge, ArchitectureReport, ArchitectureUnit } from '../types.ts';
+import type {
+  ArchitectureEdge,
+  ArchitectureReport,
+  ArchitectureUnit,
+  ArchitectureView,
+  DataView,
+  GraphView,
+  MapEdge,
+} from '../types.ts';
+import { layersOf, stronglyConnected } from './graph.ts';
+import type { ShowModel } from './show.ts';
 import { findingLocation } from './terminal.ts';
+import { checkEdges } from './views.ts';
 
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 24;
@@ -240,6 +251,219 @@ ${LEGEND}
 ${section('Directories', 'Each box shows its score.', renderDiagram(directoryNodes(report), edges.directories))}
 ${section('Modules', 'Every file with AST support.', renderDiagram(moduleNodes(report), edges.modules))}
 ${classes}
+</body></html>
+`;
+}
+
+/** Unused declarations are dashed and violations red, reusing the review's edge styles. */
+function mapEdgesAsEdges(edges: MapEdge[]): ArchitectureEdge[] {
+  return edges.map(({ from, to, weight, status }) => ({
+    from,
+    to,
+    weight,
+    cyclic: status === 'violation',
+    ...(status === 'unused' ? { kind: 'uses' as const } : {}),
+  }));
+}
+
+/** Components sit in columns by layer, foundations on the right, as in the review report. */
+function componentNodes({ ssot, edges }: ShowModel): DiagramNode[] {
+  const { layers } = ssot.index;
+  const levelOf = (layer: string | undefined) => {
+    const index = layer === undefined ? -1 : layers.indexOf(layer);
+    return index === -1 ? layers.length : layers.length - 1 - index;
+  };
+  const broken = new Set(
+    edges.filter(({ status }) => status === 'violation').map(({ from }) => from),
+  );
+  return ssot.components.map(({ id, title, layer, summary }) => ({
+    id,
+    label: title,
+    layer: levelOf(layer),
+    status: broken.has(id) ? 'critical' : 'good',
+    detail: `${id} (${layer ?? 'no layer'}): ${summary.trim()}`,
+  }));
+}
+
+function componentTable({ ssot, edges }: ShowModel): string {
+  const rows = ssot.components.map((component) => {
+    const out = edges
+      .filter(({ from, status }) => from === component.id && status !== 'unused')
+      .map(({ to, status }) =>
+        status === 'violation' ? `<b class="bad">${escapeHtml(to)} ✕</b>` : escapeHtml(to),
+      );
+    const keyFiles = component.key_files.map(
+      ({ path, role }) => `<code>${escapeHtml(path)}</code> ${escapeHtml(role)}`,
+    );
+    return `<tr><td><code>${escapeHtml(component.id)}</code><br>${escapeHtml(component.title)}</td><td>${escapeHtml(component.layer ?? '')}</td><td>${escapeHtml(component.summary)}${keyFiles.length > 0 ? `<br><small>${keyFiles.join('<br>')}</small>` : ''}</td><td>${out.join(', ')}</td></tr>`;
+  });
+  return `<table><thead><tr><th>Component</th><th>Layer</th><th>Summary and key files</th><th>Depends on</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
+
+function flowTables({ ssot, edges }: ShowModel): string {
+  const real = new Set(
+    edges.filter(({ status }) => status !== 'unused').map(({ from, to }) => `${from}\0${to}`),
+  );
+  return ssot.flows
+    .map(({ title, trigger, steps }) => {
+      const rows = steps.map(({ from, to, verb }) => {
+        const exists = from === to || real.has(`${from}\0${to}`);
+        return `<tr><td><code>${escapeHtml(from)}</code> → <code>${escapeHtml(to)}</code></td><td>${escapeHtml(verb)}</td><td>${exists ? '' : '<b class="bad">no import in the code</b>'}</td></tr>`;
+      });
+      return `<h3>${escapeHtml(title)}</h3><p>${escapeHtml(trigger ?? '')}</p><table>${rows.join('')}</table>`;
+    })
+    .join('');
+}
+
+const SHOW_LEGEND = `<div class="legend"><span>Solid line: a real dependency, as declared</span><span><i class="swatch" style="background:var(--critical)"></i>Red: breaks the SSOT</span><span>Dashed: declared but not imported</span><span>Top layer on the left, foundations on the right.</span></div>`;
+
+/** A graph view drawn like the component map: actors on the left, what they reach to the right. */
+function graphViewHtml(view: GraphView, model: ShowModel): string {
+  const checks = checkEdges(view, model.ssot, model.facts.modules);
+  const dependencies = new Map<string, Set<string>>();
+  for (const { from, to } of view.edges)
+    dependencies.set(from, (dependencies.get(from) ?? new Set()).add(to));
+  const ids = view.nodes.map(({ id }) => id);
+  const layers = layersOf(stronglyConnected(ids, dependencies), dependencies);
+  const groupLabel = new Map(view.groups.map(({ id, label }) => [id, label]));
+  const nodes: DiagramNode[] = view.nodes.map((node) => ({
+    id: node.id,
+    label: node.label,
+    layer: layers.get(node.id) ?? 0,
+    status: 'good',
+    detail: [
+      node.kind,
+      node.group ? groupLabel.get(node.group) : '',
+      node.path ?? node.component ?? '',
+      node.description ?? '',
+    ]
+      .filter(Boolean)
+      .join(' · '),
+  }));
+  const edges: ArchitectureEdge[] = view.edges.map(({ from, to, style }, index) => {
+    const support = checks[index]?.support;
+    const dashed = style === 'dashed' || support === 'unsupported' || support === 'reversed';
+    return { from, to, weight: 1, cyclic: false, ...(dashed ? { kind: 'uses' as const } : {}) };
+  });
+  const arrows = view.edges.map(
+    ({ from, to, verb }) =>
+      `<li>${escapeHtml(view.nodes.find((n) => n.id === from)?.label ?? from)} → ${escapeHtml(view.nodes.find((n) => n.id === to)?.label ?? to)}: ${escapeHtml(verb)}</li>`,
+  );
+  return `${renderDiagram(nodes, edges)}<details><summary>Arrows</summary><ul>${arrows.join('')}</ul></details>`;
+}
+
+function dataViewHtml(view: DataView): string {
+  const rows = view.entities.map(
+    ({ name, path, description, fields }) =>
+      `<tr><td><code>${escapeHtml(name)}</code><br><small>${escapeHtml(path)}</small></td><td>${escapeHtml(description ?? '')}</td><td>${fields.map(({ name: field, type }) => `<code>${escapeHtml(field)}: ${escapeHtml(type)}</code>`).join('<br>')}</td></tr>`,
+  );
+  const relations = view.relations.map(
+    ({ from, to, cardinality, label }) =>
+      `<li>${escapeHtml(from)} ${escapeHtml(cardinality)} ${escapeHtml(to)}: ${escapeHtml(label)}</li>`,
+  );
+  return `<table><thead><tr><th>Entity</th><th>Meaning</th><th>Fields</th></tr></thead><tbody>${rows.join('')}</tbody></table><ul>${relations.join('')}</ul>`;
+}
+
+function viewHtml(view: ArchitectureView, model: ShowModel): string {
+  const intro = view.description ? `<p>${escapeHtml(view.description)}</p>` : '';
+  return intro + (view.kind === 'data' ? dataViewHtml(view) : graphViewHtml(view, model));
+}
+
+/** The HTML a diagram directive stands for in a chapter. */
+function diagramHtml(name: string, model: ShowModel): string {
+  const view = model.ssot.views.find(({ id }) => id === name);
+  if (view) return viewHtml(view, model);
+  if (name === 'map' || name === 'layers') {
+    return renderDiagram(componentNodes(model), mapEdgesAsEdges(model.edges));
+  }
+  if (name === 'components') return componentTable(model);
+  if (name.startsWith('flow:')) {
+    return flowTables({
+      ...model,
+      ssot: { ...model.ssot, flows: model.ssot.flows.filter(({ id }) => `flow:${id}` === name) },
+    });
+  }
+  return '';
+}
+
+const inline = (text: string) =>
+  escapeHtml(text)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    // Links show their text only, so the page requests nothing and leads nowhere unexpected.
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+
+function tableHtml(rows: string[]): string {
+  const cells = (row: string) =>
+    row
+      .replace(/^\||\|$/g, '')
+      .split('|')
+      .map((cell) => cell.trim());
+  const [head = '', , ...body] = rows;
+  return `<table><thead><tr>${cells(head)
+    .map((c) => `<th>${inline(c)}</th>`)
+    .join('')}</tr></thead><tbody>${body
+    .map(
+      (row) =>
+        `<tr>${cells(row)
+          .map((c) => `<td>${inline(c)}</td>`)
+          .join('')}</tr>`,
+    )
+    .join('')}</tbody></table>`;
+}
+
+/**
+ * A chapter's Markdown as HTML: headings, paragraphs, lists, tables, code and the diagram
+ * directives. Everything is escaped first, so repository text cannot add markup or scripts.
+ */
+export function chapterHtml(body: string, model: ShowModel): string {
+  const out: string[] = [];
+  const blocks = body.split(/\n```[^\n]*\n([\s\S]*?)\n```/);
+  blocks.forEach((block, index) => {
+    if (index % 2 === 1) return void out.push(`<pre><code>${escapeHtml(block)}</code></pre>`);
+    for (const chunk of block.split(/\n\s*\n/)) {
+      const text = chunk.trim();
+      if (!text) continue;
+      const directive = text.match(/^<!--\s*jevlint:diagram\s+([a-z0-9_:-]+)\s*-->$/);
+      const lines = text.split('\n');
+      if (directive) out.push(diagramHtml(directive[1] as string, model));
+      else if (/^#{1,6}\s/.test(text) && lines.length === 1) {
+        const level = Math.min(6, Math.max(3, (text.match(/^#+/)?.[0].length ?? 3) + 1));
+        out.push(`<h${level}>${inline(text.replace(/^#+\s*/, ''))}</h${level}>`);
+      } else if (lines.every((line) => line.trim().startsWith('|'))) out.push(tableHtml(lines));
+      else if (lines.every((line) => /^\s*([-*]|\d+\.)\s/.test(line) || /^\s{2,}/.test(line))) {
+        const ordered = /^\s*\d+\./.test(lines[0] as string);
+        const items = text
+          .split(/\n(?=\s*(?:[-*]|\d+\.)\s)/)
+          .map((item) => `<li>${inline(item.replace(/^\s*([-*]|\d+\.)\s/, ''))}</li>`);
+        out.push(`<${ordered ? 'ol' : 'ul'}>${items.join('')}</${ordered ? 'ol' : 'ul'}>`);
+      } else if (lines.every((line) => line.startsWith('>'))) {
+        out.push(
+          `<blockquote>${inline(lines.map((line) => line.replace(/^>\s?/, '')).join(' '))}</blockquote>`,
+        );
+      } else out.push(`<p>${inline(text)}</p>`);
+    }
+  });
+  return out.join('\n');
+}
+
+/** Renders `show` as one standalone page, with no scripts and no network requests. */
+export function renderShowHtml(model: ShowModel): string {
+  const { ssot, root } = model;
+  const intro = model.draft
+    ? 'A draft from static analysis. Run jevlint architecture compile to turn it into an SSOT.'
+    : `From ${ssot.dir}${ssot.index.compiled_at ? `, compiled at ${ssot.index.compiled_at}` : ''}.`;
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Architecture of ${escapeHtml(ssot.index.name)}</title><style>${STYLES}.bad{color:var(--critical)}blockquote{color:var(--muted);border-left:3px solid var(--hair);margin:8px 0;padding-left:12px}pre{background:var(--panel);padding:12px;overflow:auto}h3{font-size:15px;margin:24px 0 4px}</style></head><body>
+<h1>${escapeHtml(ssot.index.name)} architecture</h1><p><code>${escapeHtml(root)}</code></p>
+<p>${escapeHtml(intro)}</p><p>${escapeHtml(ssot.index.description)}</p>
+${SHOW_LEGEND}
+${ssot.chapters.map(({ title, body }) => `<h2>${escapeHtml(title)}</h2>${chapterHtml(body, model)}`).join('\n')}
+${ssot.views.map((view) => section(escapeHtml(view.title), '', viewHtml(view, model))).join('\n')}
+${section('Components', 'Hover a box to trace its links.', renderDiagram(componentNodes(model), mapEdgesAsEdges(model.edges)))}
+${section('Each component', 'What it does, where to start reading, and what it depends on.', componentTable(model))}
+${ssot.flows.length > 0 ? section('Flows', 'The main workflows, step by step.', flowTables(model)) : ''}
 </body></html>
 `;
 }

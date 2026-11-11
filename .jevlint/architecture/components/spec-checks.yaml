@@ -1,0 +1,17 @@
+id: spec-checks
+title: Spec check and drift
+summary: >
+  Judges code files and documents against the spec in two requests each: a routing choice, then that
+  feature's items. run.ts holds the model, per-path loop and verdicts that architecture check and
+  drift reuse.
+layer: pipeline
+paths: [src/spec/check.ts, src/spec/drift.ts, src/spec/run.ts, src/spec/questions.ts]
+key_files:
+  - { path: src/spec/run.ts, role: "startRun, eachPath, ask and verdicts" }
+  - { path: src/spec/check.ts, role: "checkSpec over code files" }
+  - { path: src/spec/drift.ts, role: "driftSpec over documents" }
+  - { path: src/spec/questions.ts, role: "routing, item and coverage questions as data" }
+interface: [checkSpec, driftSpec, startRun, eachPath, ask, verdicts, usageOf]
+depends_on: [configuration, decision, scoring, repository-access, ssot-loading, contracts]
+uses: [p_limit]
+status: current

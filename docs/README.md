@@ -11,6 +11,7 @@
 | Understand a number | [Scoring](scoring.md) |
 | Keep documents, a spec and code in agreement | [Spec-driven development](spec-driven-development.md) and the [spec reference](spec-reference.md) |
 | Review and visualise a repository's structure | [Architecture review](architecture-review.md) |
+| Compile an architecture document from the code, and check code against it | [Architecture-driven development](architecture-driven-development.md) and the [SSOT reference](architecture-reference.md) |
 | Review a pull request or recent commits | [CLI reference](cli.md#jevlint-pr-number) |
 | Gate only on new problems | [Continuous integration](ci.md#gate-only-on-new-problems) |
 | Get SARIF or GitHub annotations | [Output formats](cli.md#output-formats) |

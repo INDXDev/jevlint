@@ -120,6 +120,7 @@ first. `pr` prints one.
 | `skipped` | Changed files that could not be scored |
 | `intent` | With `--intent` and a model: every [answer](#notes) about the change, in the shape of `model.answers`, weak or not. Empty if it could not be judged |
 | `warnings` | With `intent`: why it is empty, or that the diff was truncated |
+| `architecture` | With `--architecture`: the [violations](#architecture-ssot-reports) the change added |
 
 `findings` holds only what the change introduced or made worse, and `answers` only the weak answers
 it lowered. `usage` includes the `--intent` request.
@@ -182,6 +183,60 @@ run. `fixerOnly` lists the paths in `diffs` that only those commands changed, no
 | `classes` | `id`, `name`, `path`, `line`, `lines`, `methods` (names), `layer` |
 | `edges` | `directories`, `modules` and `classes`: lists of `from`, `to`, `weight`, `cyclic`, and `kind` for classes |
 | `findings` | Each has the fields of an AST finding, plus `path` and `directories` |
+
+With an SSOT, `units` also holds `component` units, named by component id with `path` at its YAML
+file, one `design` unit, and a `chapter` unit per chapter, and `perspectives` has their means. Without one, nothing changes.
+
+## Architecture SSOT reports
+
+A violation, in `check`, `pr --architecture` and the baseline, has these keys:
+
+| Key | Holds |
+| --- | --- |
+| `rule` | `layer-violation`, `undeclared-dependency`, `restricted-external`, `forbidden-dependency`, `forbidden-call`, `component-cycle`, `missing-flow-step`, `stale-reference` or `unmapped-file` |
+| `ruleId` | The SSOT rule's id: `layers-point-down`, `<component>.<rule>`, `<component>.depends_on`, `flows.<id>`, `<component>.references` or `unmapped` |
+| `component` | The component of the offending file, or `null` for an unmapped one |
+| `path`, `line` | Where to look. For a reference or flow, the SSOT file and line 1 |
+| `target` | The file, package, component, symbol or matched code it points at, when there is one |
+| `message` | One sentence |
+| `status` | `target` when the component has `status: target`, else `current` |
+
+`jevlint architecture check --json` prints one object:
+
+| Key | Holds |
+| --- | --- |
+| `root`, `provider`, `model`, `usage`, `warnings` | As above. `provider` and `model` are `null` when no model was asked |
+| `dir` | The SSOT directory, relative to the root |
+| `complete` | `false` when paths or `--diff` narrowed the run, which leaves `unimplemented` empty |
+| `base` | The full hash `--diff` compared with, when given |
+| `violations` | Violations that count, in path and line order |
+| `targetGaps` | Violations in `status: target` components, which do not affect the exit code |
+| `baselined` | How many violations `--new` left out |
+| `files` | `path`, `component`, `items`, `warnings`, most checklist violations first. Items are as in `spec check` |
+| `checklistViolations` | How many item verdicts are `violates` |
+| `unimplemented` | `id` and `text` of each checklist item no file satisfies |
+
+`jevlint architecture drift --json` prints `root`, `dir`, `provider`, `model`, `usage`, `warnings`,
+`compiledAt`, `head`, `added` and `removed` (files since `compiledAt`), `docs` (as in `spec drift`),
+and `items`, each with `kind` (`unmapped-code`, `undocumented-dependency`, `undocumented-external`,
+`stale-reference`, `stale-summary`, `stale-chapter`, `stale-view` or `document`), `component`, `path`, optional `line` and
+`target`, `message`, and `since`, true for code added after `compiledAt`.
+
+`jevlint architecture show --json` prints `root`, `draft` (true when there is no SSOT), `ssot` (the
+SSOT, or the draft), `edges` (`from`, `to`, `weight` and `status`: `declared`, `violation`, `unused`
+or `actual` where `depends_on` is absent) and `facts`. `facts` holds `commit`, `files`, `lines`,
+`components` (`id`, `paths`, `files`, `lines`, `layer`, `rank`, `fanIn`, `fanOut`, `central`,
+`interface`, `externals`, `churn`), `layers`, `dependencies` (`from`, `to`, `weight`, `evidence` of
+`path`, `line`, `target`), `externals` (`id`, `title`, `kind`, `packages`, `users`, `evidence`),
+`entrypoints`, `flows`, `cycles`, `coChanges`, `tests`, `dataTypes` (`name`, `path`, `line`, `fields`,
+`component`, `refs`, `usedBy`) and `modules`, each with `types` and `comments`.
+
+`jevlint architecture list --json` prints the loaded SSOT: `dir`, `index`, `components`, `flows`,
+`views` and `chapters` (`id`, `title`, `evidence`, `body`), with the keys of the YAML files and their
+defaults filled in.
+
+`jevlint architecture plan --json` prints `root`, `dir`, `warnings` and `steps`, each with `rank`,
+`priority` (from 0 to 1), `problem`, `move`, `component` and `evidence`.
 
 ## Spec reports
 

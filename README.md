@@ -239,6 +239,7 @@ first two projects above. jevlint, jev-lint and @hazymoon/jevlint all use
 | `jevlint audit [paths...]` | Score files and rank them. Also the default command. |
 | `jevlint explain <file>` | Show every finding and score for one file. |
 | `jevlint architecture [paths...]` | Review the codebase, directories and classes, and rank them worst to best. |
+| `jevlint architecture compile\|show\|check\|drift\|plan` | Compile an architecture SSOT from the code with a coding agent, draw it, check code against it with no model, and keep it current. |
 | `jevlint pr [number]` | Review what a GitHub pull request changes: scores before and after, and what got worse. |
 | `jevlint commits [revision]` | Review commits the same way, one by one, from `HEAD` backwards. |
 | `jevlint baseline [paths...]` | Record today's issues, so `audit --new` reports only what is new. |
@@ -314,6 +315,7 @@ Start with the [documentation index](docs/README.md).
 - [Presets](docs/presets.md)
 - [Scoring](docs/scoring.md)
 - [Architecture review](docs/architecture-review.md)
+- [Architecture-driven development](docs/architecture-driven-development.md) and the [SSOT reference](docs/architecture-reference.md)
 - [Spec-driven development](docs/spec-driven-development.md) and the [spec reference](docs/spec-reference.md)
 - [Coding agents](docs/agents.md)
 - [Caching](docs/caching.md)

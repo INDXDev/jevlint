@@ -118,6 +118,25 @@ afterEach(async () => {
 });
 
 describe('testFixtures', () => {
+  it('tests the architecture presets without them in presets', async () => {
+    await write({
+      '.jevlint/fixtures/architecture-component.naming/good-orders.txt': 'Component: orders, tidy',
+      '.jevlint/fixtures/architecture-drift.summary-current/bad-stale.txt': 'Summary: stale',
+    });
+    const report = await testFixtures(config, {
+      questionIds: ['architecture-component.naming', 'architecture-drift.summary-current'],
+    });
+    expect(report.results.map(({ question, file }) => [question, file])).toEqual([
+      ['architecture-component.naming', 'good-orders.txt'],
+      ['architecture-drift.summary-current', 'bad-stale.txt'],
+    ]);
+    expect(asked.map(({ questions }) => questions).sort()).toEqual([
+      ['architecture-component.naming'],
+      ['architecture-drift.summary-current'],
+    ]);
+    expect(report.warnings).toEqual([]);
+  });
+
   it('asks each fixture only its one question, and passes good high and bad low', async () => {
     await write({ [`${BOOLEAN_DIR}/good-a.py`]: 'tidy = 1\n' });
     const report = await testFixtures(config);

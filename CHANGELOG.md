@@ -4,6 +4,55 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- **An architecture SSOT compiled from the code.** `jevlint architecture` is now a command group,
+  and with no subcommand it runs `review`, whose output does not change until an SSOT exists.
+  Static analysis collects facts from every file with no network: imports with line numbers,
+  external packages classified by system, component candidates from directories and import
+  cohesion, inferred layers, entry points, public interfaces, flows and co-changes. The new verbs
+  use them. See [Architecture-driven development](docs/architecture-driven-development.md) and the
+  [SSOT reference](docs/architecture-reference.md).
+  - `compile` prints a prompt with the facts and a draft that tells a coding agent to write
+    `.jevlint/architecture/`, or to update it from what changed since `compiled_at`. `--copy`
+    copies it, `--agent` runs the agent, and `--docs` adds documents as context.
+  - `list` validates the SSOT, exits 2 when it does not load, and warns when it is over the size
+    budget.
+  - `show` draws the SSOT, or the draft when there is none, with real dependencies laid over the
+    declared ones: `--view map|layers|flow:<id>|component:<id>`, `--markdown` for an
+    ARCHITECTURE.md with Mermaid, `--html` for one offline page, and `--json`.
+  - `check` decides every structural rule from the AST with a file and line (`layers`,
+    `depends_on`, `only`, `forbid`, `forbid-call`, `no-cycles`, flows, stale references, unmapped
+    files), and judges checklist items with the decision model unless `--static`. `--diff <base>`
+    reports only what a change added, `--new` leaves out what `jevlint baseline` recorded, and
+    components with `status: target` are reported as distance from the target.
+  - `drift` reports unmapped code, undocumented dependencies and externals, stale references, and
+    with a model, stale summaries and documents with `--docs`.
+  - `plan` ranks problems by severity, churn and fan-in and computes a move for each, such as the
+    cheapest edge to cut in a cycle. `--prompt`, `--copy` and `--agent` ask an agent for `plan.md`.
+  - `review` adds the `component` and `design` perspectives when an SSOT exists, from the new
+    `architecture-component` and `architecture-design` presets, and `--copy`/`--prompt` give a
+    prompt for a prose review.
+- **The SSOT is also the architecture document.** It can hold curated diagrams in `views/` (a system
+  context, the building blocks, a data model as an ER diagram) and chapters in `chapters/` with
+  cited evidence. `show --markdown` builds an ARCHITECTURE.md around the chapters, with diagrams
+  compiled to Mermaid in GitDiagram's style: subsystems as coloured boxes, shapes by kind, verbs on
+  the arrows. `compile` now asks the agent to write all of it, with rules for drawing from
+  GitDiagram's generator, a fixed chapter outline and writing rules, and with material for the
+  reasons: data types, comments in central files and the commits most worth reading. jevlint checks
+  every solid arrow against the imports and every citation against the files, `compile --agent`
+  hands what fails back to the agent, `drift` reports chapters whose cited files changed, and
+  `review` adds a `chapter` perspective.
+- **`pr --architecture` and `commits --architecture`** report the SSOT violations each change
+  added, with no model, and exit 1 when there are any. `--json` adds `architecture` to each review.
+- **`jevlint baseline` records architecture violations** when an SSOT exists, for
+  `architecture check --new`.
+- The architecture review now resolves TypeScript `paths` from the root `tsconfig.json` and pnpm,
+  npm and bun workspace packages, so those links are no longer missing.
+- `jevlint test` finds fixtures for the questions of the architecture presets without adding them
+  to `presets`.
+- New setting `architecture.dir`, where the SSOT lives. Default `.jevlint/architecture`.
+- The library API exports `checkArchitecture`, `driftArchitecture`, `loadArchitecture`,
+  `planArchitecture` and `collectArchitectureFacts`.
+
 - **`[[quickfix.after]]`: run the project's formatters and fixers after `quickfix`.** Each entry
   names a command and optional `files` patterns. After the agent succeeds, `quickfix` runs them on
   the files it changed, without a shell, and the diff, re-score and commit show the result. A

@@ -1,0 +1,11 @@
+Component: billing (Billing)
+Layer: services
+Summary: Computes invoices from orders and charges customers through the payment provider.
+Modules:
+- src/billing/email.ts (140 lines): sendWelcomeEmail, renderTemplate
+- src/billing/search.ts (220 lines): indexProducts, searchCatalogue
+- src/billing/thumbnails.ts (90 lines): resizeImage, cropAvatar
+Depends on: web (6), admin (3), contracts (2)
+Declared dependencies: contracts
+Used by: contracts (1)
+Externals: none

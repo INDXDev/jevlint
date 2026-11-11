@@ -118,7 +118,9 @@ of `max_file_chars` leaves headroom. Truncated files get a warning in the report
 
 ## Architecture limits
 
-Used by [`jevlint architecture`](architecture-review.md). These are the defaults:
+Used by [`jevlint architecture`](architecture-review.md). `dir` is where the
+[architecture SSOT](architecture-reference.md) lives, and a repository's config may set it only to a
+directory inside the root. These are the defaults:
 
 ```toml
 [architecture]
@@ -128,6 +130,7 @@ max_directory_files = 20    # source files directly in a directory
 max_class_methods = 20
 max_class_lines = 300
 max_inheritance_depth = 3
+dir = ".jevlint/architecture"  # where the architecture SSOT lives, inside the root
 ```
 
 A file's hub links are the lower of its import count and its user count, so only a file that both

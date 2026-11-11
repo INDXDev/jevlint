@@ -1,0 +1,143 @@
+id: overview
+title: How a run flows through jevlint
+description: Commands dispatch to four pipelines, which share the same engines; every model call goes through Decision models and the cache.
+groups:
+  - { id: interface, label: Entry and output }
+  - { id: pipeline, label: Pipelines }
+  - { id: engines, label: Engines }
+  - { id: infrastructure, label: Repository and state }
+nodes:
+  - { id: developer, label: Developer or CI, kind: actor }
+  - { id: library-user, label: Library caller, kind: actor }
+  - { id: cli, label: CLI entry point, kind: component, component: cli, group: interface }
+  - { id: commands, label: Commands, kind: component, component: commands, group: interface }
+  - { id: library, label: Library API, kind: component, component: library-api, group: interface }
+  - {
+      id: reports,
+      label: Reports and prompts,
+      kind: component,
+      component: reports,
+      group: interface,
+    }
+  - {
+      id: agent-handoff,
+      label: Agent runs and diffs,
+      kind: component,
+      component: agent-handoff,
+      group: interface,
+    }
+  - {
+      id: arch-rendering,
+      label: Architecture rendering,
+      kind: component,
+      component: architecture-rendering,
+      group: interface,
+    }
+  - { id: audit, label: Audit pipeline, kind: component, component: audit, group: pipeline }
+  - {
+      id: change-review,
+      label: Change review,
+      kind: component,
+      component: change-review,
+      group: pipeline,
+    }
+  - {
+      id: spec-checks,
+      label: Spec check and drift,
+      kind: component,
+      component: spec-checks,
+      group: pipeline,
+    }
+  - {
+      id: arch-verbs,
+      label: Architecture verbs,
+      kind: component,
+      component: architecture-verbs,
+      group: pipeline,
+    }
+  - { id: ast-metrics, label: AST metrics, kind: component, component: ast-metrics, group: engines }
+  - { id: scoring, label: Scoring and pins, kind: component, component: scoring, group: engines }
+  - { id: decision, label: Decision models, kind: component, component: decision, group: engines }
+  - { id: code-facts, label: Code facts, kind: component, component: code-facts, group: engines }
+  - {
+      id: conformance,
+      label: SSOT conformance,
+      kind: component,
+      component: ssot-conformance,
+      group: engines,
+    }
+  - {
+      id: configuration,
+      label: Configuration and keys,
+      kind: component,
+      component: configuration,
+      group: infrastructure,
+    }
+  - { id: presets, label: Presets, kind: component, component: presets, group: infrastructure }
+  - {
+      id: repo-access,
+      label: Repository access,
+      kind: component,
+      component: repository-access,
+      group: infrastructure,
+    }
+  - {
+      id: ssot-loading,
+      label: Spec and SSOT loading,
+      kind: component,
+      component: ssot-loading,
+      group: infrastructure,
+    }
+  - {
+      id: fixers,
+      label: Fixer commands and trust,
+      kind: component,
+      component: fixer-commands,
+      group: infrastructure,
+    }
+  - {
+      id: cache,
+      label: Decision cache,
+      kind: store,
+      component: decision-cache,
+      group: infrastructure,
+    }
+  - { id: provider, label: Model provider, kind: external, packages: ["ai", "@ai-sdk/*"] }
+  - { id: coding-agent, label: Coding agent CLI, kind: external }
+edges:
+  - { from: developer, to: cli, verb: runs }
+  - { from: library-user, to: library, verb: calls }
+  - { from: cli, to: commands, verb: dispatches }
+  - { from: commands, to: configuration, verb: loads config }
+  - { from: commands, to: audit, verb: runs audit }
+  - { from: commands, to: change-review, verb: reviews change }
+  - { from: commands, to: spec-checks, verb: checks spec }
+  - { from: commands, to: arch-verbs, verb: runs verb }
+  - { from: commands, to: ssot-loading, verb: loads SSOT }
+  - { from: commands, to: agent-handoff, verb: launches agent }
+  - { from: commands, to: reports, verb: formats results }
+  - { from: commands, to: arch-rendering, verb: renders SSOT }
+  - { from: library, to: audit, verb: runs audit }
+  - { from: library, to: arch-verbs, verb: runs verb }
+  - { from: library, to: spec-checks, verb: checks spec }
+  - { from: agent-handoff, to: coding-agent, verb: spawns, style: dashed }
+  - { from: agent-handoff, to: fixers, verb: runs fixers }
+  - { from: agent-handoff, to: audit, verb: re-scores }
+  - { from: change-review, to: audit, verb: audits both sides }
+  - { from: change-review, to: repo-access, verb: reads snapshots }
+  - { from: audit, to: repo-access, verb: discovers files }
+  - { from: audit, to: presets, verb: loads questions }
+  - { from: audit, to: ast-metrics, verb: measures }
+  - { from: audit, to: decision, verb: asks questions }
+  - { from: audit, to: scoring, verb: scores and ranks }
+  - { from: spec-checks, to: decision, verb: asks verdicts }
+  - { from: arch-verbs, to: code-facts, verb: collects facts }
+  - { from: arch-verbs, to: conformance, verb: decides rules }
+  - { from: arch-verbs, to: spec-checks, verb: judges checklists }
+  - { from: arch-verbs, to: decision, verb: asks reviews }
+  - { from: arch-verbs, to: cache, verb: caches outlines }
+  - { from: code-facts, to: ast-metrics, verb: parses }
+  - { from: ast-metrics, to: scoring, verb: scores findings }
+  - { from: decision, to: cache, verb: "reads, writes answers" }
+  - { from: decision, to: configuration, verb: reads keys }
+  - { from: decision, to: provider, verb: sends questions }

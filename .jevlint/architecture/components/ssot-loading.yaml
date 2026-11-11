@@ -1,0 +1,26 @@
+id: ssot-loading
+title: Spec and SSOT loading
+summary: >
+  Reads and validates the two repository-owned YAML sources: the spec in spec.dir and the
+  architecture SSOT in architecture.dir. Links outside the root and globs with .. are refused, and
+  list's size budget lives here.
+layer: infrastructure
+paths: [src/spec/load.ts, src/architecture/load.ts]
+key_files:
+  - { path: src/spec/load.ts, role: "loadSpec, readYaml and the shared id and checklist schemas" }
+  - { path: src/architecture/load.ts, role: "loadArchitecture, the SSOT schema and BUDGET" }
+interface:
+  [
+    loadSpec,
+    specFiles,
+    readYaml,
+    GLOBAL,
+    fullId,
+    loadArchitecture,
+    architectureFiles,
+    ssotDir,
+    BUDGET,
+  ]
+depends_on: [configuration, repository-access, presets, contracts]
+uses: [yaml, zod]
+status: current

@@ -1,0 +1,17 @@
+id: ast-metrics
+title: AST metrics
+summary: >
+  Measures code with no network: cognitive complexity, nesting, function and file length and
+  parameters through ast-grep, pattern matches, and a one-pass lexical fallback for languages with no
+  grammar. Languages are a table of node kinds.
+layer: engines
+paths: ["src/ast/**"]
+key_files:
+  - { path: src/ast/analyze.ts, role: "analyzeAst and patternMatches" }
+  - { path: src/ast/languages.ts, role: "node-kind tables and bundled parsers" }
+  - { path: src/ast/generic.ts, role: "the keyword and indentation fallback" }
+interface:
+  [analyzeAst, analyzeGeneric, patternMatches, countLines, languageOf, LANGUAGES, overLimit]
+depends_on: [configuration, scoring, contracts]
+uses: [ast_grep_napi]
+status: current

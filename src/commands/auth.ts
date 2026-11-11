@@ -84,7 +84,9 @@ const envCommand = defineCommand({
 
 const KEY_COMMANDS = [
   'audit',
-  'architecture',
+  'architecture review',
+  'architecture check',
+  'architecture drift',
   'baseline',
   'commits',
   'explain',
@@ -99,7 +101,7 @@ const KEY_COMMANDS = [
 
 /** Whether a command would use a provider key, so that only those stop to ask about one. */
 export const usesProviderKey = (name: string, args: string[]) =>
-  KEY_COMMANDS.includes(name) && !args.includes('--ast-only');
+  KEY_COMMANDS.includes(name) && !args.includes('--ast-only') && !args.includes('--static');
 
 /** Asks once, on the first interactive run that finds a key in the environment. */
 export async function askAboutEnvKeys(): Promise<void> {

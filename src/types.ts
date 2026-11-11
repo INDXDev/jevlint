@@ -248,6 +248,8 @@ export interface ChangeReview extends Omit<Change, 'message'> {
   intent?: ModelAnswer[];
   /** With `intent`: problems judging it, such as a truncated diff. */
   warnings?: string[];
+  /** With `--architecture`: the SSOT violations the change added. */
+  architecture?: ArchitectureViolation[];
 }
 
 /** A structural problem, and the directories whose score it counts against. */
@@ -300,8 +302,11 @@ export interface DirectoryNode {
   layer: number;
 }
 
-/** A level of the design that the review looks at. */
-export type Perspective = 'codebase' | 'directory' | 'class';
+/**
+ * A level of the design that the review looks at. `component`, `design` and `chapter` review the
+ * architecture SSOT, so they run only when one exists.
+ */
+export type Perspective = 'codebase' | 'directory' | 'class' | 'component' | 'design' | 'chapter';
 
 /** One reviewed thing: the whole codebase, a directory or a class. */
 export interface ArchitectureUnit {
@@ -470,4 +475,524 @@ export interface SpecDriftReport {
   undocumented: string[];
   usage: AuditReport['usage'];
   warnings: string[];
+}
+
+/** One import as written, with the line it is on. */
+export interface ImportRef {
+  specifier: string;
+  /** 1-indexed. */
+  line: number;
+  /** The names a JavaScript or TypeScript import picks, when it names them. */
+  names?: string[];
+}
+
+/** What kind of thing outside the repository an import reaches. */
+export type ExternalKind = 'system' | 'library' | 'runtime';
+
+/** A file's import of something outside the repository, normalised to a package name. */
+export interface ExternalImport {
+  package: string;
+  line: number;
+}
+
+/** A resolved dependency of one file on another, with the line that makes it. */
+export interface ModuleImport {
+  path: string;
+  line: number;
+  names?: string[];
+}
+
+/** One source file as the architecture facts see it: resolved imports, externals, names. */
+export interface FactModule {
+  path: string;
+  language: Language;
+  lines: number;
+  imports: ModuleImport[];
+  externals: ExternalImport[];
+  symbols: string[];
+  /** Data types it declares. */
+  types?: DataType[];
+  /** Comments that are not doc comments, which often explain why. */
+  comments?: CodeComment[];
+}
+
+/** Where a dependency comes from: a file and the line of its import. */
+export interface Evidence {
+  path: string;
+  line: number;
+  /** The file or package imported. */
+  target: string;
+}
+
+/** A group of files that the facts propose as one component. */
+export interface ComponentCandidate {
+  /** Derived from the paths. Stable while the paths stay the same. */
+  id: string;
+  /** Globs that select its files. */
+  paths: string[];
+  files: string[];
+  lines: number;
+  /** 0 depends on no other component. */
+  layer: number;
+  /** PageRank over the component graph, so the most depended-on parts rank first. */
+  rank: number;
+  fanIn: number;
+  fanOut: number;
+  /** The files most depended on from outside, with the most central first. */
+  central: string[];
+  /** Names that other components import from it. */
+  interface: string[];
+  /** External system and library ids it imports. */
+  externals: string[];
+  /** Commits that touched its files over `priority.churn_days`. */
+  churn: number;
+}
+
+/** A dependency between two components, with the imports behind it. */
+export interface ComponentDependency {
+  from: string;
+  to: string;
+  /** How many imports it stands for. */
+  weight: number;
+  /** A few of those imports. */
+  evidence: Evidence[];
+}
+
+/** An external system, library or runtime module the code imports. */
+export interface ExternalUse {
+  id: string;
+  title: string;
+  kind: ExternalKind;
+  /** The packages seen, such as `@ai-sdk/openai`. */
+  packages: string[];
+  /** Component ids that import it. */
+  users: string[];
+  evidence: Evidence[];
+}
+
+/** Where execution starts: a binary, a route, a handler or a main function. */
+export interface EntryPoint {
+  path: string;
+  kind: string;
+  /** The component that holds it, if any. */
+  component: string | null;
+}
+
+/** The longest chain of component dependencies from an entry point. */
+export interface CandidateFlow {
+  entry: string;
+  components: string[];
+}
+
+/** Files in two components that change in the same commits, with no import between them. */
+export interface CoChange {
+  a: string;
+  b: string;
+  commits: number;
+}
+
+/** What static analysis tells about a repository, with no model and no network. */
+export interface ArchitectureFacts {
+  version: 1;
+  root: string;
+  /** HEAD when the facts were collected, or null outside git. */
+  commit: string | null;
+  files: number;
+  lines: number;
+  components: ComponentCandidate[];
+  /** Number of inferred layers; component layers run from 0 to this minus one. */
+  layers: number;
+  dependencies: ComponentDependency[];
+  externals: ExternalUse[];
+  entrypoints: EntryPoint[];
+  flows: CandidateFlow[];
+  /** Component ids in a dependency cycle, one list per cycle. */
+  cycles: string[][];
+  coChanges: CoChange[];
+  /** Globs of test files, which the facts leave out of components. */
+  tests: string[];
+  /** The data types most referred to, with their fields. */
+  dataTypes: FactDataType[];
+  modules: FactModule[];
+  warnings: string[];
+}
+
+/** An entry in `externals` of the SSOT's `index.yaml`. */
+export interface ArchitectureExternal {
+  id: string;
+  title: string;
+  /** Package names, where `*` matches any characters, such as `@ai-sdk/*`. */
+  packages: string[];
+  summary?: string;
+}
+
+/** A structural rule in the SSOT. Every kind is decided from the AST, with no model. */
+export type ArchitectureRule =
+  | { id: string; kind: 'layers' }
+  | { id: string; kind: 'no-cycles' }
+  | { id: string; kind: 'only'; externals: string[]; components?: string[] }
+  | {
+      id: string;
+      kind: 'forbid';
+      from?: string[];
+      packages?: string[];
+      components?: string[];
+    }
+  | {
+      id: string;
+      kind: 'forbid-call';
+      pattern: string;
+      language?: Language;
+      from?: string[];
+      except?: string[];
+    };
+
+/** `index.yaml` of the architecture SSOT. */
+export interface ArchitectureIndex {
+  version: 1;
+  name: string;
+  /** The commit the SSOT was compiled from: the base for `drift` and an update. */
+  compiled_at?: string;
+  description: string;
+  /** Layer names, top to bottom. */
+  layers: string[];
+  /** Globs of files that belong to no component on purpose, such as tests. */
+  ignore: string[];
+  externals: ArchitectureExternal[];
+  rules: ArchitectureRule[];
+  checklist: SpecItem[];
+}
+
+/** A file to start reading a component from, and what it does. */
+export interface KeyFile {
+  path: string;
+  role: string;
+}
+
+/** `components/<id>.yaml`: one part of the system. */
+export interface ArchitectureComponent {
+  id: string;
+  title: string;
+  summary: string;
+  layer?: string;
+  paths: string[];
+  key_files: KeyFile[];
+  interface: string[];
+  /** The components it may depend on. When absent, any. */
+  depends_on?: string[];
+  /** External ids it uses. */
+  uses: string[];
+  rules: ArchitectureRule[];
+  checklist: SpecItem[];
+  /** `target` marks the intended shape: its violations are known debt. */
+  status: 'current' | 'target';
+}
+
+/** One step of a flow: one component calling another. */
+export interface FlowStep {
+  from: string;
+  to: string;
+  verb: string;
+  /** What comes back to `from`, drawn as a return arrow. */
+  returns?: string;
+  /** Drawn dashed: optional, asynchronous or not always taken. */
+  optional?: boolean;
+}
+
+/** `flows/<id>.yaml`: a main workflow through the components. */
+export interface ArchitectureFlow {
+  id: string;
+  title: string;
+  trigger?: string;
+  steps: FlowStep[];
+}
+
+/** A loaded and validated architecture SSOT. See docs/architecture-reference.md. */
+export interface ArchitectureSsot {
+  /** Root-relative posix path of the SSOT directory. */
+  dir: string;
+  index: ArchitectureIndex;
+  /** Sorted by id. */
+  components: ArchitectureComponent[];
+  flows: ArchitectureFlow[];
+  /** Curated diagrams, sorted by id. */
+  views: ArchitectureView[];
+  /** The document's chapters, in file name order. */
+  chapters: ArchitectureChapter[];
+}
+
+/** What a structural violation broke. */
+export type ViolationRule =
+  | 'layer-violation'
+  | 'undeclared-dependency'
+  | 'restricted-external'
+  | 'forbidden-dependency'
+  | 'forbidden-call'
+  | 'component-cycle'
+  | 'missing-flow-step'
+  | 'stale-reference'
+  | 'unmapped-file';
+
+/** Code that does not follow the SSOT, found from the AST with a file and line. */
+export interface ArchitectureViolation {
+  rule: ViolationRule;
+  /** The SSOT rule's full id, such as `layers-point-down` or `decision.owns-ai-sdk`. */
+  ruleId: string;
+  /** The component the offending file belongs to, or null for an unmapped file. */
+  component: string | null;
+  path: string;
+  line: number;
+  /** The file, package, component or symbol it points at. */
+  target?: string;
+  message: string;
+  /** `target` when the component has `status: target`, so it is known debt. */
+  status: 'current' | 'target';
+}
+
+/** How a component dependency compares with what the SSOT declares. */
+export type DependencyStatus = 'declared' | 'violation' | 'unused' | 'actual';
+
+/** One edge of the component map, with the real dependency laid over the declared one. */
+export interface MapEdge {
+  from: string;
+  to: string;
+  weight: number;
+  status: DependencyStatus;
+}
+
+/** One checklist item's verdict on one file. */
+export interface ArchitectureFileResult {
+  path: string;
+  component: string | null;
+  items: SpecItemResult<CheckVerdict>[];
+  warnings: string[];
+}
+
+/** The result of `jevlint architecture check`. */
+export interface ArchitectureCheckReport {
+  root: string;
+  dir: string;
+  provider: string | null;
+  model: string | null;
+  /** False when paths or `--diff` narrowed the run, which leaves `unimplemented` empty. */
+  complete: boolean;
+  /** The base of `--diff`, when given. */
+  base?: string;
+  /** Violations that count, in path and line order. */
+  violations: ArchitectureViolation[];
+  /** Violations in components with `status: target`, which do not affect the exit code. */
+  targetGaps: ArchitectureViolation[];
+  /** Violations left out because the baseline records them. */
+  baselined: number;
+  /** Checklist verdicts per file. Empty with `--static`. */
+  files: ArchitectureFileResult[];
+  checklistViolations: number;
+  /** Checklist items no file satisfies. */
+  unimplemented: SpecItemRef[];
+  usage: AuditReport['usage'];
+  warnings: string[];
+}
+
+/** What kind of drift between the code and the SSOT. */
+export type DriftKind =
+  | 'unmapped-code'
+  | 'undocumented-dependency'
+  | 'undocumented-external'
+  | 'stale-reference'
+  | 'stale-summary'
+  | 'stale-chapter'
+  | 'stale-view'
+  | 'document';
+
+/** One way the SSOT no longer describes the code. */
+export interface DriftItem {
+  kind: DriftKind;
+  component: string | null;
+  /** The file, directory or SSOT file to look at. */
+  path: string;
+  line?: number;
+  target?: string;
+  message: string;
+  /** True when the code it points at was added after `compiled_at`. */
+  since?: boolean;
+}
+
+/** The result of `jevlint architecture drift`. */
+export interface ArchitectureDriftReport {
+  root: string;
+  dir: string;
+  provider: string | null;
+  model: string | null;
+  compiledAt: string | null;
+  head: string | null;
+  items: DriftItem[];
+  /** Files added and removed since `compiled_at`. */
+  added: string[];
+  removed: string[];
+  /** Documents compared with the SSOT, with `--docs`. */
+  docs: SpecDocResult[];
+  usage: AuditReport['usage'];
+  warnings: string[];
+}
+
+/** One step of a refactoring plan, computed from the structure. */
+export interface PlanStep {
+  /** 1 is the first to do. */
+  rank: number;
+  /** Severity times churn times fan-in, normalised. */
+  priority: number;
+  problem: string;
+  /** What to change, such as the import to cut. */
+  move: string;
+  component: string | null;
+  evidence: Evidence[];
+}
+
+/** The result of `jevlint architecture plan`, as `plan.json`. */
+export interface ArchitecturePlan {
+  root: string;
+  dir: string | null;
+  steps: PlanStep[];
+  warnings: string[];
+}
+
+/** One `compilerOptions.paths` entry, with its targets made root-relative. */
+export interface PathAlias {
+  /** The pattern, such as `@/*` or `~config`. At most one `*`. */
+  pattern: string;
+  /** Root-relative targets, each with at most one `*`. */
+  targets: string[];
+}
+
+/** A workspace package: its name, its directory and the files its manifest names as entries. */
+export interface WorkspacePackage {
+  name: string;
+  /** Root-relative. */
+  dir: string;
+  /** Root-relative entry files from `exports`, `module`, `main` and `types`. */
+  entries: string[];
+}
+
+/** A field of a data type, with its type as written. */
+export interface DataField {
+  name: string;
+  type: string;
+}
+
+/** A type that holds data: an interface, a struct, a dataclass, or a class with fields. */
+export interface DataType {
+  name: string;
+  line: number;
+  fields: DataField[];
+}
+
+/** A comment in the code, which often says why. Doc comments are left out. */
+export interface CodeComment {
+  line: number;
+  text: string;
+}
+
+/** A data type in the facts, with the other data types its fields name. */
+export interface FactDataType extends DataType {
+  path: string;
+  component: string | null;
+  /** Names of other data types its fields refer to. */
+  refs: string[];
+  /** How many other data types refer to it. */
+  usedBy: number;
+}
+
+/** A commit worth reading for the reasons behind the design. */
+export interface CommitSummary {
+  hash: string;
+  subject: string;
+  /** The first lines of the message body. */
+  body: string;
+  files: number;
+}
+
+/** What a node of a view stands for, which sets its shape. */
+export type ViewNodeKind = 'actor' | 'component' | 'store' | 'queue' | 'external' | 'document';
+
+/** A box in a drawn view. */
+export interface ViewNode {
+  id: string;
+  label: string;
+  kind: ViewNodeKind;
+  /** The file or directory it stands for, root-relative. */
+  path?: string;
+  /** Or the SSOT component it stands for. */
+  component?: string;
+  /** For an external node: the packages that reach it, such as `ai` or `@ai-sdk/*`. */
+  packages?: string[];
+  group?: string;
+  description?: string;
+}
+
+/** An arrow in a drawn view, owned by the caller. */
+export interface ViewEdge {
+  from: string;
+  to: string;
+  /** A short verb phrase, such as `asks questions`. */
+  verb: string;
+  /** Dashed for optional or inferred relationships. */
+  style: 'solid' | 'dashed';
+}
+
+/** A curated diagram: a system context or the building blocks, for people to read. */
+export interface GraphView {
+  id: string;
+  kind: 'graph';
+  title: string;
+  description?: string;
+  groups: { id: string; label: string }[];
+  nodes: ViewNode[];
+  edges: ViewEdge[];
+}
+
+/** One entity of a data model view. */
+export interface DataEntity {
+  id: string;
+  /** The type's name in the code. */
+  name: string;
+  path: string;
+  description?: string;
+  fields: { name: string; type: string; note?: string }[];
+}
+
+/** A relation between two entities. */
+export interface DataRelation {
+  from: string;
+  to: string;
+  cardinality: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
+  label: string;
+}
+
+/** A data model diagram, drawn as an ER diagram. */
+export interface DataView {
+  id: string;
+  kind: 'data';
+  title: string;
+  description?: string;
+  entities: DataEntity[];
+  relations: DataRelation[];
+}
+
+/** A view of the SSOT, in `views/<id>.yaml`. */
+export type ArchitectureView = GraphView | DataView;
+
+/** A chapter of the architecture document, in `chapters/<name>.md`. */
+export interface ArchitectureChapter {
+  /** The file name without `.md`, which sets the order, such as `20-principles`. */
+  id: string;
+  title: string;
+  /** Where its claims come from: `path`, `path:line`, `path:10-20` or `commit:<hash>`. */
+  evidence: string[];
+  body: string;
+}
+
+/** A check that still failed after the fixers: its command and what it printed. */
+export interface FailedCheck {
+  command: string[];
+  output: string;
 }

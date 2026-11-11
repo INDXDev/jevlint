@@ -1,0 +1,44 @@
+id: commands
+title: Commands
+summary: >
+  One file per CLI command (review.ts holds `pr` and `commits`). Each parses flags, calls a pipeline,
+  and prints the result to stdout and everything else to stderr. shared.ts holds the audit flow,
+  flag parsing and PROMPT_IO that commands share.
+layer: interface
+paths: ["src/commands/**"]
+key_files:
+  - { path: src/commands/shared.ts, role: "auditProject, prepareAgentRun, flags and PROMPT_IO" }
+  - {
+      path: src/commands/architecture.ts,
+      role: "the architecture verbs, --html, --copy and --agent",
+    }
+  - { path: src/commands/audit.ts, role: "audit, --dry-run, --new and fail_under" }
+  - { path: src/commands/review.ts, role: "pr and commits" }
+  - { path: src/commands/quickfix.ts, role: "edit-only agent run, diff, re-score and commit" }
+interface:
+  [auditCommand, architectureCommand, prCommand, commitsCommand, askAboutEnvKeys, formatPresetList]
+depends_on:
+  - agent-handoff
+  - audit
+  - change-review
+  - preset-fixtures
+  - spec-checks
+  - architecture-verbs
+  - architecture-rendering
+  - spec-rendering
+  - reports
+  - ssot-conformance
+  - ssot-loading
+  - configuration
+  - presets
+  - decision
+  - repository-access
+  - decision-cache
+  - fixer-commands
+  - contracts
+uses: [citty, clack_prompts, clipboardy, child_process]
+rules: []
+checklist:
+  - id: thin-commands
+    text: "A command parses flags, calls core modules and prints; logic that decides results lives in a core module."
+status: current

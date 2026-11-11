@@ -1,0 +1,46 @@
+name = "architecture-chapter"
+description = "SSOT chapters: reasons, not just facts; specific to the system; claims backed by evidence"
+source = "Common guidance on architecture documentation (arc42, architecture decision records). Independent paraphrase."
+used_by = "architecture"
+
+[[questions]]
+id = "explains-why"
+type = "score"
+title = "It explains why"
+instructions = "You are given one chapter of a repository's architecture document, with the list of evidence it cites. Does the chapter explain the reasons behind what it describes: why each choice was made, and what it costs or rules out?"
+levels = [
+  "It only lists what exists, with no reasons at all",
+  "It gives a reason here and there, mostly generic ones such as maintainability",
+  "Most choices have a reason, but trade-offs and alternatives are rarely named",
+  "Each important choice has a specific reason and names what it costs or what was rejected",
+]
+weight = 2
+fix = "For each principle or decision, add why it was chosen and what it gives up, from the commits, comments and documents that record it."
+
+[[questions]]
+id = "specific"
+type = "score"
+title = "It is specific to this system"
+instructions = "Given the chapter, is it written about this system in particular: does it name its components, files, functions, settings and commands, or could most sentences describe any project?"
+levels = [
+  "Almost every sentence would be true of any project",
+  "A few names appear, but most of the text is generic",
+  "Mostly specific, with some generic filler",
+  "Every paragraph names the parts of this system it is about",
+]
+weight = 2
+fix = "Replace generic sentences with the files, functions and settings they are about, or cut them."
+
+[[questions]]
+id = "evidence"
+type = "score"
+title = "Its claims are backed"
+instructions = "Given the chapter and its evidence list, are its claims about the code tied to evidence a reader can check: files with lines, documents or commits, cited in the text or the list, with inferences marked as such?"
+levels = [
+  "Claims stand alone, with no files, lines, documents or commits to check them against",
+  "Some claims point at evidence, many important ones do not",
+  "Most important claims are backed, a few are not",
+  "Every important claim is backed, and inferences are marked as inferences",
+]
+weight = 1
+fix = "Cite the file and line, document or commit behind each claim, and mark inferences."

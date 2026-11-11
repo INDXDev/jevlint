@@ -1,0 +1,14 @@
+id: presets
+title: Presets
+summary: >
+  Loads and validates presets, the TOML sets of questions, patterns and semantic rules that decide
+  what a run checks, from the repository, the user and presets/. Also guards repository paths
+  against links that lead outside the root.
+layer: infrastructure
+paths: [src/presets.ts]
+key_files:
+  - { path: src/presets.ts, role: "loadPresets, activeQuestions, assertInRepo, preset files" }
+interface: [loadPresets, activeQuestions, assertInRepo, listPresets, presetsInArgs]
+depends_on: [configuration, contracts]
+uses: [zod]
+status: current

@@ -1,0 +1,26 @@
+version: 1
+name: shop
+description: An online shop.
+layers: [app, core]
+components:
+  - {
+      id: app,
+      title: App,
+      summary: "Routes, pages, orders, billing, emails and the database.",
+      layer: app,
+      depends_on: [core, utils],
+    }
+  - {
+      id: core,
+      title: Core,
+      summary: "Orders, billing and some routes.",
+      layer: core,
+      depends_on: [app, utils],
+    }
+  - {
+      id: utils,
+      title: Utils,
+      summary: "Helpers, billing rules and database queries.",
+      layer: core,
+      depends_on: [app, core],
+    }

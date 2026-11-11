@@ -9,7 +9,7 @@ import {
   worstFindings,
 } from './report.ts';
 import { WEAK_COMPLIANCE } from './scoring.ts';
-import type { AuditReport, FileReport } from './types.ts';
+import type { AuditReport, FailedCheck, FileReport } from './types.ts';
 
 const NOTHING_TO_FIX =
   'jevlint found nothing to fix in the selected files. Pinned scores are left out.';
@@ -79,11 +79,7 @@ export function codeSpan(text: string): string {
   return `${ticks}${pad}${text}${pad}${ticks}`;
 }
 
-/** A check that still failed after the fixers: its command and what it printed. */
-export interface FailedCheck {
-  command: string[];
-  output: string;
-}
+export type { FailedCheck } from './types.ts';
 
 /**
  * Renders the prompt for a quick fix's one retry: the files the agent changed and the output of

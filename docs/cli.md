@@ -12,8 +12,8 @@ Results go to stdout, and progress and notices go to stderr, so pipes stay clean
 | Code | Meaning |
 | --- | --- |
 | 0 | Success |
-| 1 | The repository score is below `fail_under`, `audit --new` found something new, `hook --staged` found the staged change made something worse, or [`jevlint test`](#jevlint-test-questions) found a fixture that failed or moved, `spec check` found a violated or unimplemented item, or `spec drift` found drift |
-| 2 | Usage or config error, a rejected API key, a refused [cache bucket](caching.md#share-the-cache-through-object-storage), or a Node.js without the required security fixes. With `fail_under` or `--new` set, also: no file was scored, every provider request failed, or a key in the environment was never allowed. `hook` also uses it as a gate: an edit made a file worse, which is the code Claude Code feeds back to the agent |
+| 1 | The repository score is below `fail_under`, `audit --new` found something new, `hook --staged` found the staged change made something worse, or [`jevlint test`](#jevlint-test-questions) found a fixture that failed or moved, `spec check` found a violated or unimplemented item, `spec drift` found drift, `architecture check` found a violation or an unimplemented item, `architecture drift` found drift, or `pr --architecture` or `commits --architecture` found a violation the change added |
+| 2 | Usage or config error, an architecture SSOT that does not load, a rejected API key, a refused [cache bucket](caching.md#share-the-cache-through-object-storage), or a Node.js without the required security fixes. With `fail_under` or `--new` set, also: no file was scored, every provider request failed, or a key in the environment was never allowed. `hook` also uses it as a gate: an edit made a file worse, which is the code Claude Code feeds back to the agent |
 
 ## `jevlint audit [paths...]`
 
@@ -63,7 +63,9 @@ With `commits`, lines are as of each commit, which may not match your checkout.
 Audits the repository and writes what it finds to `.jevlint/baseline.json`, so that a legacy codebase
 can gate on new problems today. Commit the file. It holds each file's AST findings (`rule`, `symbol`,
 `value`) and weak answers (`id`, `compliance`), sorted, with no timestamps, so it diffs well. Run it
-again to accept the current state.
+again to accept the current state. When an [architecture SSOT](architecture-reference.md) exists, it
+also records its structural violations (`rule`, `rule_id`, `path`, `target`, without lines), which
+`jevlint architecture check --new` leaves out.
 
 | Flag | Description |
 | --- | --- |
@@ -87,19 +89,114 @@ jevlint audit --new --ast-only --format github
 - `--new` with no baseline is an error, and so is a baseline run where every provider request failed.
 - `--new` also applies `fail_under`, if it is set. The repository score still covers every file.
 
-## `jevlint architecture [paths...]`
+## `jevlint architecture`
 
-Reviews the codebase, each directory and each class, and ranks them worst to best. See
-[Architecture review](architecture-review.md).
+Reviews the structure, and compiles, shows and checks the architecture SSOT: a small set of YAML
+files in `.jevlint/architecture/` that describes the system's components, layers and rules. See
+[Architecture review](architecture-review.md), the guide
+[Architecture-driven development](architecture-driven-development.md) and the
+[SSOT reference](architecture-reference.md).
+
+| Command | What it does | Model |
+| --- | --- | --- |
+| `jevlint architecture [paths...]` | The same as `review` | As `review` |
+| `jevlint architecture review [paths...]` | Review the codebase, directories, classes and, with an SSOT, each component and the design. Rank them worst to best | Yes, unless `--ast-only` |
+| `jevlint architecture compile [paths...]` | Print a prompt that tells a coding agent to write the SSOT from the code, or to update it | No |
+| `jevlint architecture list` | Load and validate the SSOT, and print it. Exits 2 when it does not load, and warns on stderr when it is over the size budget or its views and chapters do not fit the code | No |
+| `jevlint architecture show` | Draw the SSOT, or a draft from the code when there is none, with the real dependencies laid over the declared ones | No |
+| `jevlint architecture check [paths...]` | Check that the code follows the SSOT. Exits 1 on a violation or an unimplemented checklist item | Checklist items only |
+| `jevlint architecture drift` | Find where the SSOT no longer describes the code. Exits 1 when it finds any | Summaries and `--docs` only |
+| `jevlint architecture plan` | Rank structural problems by severity, churn and fan-in, with a computed move for each | No |
+
+Anything after `jevlint architecture` that is not one of these commands goes to `review`, so
+`jevlint architecture src --ast-only` works as it always did, and its output does not change while
+there is no SSOT.
+
+### `review`
 
 | Flag | Meaning |
 | --- | --- |
-| `--perspective <names>` | Review only `codebase`, `directory` or `class`, comma-separated |
+| `--perspective <names>` | Review only some of `codebase`, `directory`, `class`, `component`, `design` and `chapter`, comma-separated. The last three need an SSOT |
 | `--top <n>` | Rows to show (default 20) |
 | `--html <file>` | Write a visual report to this file. The file name is required |
 | `--json` | Print the [JSON report](json-output.md#architecture-report) |
+| `--copy` | Also copy a prompt asking a coding agent for a prose review of the design |
+| `--prompt` | Print that prompt instead of the report, for `jevlint architecture review --prompt \| claude -p` |
 | `--ast-only` | Use AST analysis only, with no network |
-| `--no-cache` | Ignore cached decisions, and do not store new ones |
+| `--no-cache` | Ignore cached decisions and outlines, and do not store new ones |
+
+### `compile`
+
+Collects [facts](architecture-reference.md#facts) from the code with no network, builds a draft
+SSOT from them, and prints a prompt that tells a coding agent to write the whole architecture
+document in `.jevlint/architecture/`: the structure, curated diagrams (`views/`) and chapters
+(`chapters/`) that explain the design and the reasons behind it. The prompt adds the material for
+those reasons: instruction files, data types, comments in central files and the commits most worth
+reading. See [Compile](architecture-reference.md#compile). When an SSOT exists, the prompt asks for
+an update of what changed since `compiled_at` instead, keeping ids and rewriting only stale chapters
+and views. The prompt holds paths, line numbers, names and commit subjects, never file contents. It
+exits 0 even when the current SSOT does not load, and the prompt then says why.
+
+With `--agent`, jevlint then runs the checks of `list` and, while they report anything, hands the
+problems back to the agent, at most twice.
+
+| Flag | Meaning |
+| --- | --- |
+| `--docs` | Add the documents `spec.docs` matches as context. `--docs=README.md,docs/design.md` names them instead |
+| `--since <commit>` | Base an update on this commit instead of `compiled_at` |
+| `--copy` | Copy the prompt to the clipboard instead of printing it |
+| `--agent <name>` | Run this [agent](configuration.md#agents) on the prompt, with its output on stderr |
+| `--agent-login` | Use the agent's own login, not an API key in the environment |
+| `--no-cache` | Ignore cached outlines |
+
+### `show`
+
+| Flag | Meaning |
+| --- | --- |
+| `--view <view>` | `map` (default), `layers`, `flow:<id>`, `component:<id>`, or the id of a view such as `overview` |
+| `--markdown` | Print the SSOT as an ARCHITECTURE.md with Mermaid diagrams, built around its chapters when it has them, or only the chosen `--view` |
+| `--html <file>` | Write one page with no scripts and no network requests |
+| `--json` | Print the SSOT, the map edges and the facts |
+
+With no SSOT, `show` draws the component candidates from the facts and says on stderr that this is a
+draft. jevlint never writes into `docs/`: redirect `--markdown` yourself, as in
+`jevlint architecture show --markdown > docs/ARCHITECTURE.md`.
+
+### `check`
+
+| Flag | Meaning |
+| --- | --- |
+| `--static` | Decide the structural rules only, with no model |
+| `--diff <base>` | Report only the structural violations the change since `base` added, and judge checklists only in changed files |
+| `--new` | Leave out violations recorded in `.jevlint/baseline.json` by [`jevlint baseline`](#jevlint-baseline-paths) |
+| `--json` | Print the [JSON report](json-output.md#architecture-ssot-reports) |
+| `--copy` | Also copy a prompt asking a coding agent to fix the code |
+| `--prompt` | Print that prompt instead of the report |
+| `--verbose` | List every judged checklist item with its verdict and confidence |
+| `--no-cache` | Ignore cached decisions and outlines |
+
+`paths` narrows what is reported, not what is analysed, so a violation from outside still counts when
+its file is in `paths`. Violations in a component with `status: target` are listed separately as the
+distance from the target, and do not affect the exit code.
+
+### `drift`
+
+| Flag | Meaning |
+| --- | --- |
+| `--static` | AST only: unmapped code, undocumented dependencies and externals, stale references |
+| `--docs` | Also compare documents with the SSOT. `--docs=a.md,b.md` names them. Cannot go with `--static` |
+| `--since <commit>` | Compare with this commit instead of `compiled_at` |
+| `--json`, `--copy`, `--prompt`, `--no-cache` | As for `check`. The prompt asks an agent to update the SSOT |
+
+### `plan`
+
+| Flag | Meaning |
+| --- | --- |
+| `--json` | Print the plan as JSON, for `> .jevlint/architecture/plan.json` |
+| `--prompt` | Print a prompt asking a coding agent to write `plan.md` from the plan |
+| `--copy`, `--agent <name>`, `--agent-login` | Copy the prompt, or run an agent on it |
+
+With no SSOT, `plan` uses the draft components. No command changes code.
 
 ## `jevlint spec`
 
@@ -143,6 +240,7 @@ the command prints how.
 | `--no-cache` | Ignore cached decisions, and do not store new ones |
 | `--ignore-pins` | Score files as if no [`jevlint-score` comment](scoring.md#pinning-scores) existed |
 | `--intent` | Also [judge the change](#judging-a-change-with---intent) against its message and the repository's instructions. Cannot be used with `--ast-only`, or with `--format sarif` or `github`, which report per file |
+| `--architecture` | Also report the [architecture SSOT](architecture-reference.md) violations the change added, decided from the AST at both commits with no model. Needs an SSOT, and `--format text` or `json` |
 
 A model run audits each file twice, so it can cost twice what `audit` does for those files. Cached
 answers are free, and model scores vary a little between versions of a file, so read a small change
@@ -170,7 +268,8 @@ jevlint commits v1.2.0 --count 3
 ```
 
 A renamed file counts as new in both commands. Both only report: `fail_under` does not apply, so they
-exit 0 whatever the scores.
+exit 0 whatever the scores. The exception is `--architecture`, which exits 1 when a change added an
+SSOT violation, so it can gate a pull request.
 
 ### Judging a change with `--intent`
 

@@ -1,0 +1,11 @@
+Component: billing (Billing)
+Layer: services
+Summary: Builds invoices with line totals and tax from orders, and charges and refunds customers through the payment provider's client. Every other part reaches payments through here.
+Modules:
+- src/billing/invoice.ts (120 lines): buildInvoice, lineTotal, taxFor
+- src/billing/charge.ts (80 lines): chargeInvoice, refundCharge
+- src/billing/provider.ts (60 lines): createPaymentClient
+Depends on: orders (3), contracts (4)
+Declared dependencies: orders, contracts
+Used by: web (5), admin (2)
+Externals: stripe

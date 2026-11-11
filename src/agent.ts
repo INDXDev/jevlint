@@ -7,13 +7,7 @@ import { type Config, type Fixer, ifExists, readRegularFile, UserError } from '.
 import type { FileChange } from './diff.ts';
 import { type FixerEvents, type FixerRun, needsRetry, runFixers } from './fixers.ts';
 import { fileAt, uncommittedFiles, workingTreeChanges } from './git.ts';
-import {
-  type FailedCheck,
-  renderPrompt,
-  renderQuickfixPrompt,
-  renderRetryPrompt,
-} from './prompt.ts';
-import type { AuditReport, FileReport } from './types.ts';
+import type { AuditReport, FailedCheck, FileReport } from './types.ts';
 
 type Agent = Config['agents'][string];
 
@@ -116,14 +110,16 @@ const runOptions = (launch: AgentLaunch, output?: RunAgentOptions['output']) => 
   unsetEnv: launch.login ? launch.keyEnv : [],
 });
 
-/** Runs an agent on one file and returns its fresh report, or undefined if the file is gone. */
+/**
+ * Runs an agent on one file with the prompt the interface rendered, and returns its fresh report,
+ * or undefined if the file is gone.
+ */
 export async function fixFile(
   file: FileReport,
-  report: AuditReport,
+  prompt: string,
   config: Config,
   launch: AgentLaunch,
 ): Promise<FileReport | undefined> {
-  const prompt = renderPrompt([file], report);
   const code = await runAgent(launch.command, prompt, config.root, runOptions(launch));
   if (code !== 0) throw agentFailure(launch, code, file.path);
   // audit() rejects a named path that does not exist.
@@ -176,7 +172,7 @@ export const editedPaths = (changes: FileChange[]): string[] =>
  */
 export async function quickfixFile(
   file: FileReport,
-  report: AuditReport,
+  prompt: string,
   config: Config,
   launch: AgentLaunch,
 ): Promise<QuickfixResult> {
@@ -188,7 +184,6 @@ export async function quickfixFile(
       changedBefore.map(async (path) => [path, await contentOf(root, path)] as const),
     ),
   );
-  const prompt = renderQuickfixPrompt(file, report);
   const code = await runAgent(launch.command, prompt, root, runOptions(launch, 'stderr'));
   const changes = await collectChanges(root, snapshot);
   return { code, changes, uncommittedBefore, snapshot };
@@ -198,10 +193,8 @@ export async function quickfixFile(
 export function retryQuickfix(
   config: Config,
   launch: AgentLaunch,
-  paths: string[],
-  failures: FailedCheck[],
+  prompt: string,
 ): Promise<number> {
-  const prompt = renderRetryPrompt(paths, failures);
   return runAgent(launch.command, prompt, config.root, runOptions(launch, 'stderr'));
 }
 
@@ -225,11 +218,23 @@ export interface QuickfixEvents extends FixerEvents {
   onStillFailing?: (failing: FixerRun[]) => void;
 }
 
-/** What a quick fix needs besides the file: the audit, the config and the agent to launch. */
+/**
+ * The prompts of a quick fix. The interface renders them, so this pipeline module does not depend
+ * on how a prompt is worded.
+ */
+export interface QuickfixPrompts {
+  /** The edit-only prompt for one file. */
+  quickfix: (file: FileReport, report: AuditReport) => string;
+  /** The one retry, with the output of the checks that still fail. */
+  retry: (paths: string[], failures: FailedCheck[]) => string;
+}
+
+/** What a quick fix needs besides the file: the audit, the config, the agent and its prompts. */
 export interface QuickfixRun {
   report: AuditReport;
   config: Config;
   launch: AgentLaunch;
+  prompts: QuickfixPrompts;
 }
 
 /** The fixers a quick fix runs after the agent, and how to tell whether they may still run. */
@@ -257,11 +262,11 @@ export interface FixedQuickfix extends QuickfixResult {
  */
 export async function quickfixWithFixers(
   file: FileReport,
-  { report, config, launch }: QuickfixRun,
+  { report, config, launch, prompts }: QuickfixRun,
   { fixers, fixersAllowed, events = {} }: QuickfixOptions,
 ): Promise<FixedQuickfix> {
   const { root } = config;
-  const first = await quickfixFile(file, report, config, launch);
+  const first = await quickfixFile(file, prompts.quickfix(file, report), config, launch);
   const agentPaths = new Set(changedSince([], first.changes));
   const done = (code: number, changes: FileChange[], runs: FixerRun[], retriedFor: FixerRun[]) => ({
     ...first,
@@ -286,7 +291,7 @@ export async function quickfixWithFixers(
   const failing = runs.filter(needsRetry);
   if (failing.length === 0) return done(0, fixed, runs, []);
   events.onRetry?.(failing);
-  const code = await retryQuickfix(config, launch, agentEdited(fixed), failing);
+  const code = await retryQuickfix(config, launch, prompts.retry(agentEdited(fixed), failing));
   const retried = await collectChanges(root, first.snapshot);
   for (const path of changedSince(fixed, retried)) agentPaths.add(path);
   if (code !== 0) return done(code, retried, runs, failing);

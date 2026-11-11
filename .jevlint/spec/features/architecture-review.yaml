@@ -1,6 +1,6 @@
 id: architecture-review
 title: "Architecture review"
-summary: "Architecture reviews, as docs/architecture-review.md describes: jevlint architecture builds module, directory and class graphs from imports, reports cycles and size limits, and asks the model about the codebase, its directories and its classes. Code in src/architecture/."
+summary: "Architecture reviews and the architecture SSOT, as docs/architecture-review.md and docs/architecture-reference.md describe: jevlint architecture builds module, directory and class graphs from imports, reports cycles and size limits, asks the model about the codebase, its directories, its classes and the SSOT, and compiles, shows, checks and keeps current the SSOT in .jevlint/architecture/. Code in src/architecture/."
 checklist:
   - id: no-cycles
     text: "dependency-cycle and directory-cycle findings allow no cycle at all."
@@ -36,7 +36,7 @@ checklist:
     text: "A Go package maps to its first non-test .go file."
     source: docs/architecture-review.md#language-support
   - id: ts-aliases
-    text: "TypeScript paths aliases and workspace packages are not followed."
+    text: "TypeScript imports resolve through the root tsconfig.json's paths and through pnpm, npm and bun workspace packages, and an import that resolves to no file is kept as an external package."
     source: docs/architecture-review.md#language-support
   - id: destructuring
     text: "Top-level destructuring patterns are not listed as names."
@@ -63,5 +63,32 @@ checklist:
     text: "TypeScript export import b = require('./b') is not read as an import."
     source: docs/architecture-review.md#language-support
   - id: perspective-flag
-    text: "--perspective takes codebase, directory or class, comma-separated, reviews only those, and rejects any other name."
+    text: "--perspective takes codebase, directory, class, component or design, comma-separated, reviews only those, and rejects any other name; component and design need an SSOT."
     source: docs/architecture-review.md#how-it-works
+  - id: unchanged-without-ssot
+    text: "Without an architecture SSOT, jevlint architecture reviews only the codebase, directory and class perspectives, as it did before the SSOT existed."
+    source: docs/architecture-review.md
+  - id: default-review
+    text: "jevlint architecture followed by anything that is not a subcommand runs jevlint architecture review."
+    source: docs/cli.md#jevlint-architecture
+  - id: ssot-validated
+    text: "The architecture SSOT is validated with zod and cross-checked, and holds only globs, package names, ast-grep patterns and prose, never a command, URL or path outside the root."
+    source: docs/architecture-reference.md#validation
+  - id: structural-rules-static
+    text: "Every structural rule of the SSOT is decided from the AST and the import graph, with no model, and every violation has a file and a line."
+    source: docs/architecture-reference.md#rules
+  - id: compile-no-contents
+    text: "The compile prompt holds paths, line numbers and names, never file contents, and jevlint never writes the SSOT itself."
+    source: docs/architecture-reference.md#compile
+  - id: show-offline
+    text: "jevlint architecture show works with no SSOT and no network, and its HTML has no scripts; Mermaid appears only in --markdown output."
+    source: docs/cli.md#show
+  - id: diff-added-only
+    text: "check --diff, pr --architecture and commits --architecture report only the violations a change added, matched without line numbers."
+    source: docs/architecture-reference.md#check
+  - id: target-status
+    text: "Violations in a component with status target are listed apart and do not affect the exit code."
+    source: docs/architecture-reference.md#check
+  - id: plan-cuts-cheapest
+    text: "For a component cycle, plan's move cuts the edge in the cycle with the fewest imports."
+    source: docs/architecture-reference.md#plan

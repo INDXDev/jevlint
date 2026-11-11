@@ -96,6 +96,8 @@ const architecture = z.strictObject({
   max_class_methods: positiveInt,
   max_class_lines: positiveInt,
   max_inheritance_depth: positiveInt,
+  /** Where the architecture SSOT lives, relative to the root. */
+  dir: z.string().min(1),
 });
 
 const cache = z.strictObject({
@@ -217,6 +219,7 @@ const DEFAULTS = {
     max_class_methods: 20,
     max_class_lines: 300,
     max_inheritance_depth: 3,
+    dir: '.jevlint/architecture',
   },
   weights: {},
   patterns: [],

@@ -1,5 +1,8 @@
 /** `jevlint pr` and `jevlint commits`: review what a change did, not the whole repository. */
 import { defineCommand } from 'citty';
+import { changeViolations } from '../architecture/check.ts';
+import { loadArchitecture } from '../architecture/load.ts';
+import { formatAddedViolations } from '../architecture/terminal.ts';
 import { type Config, UserError } from '../config.ts';
 import { formatIssues, type OutputFormat, reviewIssues } from '../formats.ts';
 import { changedFiles, commitsFrom, pullRequestChange, pullRequestOfRef } from '../git.ts';
@@ -40,6 +43,10 @@ const REVIEW_ARGS = {
     type: 'boolean',
     description: "Judge each change against its message and the repository's instructions",
   },
+  architecture: {
+    type: 'boolean',
+    description: 'Also report the architecture SSOT violations each change added, with no model',
+  },
 } as const;
 
 interface ReviewFlags {
@@ -47,6 +54,7 @@ interface ReviewFlags {
   cache?: boolean;
   'ignore-pins'?: boolean;
   intent?: boolean;
+  architecture?: boolean;
 }
 
 /** Runs before a pull request is fetched, so a bad combination costs nothing. */
@@ -58,6 +66,28 @@ function assertUsableFlags(flags: ReviewFlags, format: OutputFormat): void {
   if (flags.intent && format !== 'text' && format !== 'json') {
     throw new UserError(`--intent judges a whole change, so --format ${format} cannot show it.`);
   }
+  if (flags.architecture && format !== 'text' && format !== 'json') {
+    throw new UserError(
+      `--architecture reports SSOT violations, so --format ${format} cannot show them.`,
+    );
+  }
+}
+
+/** Adds the SSOT violations each change added. A violation makes the command exit 1. */
+async function withArchitecture(config: Config, reviews: ChangeReview[]): Promise<ChangeReview[]> {
+  const ssot = await loadArchitecture(config);
+  if (!ssot) {
+    throw new UserError(
+      '--architecture needs an architecture SSOT. Run: jevlint architecture compile',
+    );
+  }
+  const checked: ChangeReview[] = [];
+  for (const review of reviews) {
+    const added = await changeViolations(config, ssot, review.base, review.head);
+    checked.push({ ...review, architecture: added.filter(({ status }) => status === 'current') });
+  }
+  if (checked.some(({ architecture }) => (architecture?.length ?? 0) > 0)) process.exitCode = 1;
+  return checked;
 }
 
 async function warnAboutSize(config: Config, changes: Change[]): Promise<void> {
@@ -84,18 +114,25 @@ async function printReviews(
     noCache: !flags.cache,
     intent: Boolean(flags.intent),
   };
-  const reviews = await withSpinner(async (onProgress) => {
+  const reviewed = await withSpinner(async (onProgress) => {
     const done: ChangeReview[] = [];
     for (const change of changes) {
       done.push(await reviewChange(config, change, { ...options, onProgress }));
     }
     return done;
   });
+  const reviews = flags.architecture ? await withArchitecture(config, reviewed) : reviewed;
   const [first] = reviews;
   if (first?.model === null && !astOnly) printNoKeyNotice(config);
   if (first) printFallbackNotice(config, first.provider);
   if (format === 'json') return printJson(reviews);
-  if (format === 'text') return console.log(reviews.map(formatReview).join('\n\n'));
+  if (format === 'text') {
+    const text = (review: ChangeReview) =>
+      review.architecture
+        ? `${formatReview(review)}\n${formatAddedViolations(review.architecture)}`
+        : formatReview(review);
+    return console.log(reviews.map(text).join('\n\n'));
+  }
   console.log(formatIssues(reviewIssues(reviews), format));
 }
 

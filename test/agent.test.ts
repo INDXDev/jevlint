@@ -79,8 +79,7 @@ describe('fixFile', () => {
     const config = await loadConfig({ cwd: root });
     const file = { path: 'gone.ts', ast: null, model: null } as FileReport;
     const command = node("require('node:fs').rmSync('gone.ts')");
-    const report = { presets: [] } as unknown as AuditReport;
-    const after = await fixFile(file, report, config, launch(command));
+    const after = await fixFile(file, 'Fix gone.ts', config, launch(command));
     await rm(root, { recursive: true });
     expect(after).toBeUndefined();
   });
@@ -189,8 +188,7 @@ describe('quickfixFile', () => {
       fs.writeFileSync('b.ts', 'const b = 1;\\n');
       fs.writeFileSync('mine.ts', 'agent\\n');
       process.exit(4);`;
-    const report = { presets: [], scale: 100 } as unknown as AuditReport;
-    const result = await quickfixFile(file, report, config, launch(node(script)));
+    const result = await quickfixFile(file, 'Fix a.ts', config, launch(node(script)));
     await rm(root, { recursive: true });
     expect(result.code).toBe(4);
     const changed = diffFiles(result.changes).map(({ path }) => path);

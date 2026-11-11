@@ -1,0 +1,21 @@
+id: architecture-rendering
+title: Architecture rendering
+summary: >
+  Draws architecture reports and the SSOT for people and agents: terminal output, one offline HTML
+  page, ARCHITECTURE.md with Mermaid, and the compile, check, drift, review and plan prompts.
+layer: interface
+paths:
+  - src/architecture/terminal.ts
+  - src/architecture/html.ts
+  - src/architecture/markdown.ts
+  - src/architecture/prompt.ts
+key_files:
+  - { path: src/architecture/markdown.ts, role: "the SSOT as Markdown with Mermaid views" }
+  - { path: src/architecture/terminal.ts, role: "check, drift, plan and show for a terminal" }
+  - { path: src/architecture/prompt.ts, role: "prompts that hand SSOT work to an agent" }
+  - { path: src/architecture/html.ts, role: "a script-free HTML report" }
+interface:
+  [renderMarkdown, renderView, formatArchitectureCheck, formatAddedViolations, renderCompilePrompt]
+depends_on: [reports, architecture-verbs, ssot-conformance, ssot-loading, code-facts, contracts]
+uses: [picocolors, yaml]
+status: current

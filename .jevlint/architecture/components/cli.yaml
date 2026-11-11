@@ -1,0 +1,14 @@
+id: cli
+title: CLI entry point
+summary: >
+  The `jevlint` binary. It refuses an unpatched Node, routes a bare path or flag to `audit`, rejects
+  unknown flags, and maps errors to exit codes: a UserError prints plainly, anything else as a bug.
+layer: interface
+paths: [src/cli.ts, src/node-version.ts]
+key_files:
+  - { path: src/cli.ts, role: "command table, default routing and reportError" }
+  - { path: src/node-version.ts, role: "the patched Node release per line" }
+interface: []
+depends_on: [commands, configuration, reports]
+uses: [citty, picocolors]
+status: current

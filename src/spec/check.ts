@@ -80,7 +80,7 @@ export async function checkSpec(
   spec: Spec,
   options: SpecRunOptions = {},
 ): Promise<SpecCheckReport> {
-  const run = await startRun(config, 'check', options.noCache);
+  const run = await startRun(config, 'spec check', options.noCache);
   const paths = await discoverFiles(config, options.paths);
   const files = await eachPath(run, paths, options.onProgress, (path) =>
     checkFile(run, spec, path),

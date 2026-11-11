@@ -1,0 +1,13 @@
+id: library-api
+title: Library API
+summary: >
+  The npm package's programmatic entry: audit, loadConfig, the spec and architecture verbs, and every
+  contract type. It re-exports only and must stay silent.
+layer: interface
+paths: [src/index.ts]
+key_files:
+  - { path: src/index.ts, role: "the public exports" }
+interface: []
+depends_on: [architecture-verbs, ssot-loading, audit, configuration, spec-checks, contracts]
+uses: []
+status: current

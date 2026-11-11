@@ -1,0 +1,29 @@
+id: architecture-check
+title: Check the code against the architecture SSOT
+trigger: "jevlint architecture check [--static] [--diff base] [--new]"
+steps:
+  - { from: cli, to: commands, verb: "dispatches check" }
+  - { from: commands, to: ssot-loading, verb: "loads the SSOT", returns: ArchitectureSsot }
+  - {
+      from: commands,
+      to: architecture-verbs,
+      verb: "runs checkArchitecture()",
+      returns: ArchitectureCheckReport,
+    }
+  - { from: architecture-verbs, to: repository-access, verb: "reads tree or commit" }
+  - { from: architecture-verbs, to: code-facts, verb: "outlines and resolves" }
+  - { from: architecture-verbs, to: decision-cache, verb: "caches outlines" }
+  - {
+      from: architecture-verbs,
+      to: ssot-conformance,
+      verb: "decides structural rules",
+      returns: "ArchitectureViolation[]",
+    }
+  - {
+      from: architecture-verbs,
+      to: change-review,
+      verb: "drops baselined violations",
+      optional: true,
+    }
+  - { from: architecture-verbs, to: spec-checks, verb: "judges checklists", optional: true }
+  - { from: commands, to: architecture-rendering, verb: "formats the report" }

@@ -1,25 +1,26 @@
 /** Runs the architecture review: extract, build graphs, ask the model per perspective, score. */
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { posix } from 'node:path';
 import pLimit from 'p-limit';
-import { languageOf } from '../ast/languages.ts';
-import { type Config, ifExists, readRegularFile, UserError } from '../config.ts';
+import { type Config, UserError } from '../config.ts';
 import { decideFile } from '../decision/decide.ts';
 import { estimateCostUsd } from '../decision/pricing.ts';
 import { createDecisionModel, type ResolvedModel } from '../decision/providers.ts';
-import { discoverFiles } from '../files.ts';
 import { activeQuestions, loadPresets } from '../presets.ts';
 import { astScoreFrom, fileScore, modelResult, repoScore, scaleScore } from '../scoring.ts';
 import type {
   ArchitectureReport,
+  ArchitectureSsot,
   ArchitectureUnit,
+  FactModule,
   ModelResult,
   Perspective,
   Question,
 } from '../types.ts';
-import { extractModule, type ModuleOutline } from './extract.ts';
+import { collect } from './collect.ts';
+import { assign, mapEdges } from './conformance.ts';
+import { loadArchitecture } from './load.ts';
 import { type Subject, subjectsOf } from './outline.ts';
-import { resolveImport } from './resolve.ts';
+import { chapterState, componentOutline, designState } from './questions.ts';
 import { buildStructure } from './structure.ts';
 
 /** The preset whose questions are asked of each kind of unit. */
@@ -27,52 +28,27 @@ const PRESETS: Record<Perspective, string> = {
   codebase: 'architecture-codebase',
   directory: 'architecture-directory',
   class: 'architecture-class',
+  component: 'architecture-component',
+  design: 'architecture-design',
+  chapter: 'architecture-chapter',
 };
 
 /** Every perspective, broadest first. */
 export const PERSPECTIVES = Object.keys(PRESETS) as Perspective[];
+
+/** The perspectives that review the SSOT, which need one. */
+export const SSOT_PERSPECTIVES: Perspective[] = ['component', 'design', 'chapter'];
 
 /** Narrows and observes a review. */
 export interface ReviewOptions {
   paths?: string[];
   astOnly?: boolean;
   noCache?: boolean;
-  /** Reviews only these. Defaults to all of them. */
+  /** Reviews only these. Defaults to all of them, leaving out the SSOT's when there is none. */
   perspectives?: Perspective[];
+  /** The SSOT to review. Undefined loads it, and null reviews only the structure. */
+  ssot?: ArchitectureSsot | null;
   onProgress?: (done: number, total: number, path: string) => void;
-}
-
-async function readOutlines(config: Config, paths: string[]) {
-  const warnings: string[] = [];
-  const limit = pLimit(config.concurrency);
-  const outlines = paths.flatMap((path) => {
-    const language = languageOf(path);
-    if (!language) return [];
-    return limit(async () => {
-      const source = await readFile(join(config.root, path), 'utf8').catch((error: Error) => {
-        warnings.push(`Could not read ${path}: ${error.message}`);
-        return null;
-      });
-      return source === null ? [] : [extractModule(path, source, language)];
-    });
-  });
-  return { outlines: (await Promise.all(outlines)).flat(), warnings };
-}
-
-async function goModuleOf(root: string): Promise<string | undefined> {
-  const goMod = await ifExists(readRegularFile(join(root, 'go.mod')));
-  return goMod?.match(/^module\s+(\S+)/m)?.[1];
-}
-
-function resolveAll(outlines: ModuleOutline[], goModule?: string): ModuleOutline[] {
-  const files = new Set(outlines.map(({ path }) => path));
-  return outlines.map((outline) => {
-    const { path, language, imports } = outline;
-    const resolved = imports.flatMap(
-      (specifier) => resolveImport(specifier, path, language, { files, goModule }) ?? [],
-    );
-    return { ...outline, imports: [...new Set(resolved)] };
-  });
 }
 
 interface Run {
@@ -144,6 +120,45 @@ function usageOf(
   };
 }
 
+/** One unit per SSOT component, and one for the design as a whole. Neither sends code. */
+function ssotSubjects(ssot: ArchitectureSsot, modules: FactModule[]): Subject[] {
+  const { componentOf } = assign(ssot);
+  const edges = mapEdges(ssot, modules);
+  const components = ssot.components.map((component): Subject => {
+    const owned = modules.filter(({ path }) => componentOf(path) === component.id);
+    return {
+      perspective: 'component',
+      name: component.id,
+      path: posix.join(ssot.dir, 'components', `${component.id}.yaml`),
+      line: 1,
+      lines: owned.reduce((sum, { lines }) => sum + lines, 0),
+      findings: [],
+      outline: componentOutline(component, owned, edges),
+    };
+  });
+  const design: Subject = {
+    perspective: 'design',
+    name: 'design',
+    path: posix.join(ssot.dir, 'index.yaml'),
+    line: 1,
+    lines: modules.reduce((sum, { lines }) => sum + lines, 0),
+    findings: [],
+    outline: designState(ssot),
+  };
+  const chapters = ssot.chapters.map(
+    (chapter): Subject => ({
+      perspective: 'chapter',
+      name: chapter.id,
+      path: posix.join(ssot.dir, 'chapters', `${chapter.id}.md`),
+      line: 1,
+      lines: chapter.body.split('\n').length,
+      findings: [],
+      outline: chapterState(chapter),
+    }),
+  );
+  return [...components, design, ...chapters];
+}
+
 async function loadQuestions(config: Config, perspectives: Perspective[]) {
   const entries = perspectives.map(async (perspective) => {
     const presets = await loadPresets([PRESETS[perspective]], config.root);
@@ -157,18 +172,27 @@ export async function reviewArchitecture(
   config: Config,
   options: ReviewOptions = {},
 ): Promise<ArchitectureReport> {
-  const { noCache, onProgress, perspectives = PERSPECTIVES } = options;
-  const [paths, resolved, goModule, questions] = await Promise.all([
-    discoverFiles(config, options.paths),
+  const { noCache, onProgress } = options;
+  const ssot = options.ssot === undefined ? await loadArchitecture(config) : options.ssot;
+  const perspectives =
+    options.perspectives ?? PERSPECTIVES.filter((p) => ssot || !SSOT_PERSPECTIVES.includes(p));
+  const needsSsot = perspectives.find((perspective) => SSOT_PERSPECTIVES.includes(perspective));
+  if (needsSsot && !ssot) {
+    throw new UserError(
+      `The ${needsSsot} perspective reviews the architecture SSOT, and there is none. Run: jevlint architecture compile`,
+    );
+  }
+  const [collected, resolved, questions] = await Promise.all([
+    collect(config, { paths: options.paths, skipHistory: true, noCache }),
     options.astOnly ? null : createDecisionModel(config),
-    goModuleOf(config.root),
     loadQuestions(config, perspectives),
   ]);
-  const { outlines, warnings } = await readOutlines(config, paths);
-  const structure = buildStructure(resolveAll(outlines, goModule), config.architecture);
-  const subjects = subjectsOf(structure).filter(({ perspective }) =>
-    perspectives.includes(perspective),
-  );
+  const { warnings } = collected;
+  const structure = buildStructure(collected.resolved, config.architecture);
+  const subjects = [
+    ...subjectsOf(structure),
+    ...(ssot && structure.modules.length > 0 ? ssotSubjects(ssot, collected.modules) : []),
+  ].filter(({ perspective }) => perspectives.includes(perspective));
   const scored = await scoreSubjects(
     subjects,
     { config, resolved, questions, noCache },

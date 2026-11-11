@@ -19,7 +19,8 @@ const MAX_FEATURES = 255;
 // Enough for honest reuse, too few for a billion-laughs expansion.
 const MAX_ALIASES = 10;
 
-const idSchema = z
+/** An id: lowercase letters, digits and `-`. */
+export const idSchema = z
   .string()
   .regex(
     /^[a-z0-9][a-z0-9-]*$/,
@@ -32,7 +33,8 @@ const itemSchema = z.strictObject({
   source: z.string().optional(),
 });
 
-const checklistSchema = z.array(itemSchema).superRefine((items, context) => {
+/** A checklist whose ids are unique. */
+export const checklistSchema = z.array(itemSchema).superRefine((items, context) => {
   const seen = new Set<string>();
   items.forEach(({ id }, index) => {
     if (seen.has(id))
@@ -63,7 +65,8 @@ const featureSchema = (fileId: string) =>
     checklist: checklistSchema.min(1),
   });
 
-async function readYaml(root: string, path: string): Promise<unknown> {
+/** Reads one YAML mapping from the repository, with errors that never quote its text. */
+export async function readYaml(root: string, path: string): Promise<unknown> {
   const name = relative(root, path).split(sep).join('/');
   await assertInRepo(path, root);
   let value: unknown;
