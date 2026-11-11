@@ -1,26 +1,16 @@
 id: agent-handoff
 title: Agent runs and diffs
 summary: >
-  Starts a coding agent (claude or codex from config) for `fix` and `quickfix`, then the project's
-  fixers and one retry, finds what changed, re-audits it, and turns before and after into git-style
-  patches drawn unified or side by side.
-layer: interface
-paths: [src/agent.ts, src/diff.ts, src/diff-view.ts]
+  Starts a coding agent (claude or codex from config) for `fix` and `quickfix` with a prompt the
+  command rendered, then the project's fixers and one retry, finds what changed, re-audits it, and
+  turns before and after into git-style patches.
+layer: pipeline
+paths: [src/agent.ts, src/diff.ts]
 key_files:
   - { path: src/agent.ts, role: "launchAgent, runAgent, quickfixWithFixers, rescoreFiles" }
   - { path: src/diff.ts, role: "contents to patches with jsdiff" }
-  - { path: src/diff-view.ts, role: "unified and side-by-side drawing" }
 interface:
-  [
-    launchAgent,
-    runAgent,
-    agentFailure,
-    fixFile,
-    quickfixWithFixers,
-    rescoreFiles,
-    diffFiles,
-    formatDiffs,
-  ]
-depends_on: [audit, configuration, fixer-commands, repository-access, reports, contracts]
-uses: [child_process, diff, picocolors]
+  [launchAgent, runAgent, agentFailure, fixFile, quickfixWithFixers, rescoreFiles, diffFiles]
+depends_on: [audit, configuration, fixer-commands, repository-access, contracts]
+uses: [child_process, diff]
 status: current

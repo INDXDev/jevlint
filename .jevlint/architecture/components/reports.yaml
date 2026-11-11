@@ -1,17 +1,26 @@
 id: reports
 title: Reports and fix prompts
 summary: >
-  Turns audit, review and fixture results into terminal tables, SARIF, GitHub workflow commands and
-  fix prompts for coding agents. Owns withoutEscapes and withoutControlCharacters, which every
+  Turns audit, review and fixture results into terminal tables, SARIF, GitHub workflow commands,
+  diffs drawn unified or side by side, and fix prompts for coding agents. Owns withoutEscapes and withoutControlCharacters, which every
   printer uses on repository text.
 layer: interface
-paths: [src/report.ts, src/formats.ts, src/prompt.ts]
+paths: [src/report.ts, src/formats.ts, src/prompt.ts, src/diff-view.ts]
 key_files:
   - { path: src/report.ts, role: "terminal output and the escaping helpers" }
   - { path: src/formats.ts, role: "SARIF and GitHub workflow commands" }
   - { path: src/prompt.ts, role: "fix, quickfix and retry prompts" }
+  - { path: src/diff-view.ts, role: "unified and side-by-side drawing" }
 interface:
-  [withoutEscapes, withoutControlCharacters, formatReport, formatReview, formatIssues, renderPrompt]
-depends_on: [audit, preset-fixtures, scoring, contracts]
+  [
+    withoutEscapes,
+    withoutControlCharacters,
+    formatReport,
+    formatReview,
+    formatIssues,
+    renderPrompt,
+    formatDiffs,
+  ]
+depends_on: [audit, agent-handoff, preset-fixtures, scoring, contracts]
 uses: [picocolors]
 status: current

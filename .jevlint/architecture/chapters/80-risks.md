@@ -1,11 +1,10 @@
 ---
 title: Risks and debt
-evidence: [AGENTS.md, src/types.ts:1, src/report.ts:1-14, src/spec/run.ts:3, src/decision/decide.ts:10, src/audit.ts:38, commit:a329fd9, src/architecture/check.ts:6, src/fixtures.ts:6, src/decision/decide.ts:17-18, src/decision/decide.ts:163-164, src/commands/shared.ts:1-17, src/commands/preset.ts:2-3, docs/architecture.md:64-70, docs/architecture-reference.md:258-267, commit:94cda93, commit:d7fb1fc]
+evidence: [AGENTS.md, src/types.ts:1, src/report.ts:1-14, src/decision/decide.ts:10, test/architecture-views.test.ts, test/architecture-extract.test.ts, src/architecture/check.ts:6, src/fixtures.ts:6, src/decision/decide.ts:17-18, src/decision/decide.ts:163-164, src/commands/shared.ts:1-17, docs/architecture.md:64-70, docs/architecture-reference.md:258-267, commit:94cda93, commit:d7fb1fc]
 ---
 
-This chapter draws on the static facts at `a329fd9`. `jevlint architecture plan` could not be run
-while this document was written, so its ranking is not included. Run it to rank these items by
-severity, churn and fan-in.
+This chapter draws on the static facts of the commit in `compiled_at`. Run `jevlint architecture
+plan` to rank these items by severity, churn and fan-in.
 
 ### Hubs
 
@@ -21,11 +20,10 @@ severity, churn and fan-in.
 
 ### Sideways and upward coupling
 
-- **Pipelines import each other.** `spec-checks` takes `PROVIDER_ERROR` from `src/audit.ts`
-  (`src/spec/run.ts:3`). `architecture-verbs` reads the baseline from `change-review`
+- **Pipelines import each other.** `architecture-verbs` reads the baseline from `change-review`
   (`src/architecture/check.ts:6`). Same-layer imports are allowed, but they bind release cycles
-  together. Moving `PROVIDER_ERROR` into `decision` would cut the first one, since it is defined
-  there and only re-exported by audit.
+  together. Every module now takes `PROVIDER_ERROR` from `decision`, where it is defined, rather
+  than through `audit.ts`, which removed one such link.
 - **A pipeline reads engine data from another subsystem.** `preset-fixtures` imports
   `ARCHITECTURE_PRESETS` from `src/architecture/questions.ts` (`src/fixtures.ts:6`).
 - **`reports` imports types from pipelines.** `src/report.ts:4-5` imports `AuditPlan` and
@@ -38,10 +36,10 @@ severity, churn and fan-in.
 
 ### Where the documents and this SSOT differ
 
-`docs/architecture.md:64-70` lists modules per layer. This SSOT follows it, with two differences:
-`src/architecture/workspace.ts` is in `code-facts` (engines), because it serves import resolution,
-and `src/architecture/load.ts` joins `src/spec/load.ts` in `ssot-loading`. That table also lists
-`prompt.ts` and `review.ts` twice without their directories.
+`docs/architecture.md` lists modules per layer, and this SSOT follows it: `workspace.ts` is in
+`code-facts` (engines), because it serves import resolution, and `agent.ts` and `diff.ts` are in
+`agent-handoff` (pipeline), which receives its prompts from the commands rather than importing
+`prompt.ts`. That table still lists `prompt.ts` and `review.ts` twice without their directories.
 
 ### Blind spots of the checks
 
@@ -50,20 +48,17 @@ and `src/architecture/load.ts` joins `src/spec/load.ts` in `ssot-loading`. That 
   hand, but `check` cannot see its imports, so the rules do not cover key handling.
 - **Calls outside the import graph** are invisible: spawned agents and fixers, `gh`, the bucket
   over `fetch`. The views draw them dashed. Checklist items cover the parts that matter.
-- **`commands/preset.ts` imports `writeFile`** (`src/commands/preset.ts:3`) to edit a preset in a
-  temp directory. This is a plausible exception to `atomic-writes`, which a model judges, so the
-  checklist may flag it.
 - **Global side effects.** Importing `src/decision/decide.ts` turns off AI SDK warnings for the
   whole process (`src/decision/decide.ts:18`), and the in-flight map (`src/decision/decide.ts:164`)
   is shared module state that a long-lived library caller keeps.
 
 ### Thin test coverage by name
 
-`test/` names a file after most modules. No test file is named after `src/architecture/views.ts`,
-`drift.ts`, `compile.ts`, `show.ts`, `questions.ts`, `extract.ts`, `structure.ts`, `outline.ts`,
-`src/spec/run.ts` or `src/ast/languages.ts`. They may be covered through `test/architecture*.test.ts`
-and `test/spec-*.test.ts`. That is not confirmed here. `views.ts` and the chapter support are the
-newest code (commit a329fd9 is marked "wip").
+`test/` names a file after most modules. `views.ts` and `extract.ts` have their own test files
+(`test/architecture-views.test.ts`, `test/architecture-extract.test.ts`). `drift.ts`, `compile.ts`,
+`show.ts`, `questions.ts`, `structure.ts`, `outline.ts`, `src/spec/run.ts` and
+`src/ast/languages.ts` are covered only through `test/architecture*.test.ts` and
+`test/spec-*.test.ts`, so a failure there points at the pipeline rather than the module.
 
 ### Complexity kept in check by jevlint itself
 

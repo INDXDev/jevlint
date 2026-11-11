@@ -1,6 +1,6 @@
 ---
 title: Decisions
-evidence: [docs/architecture.md:157-222, src/decision/providers.ts:32-40, src/decision/decide.ts:12-18, src/decision/decide.ts:177-183, src/ast/languages.ts:24-34, src/config.ts:17-19, src/trust.ts:1-5, src/git.ts:157, docs/architecture-reference.md:181-209, commit:5884c7f, commit:b44cf9c, commit:78e2f39, commit:8896cdd, commit:5f1db8a, commit:cd3216c, commit:aa2cc1a]
+evidence: [docs/architecture.md:157-222, docs/architecture-driven-development.md:21-25, docs/security.md, src/decision/providers.ts:9, src/decision/providers.ts:32-40, src/decision/decide.ts:12-18, src/decision/decide.ts:177-183, src/ast/languages.ts:24-34, src/config.ts:17-19, src/trust.ts:1-5, src/git.ts:157, docs/architecture-reference.md:181-209, commit:5884c7f, commit:b44cf9c, commit:78e2f39, commit:8896cdd, commit:5f1db8a, commit:cd3216c, commit:aa2cc1a]
 ---
 
 Each decision cites where it is recorded. Where an alternative is not written down, the text says
@@ -79,8 +79,21 @@ so.
   aa2cc1a, `docs/architecture.md:221-222`).
 - **Consequences.** The SSOT is reviewable YAML that people own. CI can gate structure at no cost,
   and the prompt carries paths and names, never file contents.
-- **Alternatives.** jevlint writing the SSOT itself with a model call. The record only says
-  "jevlint never writes the spec"; why an agent is preferred is not written down.
+- **Why an agent, not a model call from jevlint.** Recorded in issue #15 ("the division of work
+  follows what each part can do well") and `docs/architecture-driven-development.md:21-25`, `:128`:
+  - jevlint's only model is a decision model (`src/decision/providers.ts:9`): it answers fixed
+    questions with a score, a probability or a choice, cached by content. It cannot open files or
+    write prose, and writing the SSOT means reading many files the facts point at, on demand.
+  - An agent writes into the working tree, so a person reviews the diff and commits it, as with
+    code. jevlint itself writes only `.jevlint/baseline.json` and the `--html` target
+    (`docs/security.md`), and keeps that boundary.
+  - The user picks the agent and pays through its own login (`--agent`, `--agent-login`), or pastes
+    the prompt anywhere (`--copy`). jevlint holds no key for a generative model.
+  - What an agent writes is then checked by what jevlint does well: arrows against imports,
+    citations against files, rules against the AST.
+- **Alternatives.** jevlint calling a generative model and writing the SSOT itself. Rejected for
+  the reasons above: it would need a second kind of provider and key, write repository files with
+  no review, and lose the agent's ability to read the code it describes.
 
 ### A spec is judged in two requests per file
 

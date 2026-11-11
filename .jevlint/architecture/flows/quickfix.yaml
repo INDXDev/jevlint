@@ -5,10 +5,10 @@ steps:
   - { from: cli, to: commands, verb: "dispatches quickfix" }
   - { from: commands, to: audit, verb: "audits to pick files", returns: AuditReport }
   - { from: commands, to: fixer-commands, verb: "checks fixer approval", optional: true }
+  - { from: commands, to: reports, verb: "renders the prompts" }
   - { from: commands, to: agent-handoff, verb: "runs quickfixWithFixers()" }
-  - { from: agent-handoff, to: reports, verb: "renders the prompt" }
   - { from: agent-handoff, to: fixer-commands, verb: "runs approved fixers", optional: true }
   - { from: agent-handoff, to: repository-access, verb: "lists changed files" }
   - { from: agent-handoff, to: audit, verb: "re-scores changed files" }
-  - { from: commands, to: agent-handoff, verb: "draws the diff" }
+  - { from: commands, to: reports, verb: "draws the diff" }
   - { from: commands, to: repository-access, verb: "commits the run", optional: true }

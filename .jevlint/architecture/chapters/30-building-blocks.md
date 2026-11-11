@@ -15,10 +15,9 @@ code that makes the call.
 `library-api` re-exports the pipelines for npm users. Commands hand all real work to a pipeline,
 then pass its result to a formatter. `reports` formats audits and reviews as terminal tables,
 SARIF and GitHub annotations, and renders fix prompts. `architecture-rendering` and
-`spec-rendering` do the same for the SSOT and the spec. `agent-handoff` starts `claude` or `codex`,
-runs the project's fixers, re-audits what the agent changed, and draws the diff. It sits in this
-layer because `docs/architecture.md` places `agent.ts`, `diff.ts` and `diff-view.ts` there. It
-calls `audit()` itself, so it is also a small orchestrator.
+`spec-rendering` do the same for the SSOT and the spec. `reports` also draws diffs
+(`src/diff-view.ts`), and renders the fix, quick fix and retry prompts that `fix` and `quickfix`
+hand to `agent-handoff`.
 
 ### Pipelines
 
@@ -34,10 +33,12 @@ Each pipeline takes a `Config` and returns a report, without printing.
 - `architecture-verbs` runs `review`, `compile`, `show`, `check`, `drift` and `plan`. Every verb
   starts from `collect()`, which reads the tree or a commit into outlines and facts.
 - `preset-fixtures` runs `jevlint test`, proving that preset questions separate good from bad files.
+- `agent-handoff` starts `claude` or `codex` with a prompt the command rendered, runs the project's
+  fixers and one retry, re-audits what the agent changed, and turns it into patches. It takes its
+  prompts as arguments, so it never imports `prompt.ts` from the layer above.
 
-Pipelines may import each other within the layer. `change-review` calls `audit`, `spec-checks`
-takes `PROVIDER_ERROR` from `src/audit.ts`, and `architecture-verbs` reads the baseline from
-`change-review`.
+Pipelines may import each other within the layer. `change-review` calls `audit`, `agent-handoff`
+re-runs it, and `architecture-verbs` reads the baseline from `change-review`.
 
 ### Engines
 
