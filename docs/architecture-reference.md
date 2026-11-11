@@ -260,5 +260,8 @@ adding the presets to `presets`. `compile`, `list`, `show` and `plan` never call
 - Dependency injection, routes built from strings and calls over HTTP are not in the import graph.
   Add them to a summary with evidence, and cover them with checklist items.
 - Languages without a grammar get no facts.
+- [Always-excluded files](configuration.md#files-that-are-always-excluded), such as anything named
+  `*credentials*` or `*secret*`, are never read, so they are in no candidate and never reported as
+  unmapped. Name them in a component's `paths` by hand if they belong there.
 - `check --diff` reads both sides through `git cat-file`, one file at a time, so a large repository
   takes a few seconds per side.
