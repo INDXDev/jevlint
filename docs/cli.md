@@ -270,8 +270,13 @@ Runs a coding agent, one file at a time, then re-scores each file. See
 | `--top <n>` | Number of files with issues to fix (default 1) |
 | `--preset <names>` | Comma-separated presets, replacing the configured ones |
 | `--yes` | Skip the confirmation. Required when not running in a terminal |
-| `--allow-dirty` | Run even if the git working tree has changes |
+| `--allow-dirty` | Run even if the git working tree has changes, or outside a git repository |
 | `--agent-login` | Use the agent's own login, such as a Claude or ChatGPT subscription, instead of an API key in the environment. See [Coding agents](agents.md#use-your-subscription-not-an-api-key) |
+
+Without `--allow-dirty`, `fix` and `quickfix` need a git repository with no uncommitted changes
+under the project root. Changes elsewhere in the repository, such as a sibling package in a
+monorepo, do not count. Outside a repository, or when git fails, the error gives git's reason. With
+uncommitted changes, it names the first few files.
 
 ## `jevlint quickfix [files...]`
 
@@ -288,7 +293,7 @@ time, in priority order, with one commit each. It takes the same flags as `fix`,
 | `--top <n>` | Number of files with issues to fix (default 1) |
 | `--preset <names>` | Comma-separated presets, replacing the configured ones |
 | `--yes` | Skip the confirmation. Required when not running in a terminal |
-| `--allow-dirty` | Run even if the git working tree has changes |
+| `--allow-dirty` | Run even if the git working tree has changes, or outside a git repository |
 | `--agent-login` | Use the agent's own login, such as a Claude or ChatGPT subscription, instead of an API key in the environment. See [Coding agents](agents.md#use-your-subscription-not-an-api-key) |
 | `--side-by-side` | Show old and new lines in two panels. On by default in a terminal at least 120 columns wide. `--no-side-by-side` turns it off |
 | `--no-commit` | Leave the changes in the working tree. By default each file's run is committed |
@@ -331,6 +336,33 @@ says so instead.
 If the agent exits with an error, `quickfix` still prints what it changed, skips the re-score and
 the commit, and exits 2 without going on to the next file. When an
 API key in the environment may be the cause, the error says so and suggests `--agent-login`.
+
+### Formatters and checks after the agent
+
+When the config declares [`[[quickfix.after]]`](configuration.md#quickfix-after) commands, such as a
+formatter, `quickfix` runs them after the agent succeeds, on the files it changed. The diff, the
+re-score and the commit then show the code after those commands. Their output goes to stderr, so
+stdout stays a patch or JSON. A command that exits non-zero gets a warning and does not stop the
+run. A command marked `retry = true` that still fails gives the agent one more run, with the
+command's output, to fix only those errors. Then the commands run again, and the run goes on
+whatever the result. The commit message names the commands that ran, the retry, and any that still
+fail.
+
+Commands from a repository's `jevlint.toml` run only once you approve them. In a terminal,
+`quickfix` lists them and asks before the first agent runs. With `--yes` or outside a terminal it
+skips them and says so, because `--yes` never approves them. Approve them ahead of time with
+[`jevlint trust`](#jevlint-trust).
+
+## `jevlint trust`
+
+Lists the `quickfix.after` commands in this repository's `jevlint.toml` and approves them, after
+asking. The approval is kept in `~/.config/jevlint/trusted.json` for this project root and this
+exact list. Changing any command, its `files` or `retry` asks again.
+
+| Flag | Description |
+| --- | --- |
+| `--yes` | Approve without asking. Required outside a terminal |
+| `--revoke` | Withdraw the approval for this repository |
 
 ## `jevlint hook`
 

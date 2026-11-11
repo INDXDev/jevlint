@@ -7,10 +7,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type AgentLaunch,
   agentFailure,
+  fixerPaths,
   fixFile,
   launchAgent,
   quickfixFile,
   runAgent,
+  runFixers,
 } from '../src/agent.ts';
 import { type Config, loadConfig, UserError } from '../src/config.ts';
 import { diffFiles } from '../src/diff.ts';
@@ -204,5 +206,61 @@ describe('quickfixFile', () => {
     expect(byPath('b.ts')).toEqual({ path: 'b.ts', before: null, after: 'const b = 1;\n' });
     expect(byPath('mine.ts')).toEqual({ path: 'mine.ts', before: 'mine\n', after: 'agent\n' });
     expect(result.changes[0]?.path).toBe('a.ts');
+  });
+});
+
+describe('fixerPaths', () => {
+  const paths = ['a.ts', 'src/b.tsx', 'c.py', '.hidden/d.ts'];
+
+  it('takes every path with no patterns', () => {
+    expect(fixerPaths({ command: ['x'] }, paths)).toEqual(paths);
+  });
+
+  it('takes the paths matching gitignore-style patterns', () => {
+    expect(fixerPaths({ command: ['x'], files: ['**/*.ts', '*.tsx'] }, paths)).toEqual([
+      'a.ts',
+      'src/b.tsx',
+      '.hidden/d.ts',
+    ]);
+    expect(fixerPaths({ command: ['x'], files: ['*.rs'] }, paths)).toEqual([]);
+  });
+});
+
+describe('runFixers', () => {
+  // Prints its arguments as JSON, then exits with the code.
+  const echo = (code: number) =>
+    node(`console.log(JSON.stringify(process.argv.slice(1))); process.exit(${code})`);
+
+  it('appends each path as one argument, never through a shell', async () => {
+    const cwd = realpathSync(tmpdir());
+    const output: string[] = [];
+    const runs = await runFixers(cwd, [{ command: echo(0) }], ['a;rm -rf x.ts', '$(id).ts'], {
+      onOutput: (text) => output.push(text),
+    });
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.code).toBe(0);
+    expect(JSON.parse(output.join(''))).toEqual(['./a;rm -rf x.ts', './$(id).ts']);
+    expect(runs[0]?.output).toBe(output.join(''));
+  });
+
+  it('runs only fixers that match a path, and reports failures without throwing', async () => {
+    const cwd = realpathSync(tmpdir());
+    const started: string[][] = [];
+    const runs = await runFixers(
+      cwd,
+      [
+        { command: echo(3), retry: true },
+        { command: echo(0), files: ['*.py'] },
+        { command: ['jevlint-no-such-command'] },
+      ],
+      ['a.ts'],
+      { onStart: (_, paths) => started.push(paths) },
+    );
+    expect(started).toEqual([['a.ts'], ['a.ts']]);
+    expect(runs.map(({ code, retry }) => ({ code, retry }))).toEqual([
+      { code: 3, retry: true },
+      { code: 127, retry: false },
+    ]);
+    expect(runs[1]?.output).toContain('Command not found: jevlint-no-such-command');
   });
 });

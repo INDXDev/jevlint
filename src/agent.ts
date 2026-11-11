@@ -1,12 +1,18 @@
-/** Runs coding agents, then re-scores or diffs what they change. */
+/** Runs coding agents and the project's fixers, then re-scores or diffs what they change. */
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import ignore from 'ignore';
 import { audit } from './audit.ts';
-import { type Config, ifExists, readRegularFile, UserError } from './config.ts';
+import { type Config, type Fixer, ifExists, readRegularFile, UserError } from './config.ts';
 import type { FileChange } from './diff.ts';
 import { fileAt, uncommittedFiles, workingTreeChanges } from './git.ts';
-import { renderPrompt, renderQuickfixPrompt } from './prompt.ts';
+import {
+  type FailedCheck,
+  renderPrompt,
+  renderQuickfixPrompt,
+  renderRetryPrompt,
+} from './prompt.ts';
 import type { AuditReport, FileReport } from './types.ts';
 
 type Agent = Config['agents'][string];
@@ -129,13 +135,39 @@ export async function fixFile(
 const contentOf = async (root: string, path: string) =>
   (await ifExists(readRegularFile(join(root, path)))) ?? null;
 
+/** File contents from before a quick fix, to diff against. A null content is no file. */
+export type Snapshot = Map<string, string | null>;
+
 /** What a quick fix did: the agent's exit code and every file it changed. */
 export interface QuickfixResult {
   code: number;
   changes: FileChange[];
   /** Files with uncommitted changes from before the run, which a commit must not take in. */
   uncommittedBefore: string[];
+  /** The files as they were before the run, for `collectChanges` after a later step. */
+  snapshot: Snapshot;
 }
+
+/**
+ * Lists every file that differs from before the run: the snapshot's files, and any other file
+ * in the working tree, compared with HEAD.
+ */
+export async function collectChanges(root: string, snapshot: Snapshot): Promise<FileChange[]> {
+  const paths = [...new Set([...snapshot.keys(), ...(await workingTreeChanges(root))])];
+  return Promise.all(
+    paths.map(async (path) => ({
+      path,
+      before: snapshot.has(path)
+        ? (snapshot.get(path) ?? null)
+        : ((await fileAt(root, 'HEAD', path)) ?? null),
+      after: await contentOf(root, path),
+    })),
+  );
+}
+
+/** The paths a run left with new content, leaving out deleted and unchanged files. */
+export const editedPaths = (changes: FileChange[]): string[] =>
+  changes.filter(({ before, after }) => after !== null && after !== before).map(({ path }) => path);
 
 /**
  * Runs an agent on one file with an edit-only prompt, and collects what changed. Files that
@@ -151,24 +183,108 @@ export async function quickfixFile(
   const { root } = config;
   const uncommittedBefore = await uncommittedFiles(root);
   const changedBefore = [...new Set([file.path, ...uncommittedBefore])];
-  const snapshot = new Map(
+  const snapshot: Snapshot = new Map(
     await Promise.all(
       changedBefore.map(async (path) => [path, await contentOf(root, path)] as const),
     ),
   );
   const prompt = renderQuickfixPrompt(file, report);
   const code = await runAgent(launch.command, prompt, root, runOptions(launch, 'stderr'));
-  const paths = [...new Set([...changedBefore, ...(await workingTreeChanges(root))])];
-  const changes = await Promise.all(
-    paths.map(async (path) => ({
-      path,
-      before: snapshot.has(path)
-        ? (snapshot.get(path) ?? null)
-        : ((await fileAt(root, 'HEAD', path)) ?? null),
-      after: await contentOf(root, path),
-    })),
-  );
-  return { code, changes, uncommittedBefore };
+  const changes = await collectChanges(root, snapshot);
+  return { code, changes, uncommittedBefore, snapshot };
+}
+
+/** Runs the agent once more, with only the output of the checks that still fail. */
+export function retryQuickfix(
+  config: Config,
+  launch: AgentLaunch,
+  paths: string[],
+  failures: FailedCheck[],
+): Promise<number> {
+  const prompt = renderRetryPrompt(paths, failures);
+  return runAgent(launch.command, prompt, config.root, runOptions(launch, 'stderr'));
+}
+
+/** How much of a fixer's output is kept for the retry prompt, from the end. */
+const FIXER_OUTPUT_KEPT = 64 * 1024;
+
+/** One fixer that ran: its command, exit code and the end of what it printed. */
+export interface FixerRun {
+  command: string[];
+  code: number;
+  /** True when a failure asks the agent to fix what the command printed. */
+  retry: boolean;
+  /** Its stdout and stderr together, as printed, keeping the end. */
+  output: string;
+}
+
+/** Picks the paths a fixer takes: those matching its `files` patterns, or all of them. */
+export function fixerPaths(fixer: Fixer, paths: string[]): string[] {
+  if (fixer.files === undefined) return paths;
+  const matcher = ignore().add(fixer.files);
+  return paths.filter((path) => matcher.ignores(path));
+}
+
+/** Reports a fixer's progress to the interface layer, which decides what to print. */
+export interface FixerEvents {
+  onStart?: (command: string[], paths: string[]) => void;
+  /** Output as the command prints it, stdout and stderr alike. */
+  onOutput?: (text: string) => void;
+}
+
+function runFixer(
+  command: string[],
+  paths: string[],
+  root: string,
+  { onOutput }: FixerEvents,
+): Promise<{ code: number; output: string }> {
+  const [bin = '', ...args] = command;
+  // `./`, so a file named like an option reaches the tool as a path.
+  const argv = [...args, ...paths.map((path) => `./${path}`)];
+  return new Promise((resolve) => {
+    let output = '';
+    let settled = false;
+    const finish = (code: number) => {
+      if (settled) return;
+      settled = true;
+      resolve({ code, output });
+    };
+    const keep = (text: string) => {
+      onOutput?.(text);
+      output = `${output}${text}`.slice(-FIXER_OUTPUT_KEPT);
+    };
+    const child = spawn(bin, argv, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout.setEncoding('utf8').on('data', keep);
+    child.stderr.setEncoding('utf8').on('data', keep);
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      keep(error.code === 'ENOENT' ? `Command not found: ${bin}\n` : `${error.message}\n`);
+      // 127 is what a shell reports for a missing command.
+      finish(error.code === 'ENOENT' ? 127 : 1);
+    });
+    child.on('close', (code) => finish(code ?? 1));
+  });
+}
+
+/**
+ * Runs each fixer, in order and never through a shell, on the paths it matches, with the paths
+ * appended to its command. A fixer that matches no path does not run. A failing fixer does not
+ * throw: its exit code is in the result.
+ */
+export async function runFixers(
+  root: string,
+  fixers: Fixer[],
+  paths: string[],
+  events: FixerEvents = {},
+): Promise<FixerRun[]> {
+  const runs: FixerRun[] = [];
+  for (const fixer of fixers) {
+    const matched = fixerPaths(fixer, paths);
+    if (matched.length === 0) continue;
+    events.onStart?.(fixer.command, matched);
+    const { code, output } = await runFixer(fixer.command, matched, root, events);
+    runs.push({ command: fixer.command, code, retry: fixer.retry === true, output });
+  }
+  return runs;
 }
 
 /** Re-audits files an agent left behind, keyed by path. A file no audit covers has no entry. */

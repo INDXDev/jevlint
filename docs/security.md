@@ -136,9 +136,19 @@ Some risks remain:
   repository prove nothing either.
 - `jevlint fix` and `jevlint quickfix` run an agent over repository content that could carry prompt
   injection. Only use them on code you trust, and review every diff. Their clean-tree check runs
-  `git status`, and `quickfix` finds changed files with `git ls-files`, both of which can run programs
+  `git status` on the project root, and `quickfix` finds changed files with `git ls-files`, both of which can run programs
   a repository's `.git/config` names. `quickfix` makes the diff itself, so no diff or textconv
   program runs, and prints it without escape sequences. `--json` keeps the original text.
+- A repository's `jevlint.toml` can declare `quickfix.after` commands. `quickfix` lists them and runs
+  them only after you approve that exact list for that root, in a prompt or with `jevlint trust`.
+  `--yes` never approves them, and any change to the list asks again. Once approved they run as you,
+  with your environment, including API keys in it, so read them as you would a script. They run
+  without a shell, and each file name is passed as one argument starting with `./`, so a crafted
+  name cannot add a command or pass itself as an option. Their output is printed without escape
+  sequences. Your user config's `quickfix.after` runs without asking.
+- With `retry = true`, a failing command's output goes into the agent's prompt. It can carry
+  repository text, so the prompt fences it, labels it as data and keeps only its end, and the agent
+  is told to fix only those errors and never to suppress them.
 - `quickfix` commits each run with `git add` and `git commit`, which run your hooks and signing
   program as your git config names them. The commit takes only the files the run changed, and the
   message keeps each repository path on one line. Pass `--no-commit` to leave committing to you.

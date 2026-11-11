@@ -21,6 +21,7 @@ import { quickfixCommand } from './commands/quickfix.ts';
 import { commitsCommand, prCommand } from './commands/review.ts';
 import { specCommand } from './commands/spec.ts';
 import { testCommand } from './commands/test.ts';
+import { trustCommand } from './commands/trust.ts';
 import { UserError } from './config.ts';
 import { isPatchedNode } from './node-version.ts';
 import { withoutEscapes } from './report.ts';
@@ -41,6 +42,7 @@ const subCommands = {
   spec: specCommand,
   fix: fixCommand,
   quickfix: quickfixCommand,
+  trust: trustCommand,
   hook: hookCommand,
   init: initCommand,
   auth: authCommand,

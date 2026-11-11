@@ -112,6 +112,20 @@ const spec = z.strictObject({
   threshold: z.number().min(0).max(1),
 });
 
+/** One `[[quickfix.after]]` entry: a command `quickfix` runs on the files an agent changed. */
+const fixer = z.strictObject({
+  command: z.array(z.string()).min(1),
+  /** Gitignore-style patterns a changed file must match to be passed. Default: every file. */
+  files: z.array(z.string()).optional(),
+  /** When the command exits non-zero, ask the agent once to fix what it printed. */
+  retry: z.boolean().optional(),
+});
+
+/** A command `quickfix` runs after the agent, as configured. */
+export type Fixer = z.infer<typeof fixer>;
+
+const quickfix = z.strictObject({ after: z.array(fixer) });
+
 const configSchema = z.strictObject({
   presets: z.array(z.string()),
   include: z.array(z.string()),
@@ -143,6 +157,7 @@ const configSchema = z.strictObject({
   ),
   cache,
   spec,
+  quickfix,
 });
 
 const layerSchema = configSchema
@@ -154,6 +169,7 @@ const layerSchema = configSchema
     architecture: architecture.partial(),
     cache: cache.partial(),
     spec: spec.partial(),
+    quickfix: quickfix.partial(),
   })
   .partial();
 
@@ -162,6 +178,11 @@ export interface Config extends z.infer<typeof configSchema> {
   root: string;
   /** Config files that applied, in the order they apply. */
   sources: string[];
+  /**
+   * True when `quickfix.after` comes from the repository's `jevlint.toml`, so its commands need
+   * the user's approval before they run.
+   */
+  repoFixers?: boolean;
 }
 
 /** Settings from the command line, using the same keys as the TOML files. */
@@ -231,6 +252,7 @@ const DEFAULTS = {
     docs: ['README.md', 'docs/**/*.md', 'docs/**/*.html'],
     threshold: 0,
   },
+  quickfix: { after: [] },
 };
 
 const xdgDir = (variable: string, fallback: string) =>
@@ -244,6 +266,7 @@ export const paths = {
   configFile: () => join(configDir(), 'config.toml'),
   credentialsFile: () => join(configDir(), 'credentials.toml'),
   presetsDir: () => join(configDir(), 'presets'),
+  trustFile: () => join(configDir(), 'trusted.json'),
 };
 
 /** True for a TOML table or any other plain object, but not for an array. */
@@ -411,12 +434,15 @@ export async function loadConfig(options: {
     cache: { ...config.cache, dir: expandHome(config.cache.dir) },
     root,
     sources: [...(user ? [userFile] : []), ...(repo ? [repoFile] : [])],
+    // Arrays replace lower layers, so the repository's list is the one in use unless overridden.
+    repoFixers:
+      repo?.quickfix?.after !== undefined && options.overrides?.quickfix?.after === undefined,
   };
 }
 
 /** Renders the merged settings as TOML for `config show`. */
 export function renderConfigToml(config: Config): string {
-  const { root, sources, ...settings } = config;
+  const { root, sources, repoFixers, ...settings } = config;
   return stringify(settings);
 }
 

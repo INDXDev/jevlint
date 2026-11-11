@@ -47,12 +47,41 @@ export async function commitCounts(root: string, days: number): Promise<Map<stri
   return counts;
 }
 
-/** True when the working tree has no changes. False outside a git repository. */
-export async function isClean(root: string): Promise<boolean> {
-  return git(root, ['status', '--porcelain', '--untracked-files=normal']).then(
-    (status) => status === '',
-    () => false,
-  );
+/** Says why a git command failed, in git's own words when it gave any. */
+export function gitFailureReason(error: unknown): string {
+  const { code, stderr } = error as NodeJS.ErrnoException & { stderr?: string };
+  if (code === 'ENOENT') return 'git is not installed or not on PATH';
+  const message = stderr
+    ?.trim()
+    .split('\n')[0]
+    ?.replace(/^fatal: /, '');
+  return message || 'git failed';
+}
+
+/**
+ * Lists changes under the root that are not committed: staged, unstaged or untracked, as
+ * `git status` names them, relative to the top of the repository. Changes elsewhere in the
+ * repository do not count. Rejects when git cannot read a repository here.
+ */
+export async function dirtyFiles(root: string): Promise<string[]> {
+  const status = await git(root, [
+    'status',
+    '--porcelain',
+    '-z',
+    '--untracked-files=normal',
+    '--',
+    '.',
+  ]);
+  const entries = status.split('\0');
+  const files: string[] = [];
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index] ?? '';
+    if (entry === '') continue;
+    files.push(entry.slice(3));
+    // A rename or copy is followed by the path it came from.
+    if (/^[RC]|^.[RC]/.test(entry)) index++;
+  }
+  return files;
 }
 
 /**

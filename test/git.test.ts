@@ -10,7 +10,8 @@ import {
   commitCounts,
   commitPaths,
   commitsFrom,
-  isClean,
+  dirtyFiles,
+  gitFailureReason,
   isWorkTree,
   pullRequestChange,
   pullRequestOfRef,
@@ -57,7 +58,7 @@ describe('a bare repository committed inside a clone', () => {
       join(dir, 'config'),
       `[core]\n\trepositoryformatversion = 0\n\tbare = false\n\tworktree = .\n\tfsmonitor = ${script}\n`,
     );
-    expect(await isClean(dir)).toBe(false);
+    await expect(dirtyFiles(dir)).rejects.toThrow();
     expect(await ran()).toBe(false);
   });
 });
@@ -67,9 +68,15 @@ afterEach(async () => {
 });
 
 describe('outside git', () => {
-  it('reports no commits and not clean', async () => {
+  it("reports no commits, and git's reason instead of a dirty tree", async () => {
     expect(await commitCounts(dir, 30)).toEqual(new Map());
-    expect(await isClean(dir)).toBe(false);
+    const error = await dirtyFiles(dir).catch((caught: unknown) => caught);
+    expect(gitFailureReason(error)).toMatch(/^not a git repository/);
+  });
+
+  it('says when git is missing', () => {
+    const missing = Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' });
+    expect(gitFailureReason(missing)).toBe('git is not installed or not on PATH');
   });
 });
 
@@ -197,14 +204,25 @@ describe('inside git', () => {
     await commit(['a.ts']);
     git('config', 'status.showUntrackedFiles', 'no');
     await writeFile(join(dir, 'b.ts'), '');
-    expect(await isClean(dir)).toBe(false);
+    expect(await dirtyFiles(dir)).toEqual(['b.ts']);
   });
 
-  it('tracks whether the working tree is clean', async () => {
-    await commit(['a.ts']);
-    expect(await isClean(dir)).toBe(true);
-    await writeFile(join(dir, 'b.ts'), '');
-    expect(await isClean(dir)).toBe(false);
+  it('lists what is not committed: modified, staged, untracked and renamed', async () => {
+    await commit(['a.ts', 'b.ts', 'c.ts']);
+    expect(await dirtyFiles(dir)).toEqual([]);
+    await writeFile(join(dir, 'a.ts'), 'changed');
+    await writeFile(join(dir, 'new.ts'), '');
+    git('mv', 'b.ts', 'renamed.ts');
+    expect((await dirtyFiles(dir)).toSorted()).toEqual(['a.ts', 'new.ts', 'renamed.ts']);
+  });
+
+  it('counts only changes under the root', async () => {
+    await mkdir(join(dir, 'pkg'));
+    await commit(['pkg/a.ts', 'other.txt']);
+    await writeFile(join(dir, 'other.txt'), 'changed');
+    expect(await dirtyFiles(join(dir, 'pkg'))).toEqual([]);
+    await writeFile(join(dir, 'pkg/a.ts'), 'changed');
+    expect(await dirtyFiles(join(dir, 'pkg'))).toEqual(['pkg/a.ts']);
   });
 });
 

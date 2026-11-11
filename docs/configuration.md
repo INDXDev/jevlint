@@ -89,6 +89,11 @@ command = ["codex", "exec", "--sandbox", "workspace-write", "-"]
 quickfix_command = ["codex", "exec", "--sandbox", "workspace-write", "-c", 'model_reasoning_effort="low"', "-"]
 key_env = ["OPENAI_API_KEY", "CODEX_API_KEY"]
 
+[[quickfix.after]]      # none by default. From jevlint.toml, they run only once approved
+command = ["pnpm", "biome", "check", "--write"]
+files = ["**/*.ts", "**/*.tsx"]   # default: every changed file
+# retry = true          # when it still fails, give the agent one more run with its output
+
 [cache]                 # user config only
 dir = "~/.cache/jevlint"
 # remote = "s3://my-bucket/jevlint"     # share the cache through object storage
@@ -142,6 +147,35 @@ threshold = 0                          # a violation or contradiction counts onl
 `docs` is not limited by `include` or by source extensions, but `.gitignore`, `exclude` and the
 always-excluded files below still apply.
 
+## Quickfix after
+
+`[[quickfix.after]]` names commands [`jevlint quickfix`](cli.md#formatters-and-checks-after-the-agent)
+runs after the agent succeeds, in order, from the project root, such as the project's formatter
+and lint fixer. Each gets the changed files that still exist appended as arguments, each starting
+with `./`, so the whole team can share them in `jevlint.toml`:
+
+```toml
+[[quickfix.after]]
+command = ["pnpm", "biome", "check", "--write"]
+files = ["**/*.ts", "**/*.tsx"]
+
+[[quickfix.after]]
+command = ["ruff", "check", "--fix"]
+files = ["**/*.py"]
+retry = true
+```
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `command` | string[] | The program and its arguments. It runs without a shell, so quotes, `;` and `$(...)` mean nothing special |
+| `files` | string[] | Gitignore-style patterns a changed file must match to be passed. Default: every changed file. With no match, the command does not run |
+| `retry` | boolean | When the command exits non-zero, give the agent one more run with its output, to fix only those errors. Default `false`. It doubles the agent's cost for that file |
+
+Commands in your user config run without asking, like `agents`. Commands in a repository's
+`jevlint.toml` run only after you approve them, with a prompt in `quickfix` or with
+[`jevlint trust`](cli.md#jevlint-trust). The approval covers that project root and that exact list,
+so any change to it asks again. A `jevlint.toml` list replaces the user config's, as arrays do.
+
 ## Files that are always excluded
 
 jevlint reads source code only. A file must have a known source extension, such as `.ts`, `.py`,
@@ -166,6 +200,9 @@ These keys work only in your user config. In `jevlint.toml` they are a config er
 | --- | --- |
 | `provider.base_url` | A cloned repository could send your API key to its own server |
 | `agents` | A cloned repository could run arbitrary commands through `fix` or `quickfix` |
+
+`quickfix.after` names commands too, but a repository may set it, because its commands run only
+after you approve them. See [Quickfix after](#quickfix-after).
 | `cache` | `cache clear` deletes this directory, and a bucket's answers set your scores |
 | `max_rule_matches` | It caps what a repository's [rules](presets.md#semantic-rules) can spend of your money |
 

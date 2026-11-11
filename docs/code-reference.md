@@ -182,7 +182,8 @@ All of these are pure and implement [Scoring](scoring.md).
 | `cacheInfo`, `clearCache` | `cache.ts` | Back the `cache` command |
 | `readThrough`, `writeThrough` | `remote-cache.ts` | Use the disk cache, with the bucket behind it |
 | `commitCounts(root, days)` | `git.ts` | Measures churn |
-| `isClean(root)` | `git.ts` | Checks the working tree |
+| `dirtyFiles(root)`, `gitFailureReason(error)` | `git.ts` | List uncommitted changes under the root, or say why git failed |
+| `isTrusted`, `trust`, `untrust` | `trust.ts` | Keep the user's approval of a repository's `quickfix.after` commands |
 | `changedFiles`, `fileAt`, `commitsFrom`, `pullRequestChange` | `git.ts` | Read changes for `pr` and `commits` |
 | `isPatchedNode(version)` | `node-version.ts` | Checks Node.js against the security floor |
 
@@ -194,6 +195,8 @@ All of these are pure and implement [Scoring](scoring.md).
 | `auditIssues`, `reviewIssues`, `formatSarif`, `formatGithub`, `formatIssues` | `formats.ts` | Render `--format sarif` and `github` |
 | `renderPrompt(files, report)` | `prompt.ts` | Builds the Markdown fix prompt |
 | `resolveAgent`, `runAgent`, `fixFile` | `agent.ts` | Find, run and verify a coding agent |
+| `quickfixFile`, `collectChanges`, `runFixers`, `retryQuickfix` | `agent.ts` | Run a quick fix, the project's fixers and the one retry, and collect what changed |
+| `renderRetryPrompt(paths, failures)` | `prompt.ts` | Builds the retry prompt from a failing check's output |
 | `auditProject`, `selectFiles`, `resolvePaths`, `parseFormat` | `commands/shared.ts` | Flow shared by commands |
 
 Each command exports one citty definition, such as `auditCommand`, which `src/cli.ts` registers.

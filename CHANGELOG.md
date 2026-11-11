@@ -4,6 +4,22 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- **`[[quickfix.after]]`: run the project's formatters and fixers after `quickfix`.** Each entry
+  names a command and optional `files` patterns. After the agent succeeds, `quickfix` runs them on
+  the files it changed, without a shell, and the diff, re-score and commit show the result. A
+  failing command warns and the run goes on. `jevlint.toml` may set them, so a team can share
+  them, but jevlint runs a repository's commands only after you approve that exact list, in a
+  prompt or with the new `jevlint trust`; `--yes` never approves them. `--json` adds `fixers` to
+  each file, and the commit message names the commands that ran.
+- **`retry = true` on a `quickfix.after` command.** When the check still fails, the agent gets one
+  more run with the command's output, fenced as data, to fix only those errors, and then the
+  commands run again. At most one retry per file. `--json` adds `retried`, and the commit message
+  says when a check still fails.
+- `fix` and `quickfix` no longer claim the working tree is not clean when git fails. Outside a git
+  repository, or when git refuses one, as with `detected dubious ownership`, the error now gives
+  git's reason. With uncommitted changes, it names the first few files. Changes outside the project
+  root, such as in another package of a monorepo, no longer block the run.
+
 ## 0.2.5 - 2026-11-09
 
 - **`jevlint quickfix`.** Runs a coding agent on the worst file with the same issues as `prompt`, but

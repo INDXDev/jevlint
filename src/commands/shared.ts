@@ -10,7 +10,7 @@ import { envKeysAllowed, KEY_ENV } from '../credentials.ts';
 import { createDecisionModel } from '../decision/providers.ts';
 import { discoverFiles } from '../files.ts';
 import { OUTPUT_FORMATS, type OutputFormat } from '../formats.ts';
-import { isClean } from '../git.ts';
+import { dirtyFiles, gitFailureReason } from '../git.ts';
 import { presetsInArgs } from '../presets.ts';
 import { hasIssues } from '../prompt.ts';
 import { formatScore, withoutControlCharacters } from '../report.ts';
@@ -272,6 +272,29 @@ async function confirmPlan(files: FileReport[], agent: string): Promise<void> {
   if (!answered(await confirm({ message, ...PROMPT_IO }))) throw new UserError('Cancelled.');
 }
 
+const SHOWN_DIRTY_FILES = 5;
+
+/**
+ * Stops a run that git cannot protect: outside a repository, when git fails, or with uncommitted
+ * changes under the root, naming the first few. Changes elsewhere in the repository do not count,
+ * because the run only edits and commits files under the root.
+ */
+async function requireCleanTree(root: string, use: 'fix' | 'quickfix'): Promise<void> {
+  const dirty = await dirtyFiles(root).catch((error: unknown) => {
+    const reason = withoutControlCharacters(gitFailureReason(error));
+    throw new UserError(
+      `jevlint ${use} needs a git repository: ${reason}. Pass --allow-dirty to run anyway.`,
+    );
+  });
+  if (dirty.length === 0) return;
+  const shown = withoutControlCharacters(dirty.slice(0, SHOWN_DIRTY_FILES)).join(', ');
+  const more =
+    dirty.length > SHOWN_DIRTY_FILES ? ` and ${dirty.length - SHOWN_DIRTY_FILES} more` : '';
+  throw new UserError(
+    `The git working tree has uncommitted changes: ${shown}${more}. Commit or stash them, or pass --allow-dirty.`,
+  );
+}
+
 /**
  * Prepares an agent run: checks the flags and the working tree, audits, picks the files and asks
  * before going on.
@@ -287,11 +310,7 @@ export async function prepareAgentRun(
   if (!args.yes && !process.stdin.isTTY) {
     throw new UserError(`Pass --yes to run ${use} outside a terminal.`);
   }
-  if (!args['allow-dirty'] && !(await isClean(config.root))) {
-    throw new UserError(
-      'The git working tree is not clean. Commit or stash your changes, or pass --allow-dirty.',
-    );
-  }
+  if (!args['allow-dirty']) await requireCleanTree(config.root, use);
   const report = await auditProject(config, { paths });
   const files = selectFiles(report, paths, top);
   if (files.length > 0 && !args.yes) await confirmPlan(files, String(args.agent));

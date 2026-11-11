@@ -71,6 +71,53 @@ describe('layering', () => {
   });
 });
 
+describe('quickfix.after', () => {
+  const FIXER = '[[quickfix.after]]\ncommand = ["fmt", "--write"]\nfiles = ["**/*.ts"]\n';
+
+  it('is empty by default, and needs no approval', async () => {
+    const config = await loadConfig({ cwd: repo });
+    expect(config.quickfix.after).toEqual([]);
+    expect(config.repoFixers).toBe(false);
+  });
+
+  it('marks commands from the repository as needing approval', async () => {
+    await writeRepo(`${FIXER}retry = true\n`);
+    const config = await loadConfig({ cwd: repo });
+    expect(config.quickfix.after).toEqual([
+      { command: ['fmt', '--write'], files: ['**/*.ts'], retry: true },
+    ]);
+    expect(config.repoFixers).toBe(true);
+  });
+
+  it('runs commands from the user config without approval', async () => {
+    await writeUser(FIXER);
+    const config = await loadConfig({ cwd: repo });
+    expect(config.quickfix.after[0]?.command).toEqual(['fmt', '--write']);
+    expect(config.repoFixers).toBe(false);
+  });
+
+  it('lets the repository list replace the user list, as arrays do', async () => {
+    await writeUser(FIXER);
+    await writeRepo('[[quickfix.after]]\ncommand = ["other"]\n');
+    const config = await loadConfig({ cwd: repo });
+    expect(config.quickfix.after).toEqual([{ command: ['other'] }]);
+    expect(config.repoFixers).toBe(true);
+  });
+
+  it('rejects an empty command and unknown keys', async () => {
+    await writeRepo('[[quickfix.after]]\ncommand = []\nshell = true\n');
+    await expect(loadConfig({ cwd: repo })).rejects.toThrow(/quickfix\.after\.0\.command/);
+    await expect(loadConfig({ cwd: repo })).rejects.toThrow(/shell: unknown key/);
+  });
+
+  it('stays out of config show', async () => {
+    await writeRepo(FIXER);
+    const toml = renderConfigToml(await loadConfig({ cwd: repo }));
+    expect(toml).toContain('[[quickfix.after]]');
+    expect(toml).not.toContain('repoFixers');
+  });
+});
+
 describe('environment', () => {
   it('lets env override user config', async () => {
     await writeUser('[provider]\nbase_url = "https://a.example"\n[cache]\ndir = "/from-config"\n');

@@ -35,7 +35,9 @@ jevlint fix --top 3 --agent claude --yes
 
 For each file, `fix`:
 
-1. Checks the git working tree is clean, unless you pass `--allow-dirty`.
+1. Checks there are no uncommitted changes under the project root, unless you pass
+   `--allow-dirty`. It needs a git repository for that, and changes outside the root, such as in
+   another package of a monorepo, do not count.
 2. Shows the plan and asks for confirmation, unless you pass `--yes`. Outside a terminal, `--yes` is
    required.
 3. Runs the agent with the prompt on stdin.
@@ -66,9 +68,13 @@ For each file, in priority order and one at a time, `quickfix`:
 2. Prints what changed. The diff goes to stdout: side by side in a terminal at least 120 columns
    wide, unified and coloured in a narrower one, and a plain patch that `git apply` accepts when
    redirected. Either way the words that changed within a line are highlighted.
-3. Re-audits every file it changed, with the same presets, and prints a `git diff --stat` style
+3. Runs the project's [`quickfix.after`](configuration.md#quickfix-after) commands, such as its
+   formatter, on the files the agent changed, if any are configured and approved. A check marked
+   `retry = true` that still fails gives the agent one more run with its output, which doubles the
+   agent's cost for that file.
+4. Re-audits every file it changed, with the same presets, and prints a `git diff --stat` style
    summary with each file's score before and after to stderr, beside the agent's own output.
-4. Commits that run's files with `git commit`, and prints the hash. The agent itself is told not to
+5. Commits that run's files with `git commit`, and prints the hash. The agent itself is told not to
    commit, so every commit is jevlint's: one per file, named `Refactor <file> with jevlint
    quickfix`, with the score change and a note that no tests ran. Pass `--no-commit` to keep the
    changes in the working tree instead.
@@ -83,6 +89,19 @@ even in a pipe, and `--no-side-by-side` forces the unified view.
 The diff covers the file, every file the agent added, and every file it edited. A file that already
 had changes, from `--allow-dirty` or an earlier file's run, is compared with what it held just before
 this run, so each run shows only its own edits.
+
+The agent may not run your formatter or linter itself, so declare them in `jevlint.toml` and the
+whole team's quick fixes come out formatted:
+
+```toml
+[[quickfix.after]]
+command = ["pnpm", "biome", "check", "--write"]
+files = ["**/*.ts"]
+```
+
+Commands from `jevlint.toml` run only once you approve them, in the prompt or with
+`jevlint trust`; `--yes` does not approve them. A command that fixes files changes the diff and the
+commit, which is the point, and may reformat lines the agent did not touch.
 
 It runs each agent's `quickfix_command`, or its `command` when there is none. The built-in ones keep
 the run short: Claude Code gets only the file tools and at most 10 turns, and Codex reasons at low

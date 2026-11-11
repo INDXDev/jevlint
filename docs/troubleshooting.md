@@ -66,8 +66,21 @@ Move the setting to `~/.config/jevlint/config.toml`. See
 
 ## `jevlint fix` refuses to run
 
-It requires a clean working tree. Commit or stash your changes, or pass `--allow-dirty`. Outside a
-terminal, it also needs `--yes`.
+`fix` and `quickfix` need a git repository with no uncommitted changes under the project root, the
+directory that holds `jevlint.toml`. The error says which:
+
+- `needs a git repository: ...` gives git's own reason: not a repository, git not on `PATH`, or
+  `detected dubious ownership`, which `git config --global --add safe.directory <path>` fixes. Pass
+  `--allow-dirty` to run anyway.
+- `has uncommitted changes: ...` names the first few files. Commit or stash them, or pass
+  `--allow-dirty`. Changes outside the project root do not count.
+
+Outside a terminal, it also needs `--yes`.
+
+## `quickfix` skips the `quickfix.after` commands
+
+Commands from a repository's `jevlint.toml` run only once you approve them, and `--yes` does not.
+Run `jevlint trust` in the repository, then run `quickfix` again. Any change to the list asks again.
 
 ## The agent command is not found
 
