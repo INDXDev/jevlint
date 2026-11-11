@@ -206,6 +206,12 @@ export interface QuickfixFileResult {
   diffs: FileDiff[];
   /** The short hash of the commit with this run's files, or null when nothing was committed. */
   commit: string | null;
+  /** Each `quickfix.after` command's last run on this file, with its exit code. */
+  fixers: { command: string[]; code: number }[];
+  /** True when a failing `retry` check gave the agent a second run. */
+  retried: boolean;
+  /** Paths in `diffs` that only the `quickfix.after` commands changed, not the agent. */
+  fixerOnly: string[];
 }
 
 /** Two commits to compare. A null base means a root commit, where every file is new. */

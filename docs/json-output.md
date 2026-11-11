@@ -149,7 +149,11 @@ is empty.
 Each entry has `path`, `score` before the fix and `after` it, on the configured scale, `commit`,
 the short hash of the commit that holds the run's files or `null` when it was not committed, and
 `diffs`, one per file the agent changed. `after` is `null` when the file was removed, could not be scored, or
-the agent failed, which skips the re-score.
+the agent failed, which skips the re-score. `fixers` lists each
+[`quickfix.after`](configuration.md#quickfix-after) command's last run on the file, as `command`
+(the argument list) and `code` (its exit code), in order, leaving out commands that matched no file
+or were not approved. `retried` is `true` when a failing `retry` command gave the agent a second
+run. `fixerOnly` lists the paths in `diffs` that only those commands changed, not the agent.
 
 | Key | Holds |
 | --- | --- |

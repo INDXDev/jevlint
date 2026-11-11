@@ -105,6 +105,7 @@ beforeEach(async () => {
     },
     agents: {},
     cache: { dir: cache },
+    quickfix: { after: [] },
   };
   vi.mocked(loadPresets).mockResolvedValue([preset]);
   vi.mocked(commitCounts).mockResolvedValue(new Map());

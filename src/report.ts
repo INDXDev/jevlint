@@ -45,6 +45,22 @@ export const withoutControlCharacters = <T>(data: T): T =>
     typeof value === 'string' ? withoutEscapes(value).replace(/[\n\t]/g, '?') : value,
   );
 
+/** An argument that needs no quotes for a reader to see where it starts and ends. */
+const PLAIN_ARGUMENT = /^[\w@%+=:,./-]+$/u;
+
+/**
+ * One command as a line, for the terminal, a prompt or a commit message, quoting each argument
+ * that holds a space or anything else that would blur where it ends. Repository text, so made safe.
+ */
+export const commandLine = (command: string[]): string =>
+  withoutControlCharacters(
+    command
+      .map((argument) =>
+        PLAIN_ARGUMENT.test(argument) ? argument : `'${argument.replaceAll("'", `'\\''`)}'`,
+      )
+      .join(' '),
+  );
+
 /** Colours text by how healthy a 0 to 1 ratio is. */
 export function colorByRatio(text: string, ratio: number): string {
   if (ratio < 0.5) return pc.red(text);

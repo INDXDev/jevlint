@@ -783,16 +783,43 @@ describe('quickfix', () => {
     return jevlintAt(home, cwd, 'quickfix', '--agent', 'stub', '--yes', '--allow-dirty', ...flags);
   };
 
+  interface RepoOptions {
+    dirty?: Record<string, string>;
+    flags?: string[];
+    /** A `jevlint.toml` to commit with the project. */
+    repoToml?: string;
+    /** Extra lines for the user config. */
+    userToml?: string;
+    /** Approve the repository's commands with `jevlint trust --yes` first. */
+    trust?: boolean;
+    /** More files to commit with the project. */
+    files?: Record<string, string>;
+  }
+
   /** Runs quickfix in a fresh git repository, after making any `dirty` changes. */
   const inRepo = (
     script: string,
-    { dirty = {}, flags = [] }: { dirty?: Record<string, string>; flags?: string[] } = {},
+    {
+      dirty = {},
+      flags = [],
+      repoToml,
+      userToml = '',
+      trust = false,
+      files = {},
+    }: RepoOptions = {},
   ) => {
     const home = tempDir();
     mkdirSync(join(home, 'jevlint'));
     const command = JSON.stringify([process.execPath, '-e', script]);
-    writeFileSync(join(home, 'jevlint/config.toml'), `[agents.stub]\ncommand = ${command}\n`);
-    const cwd = project({ 'a.ts': MESSY });
+    writeFileSync(
+      join(home, 'jevlint/config.toml'),
+      `${userToml}\n[agents.stub]\ncommand = ${command}\n`,
+    );
+    const cwd = project({
+      'a.ts': MESSY,
+      ...files,
+      ...(repoToml ? { 'jevlint.toml': repoToml } : {}),
+    });
     const git = (...args: string[]) =>
       spawnSync('git', args, { cwd, encoding: 'utf8' }).stdout.trim();
     git('init', '-q');
@@ -801,8 +828,11 @@ describe('quickfix', () => {
     git('config', 'core.autocrlf', 'false');
     git('add', '.');
     git('commit', '-qm', 'first');
+    if (trust) expect(jevlintAt(home, cwd, 'trust', '--yes').status).toBe(0);
     for (const [path, content] of Object.entries(dirty)) writeFileSync(join(cwd, path), content);
-    return { git, ...jevlintAt(home, cwd, 'quickfix', '--agent', 'stub', '--yes', ...flags) };
+    const run = (...more: string[]) =>
+      jevlintAt(home, cwd, 'quickfix', '--agent', 'stub', '--yes', ...flags, ...more);
+    return { git, cwd, home, run, ...run() };
   };
 
   it('commits each run by default, and says so', () => {
@@ -963,6 +993,297 @@ key_env = ["JEVLINT_FAKE_KEY"]
     expect(status).toBe(0);
     expect(stdout).toContain('+y?[2J');
     expect(stdout).not.toContain('\u001b');
+  });
+
+  describe('quickfix.after', () => {
+    const FORMATTED = 'export const f = 1; // formatted\n';
+    /** A fixer that rewrites each file it is given, logs its arguments, and prints to stdout. */
+    const formatter = (log: string, code = 0) =>
+      JSON.stringify([
+        process.execPath,
+        '-e',
+        `const fs = require('node:fs');
+        const files = process.argv.slice(1);
+        fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(files) + '\\n');
+        for (const file of files) fs.writeFileSync(file, ${JSON.stringify(FORMATTED)});
+        console.log('formatter chatter');
+        process.exit(${code});`,
+      ]);
+    const after = (command: string, extra = '') =>
+      `[[quickfix.after]]\ncommand = ${command}\n${extra}`;
+    const logFile = () => join(tempDir(), 'fixer.log');
+    const ran = (log: string) => (existsSync(log) ? readFileSync(log, 'utf8') : '');
+
+    it('runs approved commands after the agent, and commits their output', () => {
+      const log = logFile();
+      const repoToml = after(formatter(log), 'files = ["**/*.ts"]\n');
+      const { status, stdout, stderr, git, cwd } = inRepo(writes(FIXED), {
+        repoToml,
+        trust: true,
+        flags: ['--json'],
+      });
+      expect(status).toBe(0);
+      expect(JSON.parse(ran(log))).toEqual(['./a.ts']);
+      expect(readFileSync(join(cwd, 'a.ts'), 'utf8')).toBe(FORMATTED);
+      const [file] = JSON.parse(stdout).files;
+      expect(file.fixers).toEqual([{ command: JSON.parse(formatter(log)), code: 0 }]);
+      expect(file.retried).toBe(false);
+      expect(file.diffs[0].patch).toContain('+export const f = 1; // formatted');
+      expect(file.after).toBe(100);
+      expect(stderr).toContain('formatter chatter');
+      expect(git('show', 'HEAD:a.ts')).toBe(FORMATTED.trim());
+      expect(git('log', '-1', '--format=%B')).toMatch(/^Then ran: .+ -e .+\.$/m);
+      expect(git('status', '--porcelain')).toBe('');
+    });
+
+    it('skips commands from jevlint.toml that are not approved, even with --yes', () => {
+      const log = logFile();
+      const { status, stderr, cwd } = inRepo(writes(FIXED), { repoToml: after(formatter(log)) });
+      expect(status).toBe(0);
+      expect(ran(log)).toBe('');
+      expect(readFileSync(join(cwd, 'a.ts'), 'utf8')).toBe(FIXED);
+      expect(stderr).toContain('jevlint.toml asks to run these commands');
+      expect(stderr).toContain('--yes does not approve them. To approve, run: jevlint trust');
+    });
+
+    it('asks again when a command changes', () => {
+      const log = logFile();
+      const { status, stderr, run, cwd, git } = inRepo(writes(FIXED), {
+        repoToml: after(formatter(log)),
+        trust: true,
+        flags: ['--allow-dirty', '--no-commit'],
+      });
+      expect(status).toBe(0);
+      expect(stderr).not.toContain('asks to run');
+      const changed = formatter(log).replace('process.exit(0)', 'process.exit(0) ');
+      writeFileSync(join(cwd, 'jevlint.toml'), after(changed));
+      git('checkout', 'a.ts');
+      expect(run().stderr).toContain('Skipping them, because you have not approved them');
+    });
+
+    it('skips approved commands once the agent changes a file they run', () => {
+      const tool = 'require("node:fs").writeFileSync(process.argv[2], "// tool ran\\n");\n';
+      const agent = `require('node:fs').writeFileSync('a.ts', ${JSON.stringify(FIXED)});
+        require('node:fs').appendFileSync('tool.js', '// changed\\n');`;
+      const { status, stderr, cwd } = inRepo(agent, {
+        repoToml: after(JSON.stringify([process.execPath, 'tool.js'])),
+        files: { 'tool.js': tool },
+        trust: true,
+        flags: ['--no-commit'],
+      });
+      expect(status).toBe(0);
+      expect(readFileSync(join(cwd, 'a.ts'), 'utf8')).toBe(FIXED);
+      expect(stderr).toContain('a file they read changed during the run');
+    });
+
+    it('tells apart the files only a command changed, in JSON and the commit', () => {
+      const command = JSON.stringify([
+        process.execPath,
+        '-e',
+        'require("node:fs").writeFileSync("other.ts", "export const g = 2;\\n")',
+      ]);
+      const { status, stdout, stderr, git } = inRepo(writes(FIXED), {
+        userToml: after(command),
+        flags: ['--json'],
+      });
+      expect(status).toBe(0);
+      expect(JSON.parse(stdout).files[0].fixerOnly).toEqual(['other.ts']);
+      expect(stderr).toContain('also changed files it did not edit: other.ts');
+      const message = git('log', '-1', '--format=%B');
+      expect(message).toContain('stub edited 1 file: a.ts.');
+      expect(message).toContain('They also changed 1 file the agent did not edit: other.ts.');
+    });
+
+    it('runs commands from the user config without approval', () => {
+      const log = logFile();
+      const { status, cwd } = inRepo(writes(FIXED), { userToml: after(formatter(log)) });
+      expect(status).toBe(0);
+      expect(readFileSync(join(cwd, 'a.ts'), 'utf8')).toBe(FORMATTED);
+    });
+
+    it('keeps the run going when a command fails', () => {
+      const log = logFile();
+      const { status, stdout, stderr } = inRepo(writes(FIXED), {
+        userToml: after(formatter(log, 5)),
+        flags: ['--json'],
+      });
+      expect(status).toBe(0);
+      expect(JSON.parse(stdout).files[0].fixers[0].code).toBe(5);
+      expect(stderr).toMatch(/Warning: .+ exited with code 5\./);
+    });
+
+    it('does not run a command that matches no changed file', () => {
+      const log = logFile();
+      const userToml = after(formatter(log), 'files = ["*.py"]\n');
+      const { status, stdout } = inRepo(writes(FIXED), { userToml, flags: ['--json'] });
+      expect(status).toBe(0);
+      expect(ran(log)).toBe('');
+      expect(JSON.parse(stdout).files[0].fixers).toEqual([]);
+    });
+
+    describe('retry', () => {
+      /** Fails, printing a message, until every file it is given holds the marker. */
+      const check = JSON.stringify([
+        process.execPath,
+        '-e',
+        `const fs = require('node:fs');
+        const bad = process.argv.slice(1).filter((f) => !fs.readFileSync(f, 'utf8').includes('// ok'));
+        for (const f of bad) console.log(f + ': missing marker');
+        process.exit(bad.length ? 1 : 0);`,
+      ]);
+      /** An agent that fixes on its first run, logs each prompt, and on a retry adds `marker`. */
+      const agent = (prompts: string, marker: string, retryCode = 0) => `
+        const fs = require('node:fs');
+        const prompt = fs.readFileSync(0, 'utf8');
+        fs.appendFileSync(${JSON.stringify(prompts)}, prompt + '\\n=====\\n');
+        if (prompt.startsWith('# Fix the remaining errors')) {
+          fs.appendFileSync('a.ts', ${JSON.stringify(marker)});
+          process.exit(${retryCode});
+        }
+        fs.writeFileSync('a.ts', ${JSON.stringify(FIXED)});`;
+      const promptsFile = () => join(tempDir(), 'prompts.log');
+      const prompts = (file: string) => readFileSync(file, 'utf8').split('\n=====\n').slice(0, -1);
+
+      it('gives the agent one more run with the output, and commits its second edit', () => {
+        const file = promptsFile();
+        const { status, stdout, git } = inRepo(agent(file, '// ok\n'), {
+          userToml: after(check, 'retry = true\n'),
+          flags: ['--json'],
+        });
+        expect(status).toBe(0);
+        const [first, second] = prompts(file);
+        expect(prompts(file)).toHaveLength(2);
+        expect(first).toContain('# Refactor for cleanliness');
+        expect(second).toContain('./a.ts: missing marker');
+        const [result] = JSON.parse(stdout).files;
+        expect(result.retried).toBe(true);
+        expect(result.fixers[0].code).toBe(0);
+        expect(git('show', 'HEAD:a.ts')).toBe(`${FIXED}// ok`);
+        expect(git('log', '-1', '--format=%B')).toContain('Retried once for: ');
+        expect(git('log', '-1', '--format=%B')).not.toContain('still fails');
+      });
+
+      it('names only the failing checks as the reason for the retry', () => {
+        const file = promptsFile();
+        const passing = JSON.stringify([process.execPath, '-e', 'process.exit(0)']);
+        const { status, git } = inRepo(agent(file, '// ok\n'), {
+          userToml: `${after(check, 'retry = true\n')}\n${after(passing, 'retry = true\n')}`,
+        });
+        expect(status).toBe(0);
+        const retried = git('log', '-1', '--format=%B')
+          .split('\n')
+          .find((line) => line.startsWith('Retried once for: '));
+        expect(retried).toContain('missing marker');
+        expect(retried).not.toContain('process.exit(0)');
+      });
+
+      it('retries once at most, then says the check still fails', () => {
+        const file = promptsFile();
+        const { status, stdout, stderr, git } = inRepo(agent(file, '// nope\n'), {
+          userToml: after(check, 'retry = true\n'),
+          flags: ['--json'],
+        });
+        expect(status).toBe(0);
+        expect(prompts(file)).toHaveLength(2);
+        const [result] = JSON.parse(stdout).files;
+        expect(result.retried).toBe(true);
+        expect(result.fixers[0].code).toBe(1);
+        expect(stderr).toContain('still fails after one retry');
+        expect(git('log', '-1', '--format=%B')).toMatch(/ -e .+ still fails\.$/m);
+      });
+
+      it('never retries without retry = true', () => {
+        const file = promptsFile();
+        const { status, stdout } = inRepo(agent(file, '// ok\n'), {
+          userToml: after(check),
+          flags: ['--json'],
+        });
+        expect(status).toBe(0);
+        expect(prompts(file)).toHaveLength(1);
+        expect(JSON.parse(stdout).files[0].retried).toBe(false);
+      });
+
+      it('stops like a failed first run when the retry fails', () => {
+        const file = promptsFile();
+        const { status, stdout, stderr, git } = inRepo(agent(file, '// ok\n', 6), {
+          userToml: after(check, 'retry = true\n'),
+        });
+        expect(status).toBe(2);
+        expect(stdout).toContain('+// ok');
+        expect(stderr).toContain(
+          'Agent exited with code 6 on a.ts. It failed on its retry. Its changes so far are shown.',
+        );
+        expect(git('rev-list', '--count', 'HEAD')).toBe('1');
+      });
+    });
+  });
+});
+
+describe('the working tree check', () => {
+  const run = (cwd: string) => {
+    const home = tempDir();
+    mkdirSync(join(home, 'jevlint'));
+    writeFileSync(join(home, 'jevlint/config.toml'), '[agents.stub]\ncommand = ["true"]\n');
+    return jevlintAt(home, cwd, 'fix', '--agent', 'stub', '--yes');
+  };
+  const repo = (files: Record<string, string>) => {
+    const cwd = project(files);
+    const git = (...args: string[]) => spawnSync('git', args, { cwd, encoding: 'utf8' });
+    git('init', '-q');
+    git('add', '.');
+    git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'first');
+    return cwd;
+  };
+
+  it("says a directory outside git needs a repository, in git's words", () => {
+    const { status, stderr } = run(project({ 'a.ts': MESSY }));
+    expect(status).toBe(2);
+    expect(stderr).toMatch(
+      /jevlint fix needs a git repository: not a git repository.*\. Pass --allow-dirty to run anyway\./,
+    );
+    expect(stderr).not.toContain('not clean');
+  });
+
+  it('names the uncommitted files', () => {
+    const cwd = repo({ 'a.ts': MESSY });
+    writeFileSync(join(cwd, 'a.ts'), `${MESSY}// mine\n`);
+    writeFileSync(join(cwd, 'b.ts'), '');
+    const { status, stderr } = run(cwd);
+    expect(status).toBe(2);
+    expect(stderr).toContain(
+      'The git working tree has uncommitted changes: a.ts, b.ts. Commit or stash them, or pass --allow-dirty.',
+    );
+  });
+
+  it('ignores changes outside the project root', () => {
+    const cwd = repo({ 'pkg/a.ts': MESSY, 'pkg/jevlint.toml': '', 'other.txt': 'y\n' });
+    writeFileSync(join(cwd, 'other.txt'), 'z\n');
+    const { status, stderr } = run(join(cwd, 'pkg'));
+    expect(stderr).not.toContain('uncommitted');
+    expect(status).toBe(0);
+  });
+});
+
+describe('trust', () => {
+  const setup = (toml: string) => {
+    const home = tempDir();
+    const cwd = project({ 'jevlint.toml': toml });
+    return { trust: (...args: string[]) => jevlintAt(home, cwd, 'trust', ...args) };
+  };
+
+  it('needs --yes outside a terminal, then approves and revokes', () => {
+    const { trust } = setup('[[quickfix.after]]\ncommand = ["fmt"]\n');
+    expect(trust().status).toBe(2);
+    expect(trust().stderr).toContain('Pass --yes to approve outside a terminal.');
+    const approved = trust('--yes');
+    expect(approved.status).toBe(0);
+    expect(approved.stderr).toContain('  fmt');
+    expect(trust().stderr).toContain('already approved');
+    expect(trust('--revoke').stderr).toContain('No longer trusting');
+  });
+
+  it('says when there is nothing to approve', () => {
+    expect(setup('').trust('--yes').stderr).toContain('No quickfix.after commands');
   });
 });
 

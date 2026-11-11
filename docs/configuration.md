@@ -89,6 +89,11 @@ command = ["codex", "exec", "--sandbox", "workspace-write", "-"]
 quickfix_command = ["codex", "exec", "--sandbox", "workspace-write", "-c", 'model_reasoning_effort="low"', "-"]
 key_env = ["OPENAI_API_KEY", "CODEX_API_KEY"]
 
+[[quickfix.after]]      # none by default. From jevlint.toml, they run only once approved
+command = ["pnpm", "biome", "check", "--write"]
+files = ["**/*.ts", "**/*.tsx"]   # default: every changed file
+# retry = true          # when it still fails, give the agent one more run with its output
+
 [cache]                 # user config only
 dir = "~/.cache/jevlint"
 # remote = "s3://my-bucket/jevlint"     # share the cache through object storage
@@ -142,6 +147,46 @@ threshold = 0                          # a violation or contradiction counts onl
 `docs` is not limited by `include` or by source extensions, but `.gitignore`, `exclude` and the
 always-excluded files below still apply.
 
+## Quickfix after
+
+`[[quickfix.after]]` names commands [`jevlint quickfix`](cli.md#formatters-and-checks-after-the-agent)
+runs after the agent succeeds, in order, from the project root, such as the project's formatter
+and lint fixer. Each gets the changed files that still exist appended as arguments, each starting
+with `./`, so the whole team can share them in `jevlint.toml`:
+
+```toml
+[[quickfix.after]]
+command = ["pnpm", "biome", "check", "--write"]
+files = ["**/*.ts", "**/*.tsx"]
+
+[[quickfix.after]]
+command = ["ruff", "check", "--fix"]
+files = ["**/*.py"]
+retry = true
+```
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `command` | string[] | The program and its arguments. It runs without a shell, so quotes, `;` and `$(...)` mean nothing special |
+| `files` | string[] | Gitignore-style patterns a changed file must match to be passed. Default: every changed file. With no match, the command does not run |
+| `retry` | boolean | When the command exits non-zero, give the agent one more run with its output, to fix only those errors. Default `false`. It doubles the agent's cost for that file |
+| `timeout` | number | Seconds the command may run before it is stopped and counted as failed, with exit code 124. Default `300`. A stopped command never triggers `retry` |
+
+Commands in your user config run without asking, like `agents`. Commands in a repository's
+`jevlint.toml` run only after you approve them, with a prompt in `quickfix` or with
+[`jevlint trust`](cli.md#jevlint-trust). The approval covers that project root, that exact list, the repository's history (its root
+commits), and the content of the files the commands read to decide what they run: any argument
+that names a file in the repository, such as `scripts/fix.sh`, and each program's own files, such
+as `package.json` and the lockfile for `pnpm`, `Cargo.toml` for `cargo`, or `eslint.config.js` for
+`eslint`. A change to any of these asks again, and `quickfix` checks again before each round of
+commands, so an agent that edits one of them stops them. Tools already installed, such as
+`node_modules`, are not covered, so approve only repositories whose dependencies you trust. A `jevlint.toml` list replaces the
+user config's, as arrays do.
+
+A command may change files the agent did not edit, as a project-wide formatter does. Those files are
+in the diff and the commit too, and the commit message and `--json` list them apart from the
+agent's.
+
 ## Files that are always excluded
 
 jevlint reads source code only. A file must have a known source extension, such as `.ts`, `.py`,
@@ -168,6 +213,9 @@ These keys work only in your user config. In `jevlint.toml` they are a config er
 | `agents` | A cloned repository could run arbitrary commands through `fix` or `quickfix` |
 | `cache` | `cache clear` deletes this directory, and a bucket's answers set your scores |
 | `max_rule_matches` | It caps what a repository's [rules](presets.md#semantic-rules) can spend of your money |
+
+`quickfix.after` names commands too, but a repository may set it, because its commands run only
+after you approve them. See [Quickfix after](#quickfix-after).
 
 API keys never belong in either config file. See [Providers](providers.md#storing-keys).
 

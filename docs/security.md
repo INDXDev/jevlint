@@ -136,9 +136,26 @@ Some risks remain:
   repository prove nothing either.
 - `jevlint fix` and `jevlint quickfix` run an agent over repository content that could carry prompt
   injection. Only use them on code you trust, and review every diff. Their clean-tree check runs
-  `git status`, and `quickfix` finds changed files with `git ls-files`, both of which can run programs
+  `git status` on the project root, and `quickfix` finds changed files with `git ls-files`, both of which can run programs
   a repository's `.git/config` names. `quickfix` makes the diff itself, so no diff or textconv
   program runs, and prints it without escape sequences. `--json` keeps the original text.
+- A repository's `jevlint.toml` can declare `quickfix.after` commands. `quickfix` lists them and runs
+  them only after you approve them for that root, in a prompt or with `jevlint trust`. `--yes` never
+  approves them. The approval also covers the repository's root commits, so another repository
+  cloned to the same path asks again, and the content of the files the commands read to decide
+  what they run: arguments that name repository files, and each known program's scripts, lockfiles
+  and code-loading config, such as `package.json` for `pnpm` or `eslint.config.js`. A change to any
+  of them asks again, and `quickfix` checks before each round of commands, so an agent cannot edit
+  them mid-run. Installed tools, such as `node_modules`, and programs jevlint does not know are not
+  covered, so this narrows the risk rather than closing it. Each command is stopped after its
+  `timeout`. Once approved they run as you,
+  with your environment, including API keys in it, so read them as you would a script. They run
+  without a shell, and each file name is passed as one argument starting with `./`, so a crafted
+  name cannot add a command or pass itself as an option. Their output is printed without escape
+  sequences. Your user config's `quickfix.after` runs without asking.
+- With `retry = true`, a failing command's output goes into the agent's prompt. It can carry
+  repository text, so the prompt fences it, labels it as data and keeps only its end, and the agent
+  is told to fix only those errors and never to suppress them.
 - `quickfix` commits each run with `git add` and `git commit`, which run your hooks and signing
   program as your git config names them. The commit takes only the files the run changed, and the
   message keeps each repository path on one line. Pass `--no-commit` to leave committing to you.

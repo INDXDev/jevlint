@@ -65,7 +65,7 @@ Dependencies point downward only. A module never imports from a layer above it.
 | Interface | `cli.ts`, `commands/`, `report.ts`, `formats.ts`, `prompt.ts`, `agent.ts`, `diff.ts`, `diff-view.ts`, `architecture/terminal.ts`, `architecture/html.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
 | Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `fixtures.ts`, `architecture/review.ts`, `spec/check.ts`, `spec/drift.ts` | Everything below |
 | Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts`, `spec/questions.ts` | Infrastructure, contracts |
-| Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `node-version.ts`, `spec/load.ts` | Contracts |
+| Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `fixers.ts`, `trust.ts`, `node-version.ts`, `spec/load.ts` | Contracts |
 | Contracts | `types.ts` | Nothing |
 
 Modules in the same layer may import each other, as `ast/analyze.ts` does with `scoring.ts`.
@@ -120,6 +120,8 @@ Three rules keep these layers clean:
 | `src/intent.ts` | Builds one state from a change's message, base-commit instructions and diff, and asks `change-intent` |
 | `src/fixtures.ts` | Reads `.jevlint/fixtures`, asks each fixture its question, and writes or compares `calibration.json` |
 | `src/git.ts` | Churn, working-tree status, and reading changes, diffs, commits and pull requests |
+| `src/fixers.ts` | Runs the `quickfix.after` commands on the files they match, without a shell and with a timeout |
+| `src/trust.ts` | Records which repositories' `quickfix.after` commands the user approved, in the user's config directory |
 | `src/node-version.ts` | Decides whether this Node.js has the required security fixes |
 | `src/spec/load.ts` | Reads and validates the spec YAML in `spec.dir` |
 | `src/spec/questions.ts` | Builds the routing, item and coverage questions, as pure data |
@@ -130,8 +132,8 @@ Three rules keep these layers clean:
 | `src/rules.ts` | Judges each semantic rule match with one boolean question, and adds hits to the AST findings |
 | `src/report.ts` | Formats reports for the terminal |
 | `src/formats.ts` | Renders findings as SARIF and GitHub workflow commands |
-| `src/prompt.ts` | Renders fix prompts |
-| `src/agent.ts` | Resolves and runs an agent, collects what it changed, and re-scores the files |
+| `src/prompt.ts` | Renders fix prompts, and the quick fix's retry prompt with a failing check's output |
+| `src/agent.ts` | Resolves and runs an agent, then the project's `quickfix.after` commands and the one retry, collects what they changed, and re-scores the files |
 | `src/diff.ts` | Turns contents before and after into git-style patches |
 | `src/diff-view.ts` | Draws patches for a terminal, unified or side by side, with changed words highlighted, and the summary with scores |
 | `src/types.ts` | Contracts shared between modules |

@@ -2,3 +2,7 @@ exclude = ["examples/**", "test/**"]
 
 [spec]
 threshold = 0.8
+
+[[quickfix.after]]
+command = ["pnpm", "biome", "check", "--write", "--no-errors-on-unmatched"]
+files = ["**/*.ts"]
