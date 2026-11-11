@@ -12,6 +12,6 @@ key_files:
   - { path: src/spec/drift.ts, role: "driftSpec over documents" }
   - { path: src/spec/questions.ts, role: "routing, item and coverage questions as data" }
 interface: [checkSpec, driftSpec, startRun, eachPath, ask, verdicts, usageOf]
-depends_on: [audit, configuration, decision, scoring, repository-access, ssot-loading, contracts]
+depends_on: [configuration, decision, scoring, repository-access, ssot-loading, contracts]
 uses: [p_limit]
 status: current

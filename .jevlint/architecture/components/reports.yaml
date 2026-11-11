@@ -22,5 +22,5 @@ interface:
     formatDiffs,
   ]
 depends_on: [audit, agent-handoff, preset-fixtures, scoring, contracts]
-uses: [picocolors]
+uses: [diff, picocolors]
 status: current
