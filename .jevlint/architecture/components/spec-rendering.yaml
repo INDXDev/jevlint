@@ -1,0 +1,15 @@
+id: spec-rendering
+title: Spec rendering
+summary: >
+  Formats spec check and drift reports for the terminal, and renders the prompts that ask a coding
+  agent to compile the spec or fix what a check found.
+layer: interface
+paths: [src/spec/prompt.ts, src/spec/terminal.ts]
+key_files:
+  - { path: src/spec/terminal.ts, role: "spec list, check and drift output" }
+  - { path: src/spec/prompt.ts, role: "compile, check and drift prompts" }
+interface:
+  [formatSpecCheck, formatSpecDrift, formatSpecList, renderCompilePrompt, renderCheckPrompt]
+depends_on: [reports, ssot-loading, contracts]
+uses: [picocolors]
+status: current

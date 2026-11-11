@@ -1,0 +1,23 @@
+id: configuration
+title: Configuration and keys
+summary: >
+  Loads defaults, the user's config, the repository's jevlint.toml and flags into one Config, refusing
+  user-only keys from a repository, and reads and writes API keys. Also owns UserError and
+  writeFileAtomic. credentials.ts is always excluded from the facts, so it is mapped here by hand.
+layer: infrastructure
+paths: [src/config.ts, src/credentials.ts]
+key_files:
+  - {
+      path: src/config.ts,
+      role: "schema, layered loading, USER_ONLY_KEYS, UserError, writeFileAtomic",
+    }
+  - { path: src/credentials.ts, role: "credentials.toml and environment keys" }
+interface:
+  [Config, loadConfig, UserError, writeFileAtomic, readRegularFile, ifExists, parseWith, paths]
+depends_on: [contracts]
+uses: [smol_toml, zod]
+rules: []
+checklist:
+  - id: user-only-keys
+    text: "A setting that names an endpoint, a command or a path on the user's machine is in USER_ONLY_KEYS, except quickfix.after, which src/trust.ts gates."
+status: current

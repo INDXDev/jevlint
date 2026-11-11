@@ -1,9 +1,25 @@
 id: contracts
 title: Contracts
 summary: >
-  Every shared type: reports, findings, facts and the SSOT. It imports nothing.
+  The types modules share: questions, presets, reports, facts, the SSOT and violations. Report shapes
+  are public, as docs/json-output.md documents them.
 layer: contracts
-paths: ["src/types.ts"]
+paths: [src/types.ts]
 key_files:
-  - { path: src/types.ts, role: "every report and data type" }
+  - { path: src/types.ts, role: "every shared type" }
+interface:
+  [
+    AuditReport,
+    FileReport,
+    ModelAnswer,
+    ChangeReview,
+    ArchitectureSsot,
+    ArchitectureViolation,
+    ArchitectureFacts,
+    Spec,
+    Question,
+    Preset,
+  ]
 depends_on: []
+uses: []
+status: current

@@ -1,0 +1,12 @@
+id: pr-review
+title: Review a pull request or commits
+trigger: "jevlint pr [number], jevlint commits, jevlint hook --staged"
+steps:
+  - { from: cli, to: commands, verb: "dispatches pr" }
+  - { from: commands, to: repository-access, verb: "finds the change", returns: Change }
+  - { from: commands, to: change-review, verb: "reviews the change", returns: ChangeReview }
+  - { from: change-review, to: repository-access, verb: "reads both sides" }
+  - { from: change-review, to: audit, verb: "audits each snapshot" }
+  - { from: change-review, to: decision, verb: "judges intent", optional: true }
+  - { from: commands, to: architecture-verbs, verb: "adds SSOT violations", optional: true }
+  - { from: commands, to: reports, verb: "formats what got worse" }

@@ -1,0 +1,49 @@
+id: architecture-verbs
+title: Architecture verbs
+summary: >
+  Runs each `jevlint architecture` verb: review, compile, show, check, drift and plan. collect.ts reads
+  the working tree or a commit into resolved outlines, cached by content hash, and the facts every verb
+  starts from.
+layer: pipeline
+paths:
+  - src/architecture/collect.ts
+  - src/architecture/review.ts
+  - src/architecture/check.ts
+  - src/architecture/drift.ts
+  - src/architecture/compile.ts
+  - src/architecture/plan.ts
+  - src/architecture/show.ts
+key_files:
+  - { path: src/architecture/collect.ts, role: "outlines, the outline cache and buildFacts" }
+  - { path: src/architecture/check.ts, role: "structural rules, checklists, --diff and --new" }
+  - { path: src/architecture/drift.ts, role: "static drift, stale summaries and --docs" }
+  - { path: src/architecture/compile.ts, role: "the input of the compile prompt" }
+  - { path: src/architecture/review.ts, role: "the per-perspective model review" }
+interface:
+  [
+    collect,
+    checkArchitecture,
+    changeViolations,
+    violationsOf,
+    driftArchitecture,
+    prepareCompile,
+    planArchitecture,
+    showArchitecture,
+    reviewArchitecture,
+  ]
+depends_on:
+  - change-review
+  - code-facts
+  - ssot-conformance
+  - ssot-loading
+  - spec-checks
+  - decision
+  - decision-cache
+  - presets
+  - scoring
+  - repository-access
+  - configuration
+  - ast-metrics
+  - contracts
+uses: [ast_grep_napi, p_limit]
+status: current

@@ -1,0 +1,37 @@
+id: code-facts
+title: Code facts
+summary: >
+  Static analysis with no network: extracts each file's imports, names, classes and comments,
+  resolves imports through tsconfig paths and workspaces, and builds the module graphs, component
+  candidates, layers, externals, entry points and flows. Pure apart from workspace.ts.
+layer: engines
+paths:
+  - src/architecture/extract.ts
+  - src/architecture/resolve.ts
+  - src/architecture/workspace.ts
+  - src/architecture/graph.ts
+  - src/architecture/structure.ts
+  - src/architecture/outline.ts
+  - src/architecture/facts.ts
+  - src/architecture/externals.ts
+  - src/architecture/entrypoints.ts
+key_files:
+  - { path: src/architecture/facts.ts, role: "buildFacts: candidates, layers, flows, co-changes" }
+  - { path: src/architecture/extract.ts, role: "a file's outline from its AST" }
+  - { path: src/architecture/resolve.ts, role: "specifiers to paths or package names" }
+  - { path: src/architecture/graph.ts, role: "Tarjan, layers, PageRank, communities" }
+  - { path: src/architecture/externals.ts, role: "the table of known external systems" }
+interface:
+  [
+    buildFacts,
+    extractModule,
+    resolveImport,
+    buildStructure,
+    subjectsOf,
+    classifyPackage,
+    matchesPackage,
+    layersOf,
+  ]
+depends_on: [ast-metrics, configuration, presets, contracts]
+uses: [ast_grep_napi, tinyglobby, yaml]
+status: current

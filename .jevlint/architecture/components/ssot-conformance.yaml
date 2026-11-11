@@ -1,0 +1,32 @@
+id: ssot-conformance
+title: SSOT conformance
+summary: >
+  Compares code with the SSOT as pure functions: assigns files to components, decides structural
+  rules, finds static drift, checks view arrows and chapter evidence, drafts an SSOT from facts, and
+  holds the architecture questions as data.
+layer: engines
+paths:
+  - src/architecture/conformance.ts
+  - src/architecture/views.ts
+  - src/architecture/questions.ts
+  - src/architecture/draft.ts
+key_files:
+  - { path: src/architecture/conformance.ts, role: "assign, conformance, staticDrift, mapEdges" }
+  - { path: src/architecture/views.ts, role: "checkEdges and chapter evidence" }
+  - { path: src/architecture/questions.ts, role: "check, drift and review questions and outlines" }
+  - { path: src/architecture/draft.ts, role: "draftSsot from the facts" }
+interface:
+  [
+    assign,
+    conformance,
+    staticDrift,
+    addedViolations,
+    mapEdges,
+    checkEdges,
+    documentDrift,
+    draftSsot,
+    ARCHITECTURE_PRESETS,
+  ]
+depends_on: [code-facts, decision, contracts]
+uses: [yaml]
+status: current

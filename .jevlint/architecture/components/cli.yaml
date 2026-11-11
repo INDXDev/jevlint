@@ -1,29 +1,14 @@
 id: cli
-title: Command line
+title: CLI entry point
 summary: >
-  Declares every command, parses flags and maps errors to exit codes. Each command is a thin file
-  that calls a pipeline and prints its report.
+  The `jevlint` binary. It refuses an unpatched Node, routes a bare path or flag to `audit`, rejects
+  unknown flags, and maps errors to exit codes: a UserError prints plainly, anything else as a bug.
 layer: interface
-paths: ["src/cli.ts", "src/commands/**"]
+paths: [src/cli.ts, src/node-version.ts]
 key_files:
-  - { path: src/cli.ts, role: "routing, unknown flags and exit codes" }
-  - { path: src/commands/shared.ts, role: "flag parsing and the audit flow commands share" }
-  - { path: src/commands/architecture.ts, role: "the architecture subcommands" }
-interface: [architectureCommand, specCommand, auditCommand]
-depends_on:
-  [
-    output,
-    agents,
-    architecture-views,
-    spec-views,
-    audit,
-    architecture-pipeline,
-    spec-pipeline,
-    architecture-engines,
-    decision,
-    config,
-    cache,
-    git,
-    ssot-loading,
-    contracts,
-  ]
+  - { path: src/cli.ts, role: "command table, default routing and reportError" }
+  - { path: src/node-version.ts, role: "the patched Node release per line" }
+interface: []
+depends_on: [commands, configuration, reports]
+uses: [citty, picocolors]
+status: current

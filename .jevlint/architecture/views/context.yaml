@@ -1,0 +1,36 @@
+id: context
+title: What is around jevlint
+description: jevlint runs on the user's machine against a repository it does not trust; only the model provider, GitHub, an optional bucket and a coding agent sit outside it.
+nodes:
+  - { id: developer, label: Developer, kind: actor }
+  - { id: ci, label: CI job, kind: actor }
+  - { id: claude-code, label: Claude Code hook, kind: actor }
+  - { id: library-user, label: Library caller, kind: actor }
+  - { id: cli, label: jevlint CLI, kind: component, component: cli }
+  - { id: commands, label: Commands, kind: component, component: commands }
+  - { id: library, label: Library API, kind: component, component: library-api }
+  - { id: repo-access, label: Repository access, kind: component, component: repository-access }
+  - { id: repository, label: Audited repository, kind: store }
+  - { id: user-config, label: User config and keys, kind: store, component: configuration }
+  - { id: cache, label: Decision cache, kind: store, component: decision-cache }
+  - { id: provider, label: Decision model provider, kind: external, packages: ["ai", "@ai-sdk/*"] }
+  - { id: git, label: git and gh, kind: external, packages: ["node:child_process"] }
+  - { id: github, label: GitHub, kind: external }
+  - { id: bucket, label: S3-compatible bucket, kind: external }
+  - { id: agent, label: Coding agent CLI, kind: external }
+edges:
+  - { from: developer, to: cli, verb: runs commands }
+  - { from: ci, to: cli, verb: gates changes }
+  - { from: claude-code, to: cli, verb: runs hook }
+  - { from: library-user, to: library, verb: calls audit }
+  - { from: cli, to: commands, verb: dispatches }
+  - { from: commands, to: user-config, verb: loads config }
+  - { from: commands, to: repo-access, verb: discovers files }
+  - { from: repo-access, to: repository, verb: reads files, style: dashed }
+  - { from: repo-access, to: git, verb: runs git }
+  - { from: git, to: github, verb: fetches PRs, style: dashed }
+  - { from: commands, to: cache, verb: inspects cache }
+  - { from: cache, to: bucket, verb: syncs answers, style: dashed }
+  - { from: commands, to: provider, verb: asks questions, style: dashed }
+  - { from: library, to: provider, verb: asks questions, style: dashed }
+  - { from: commands, to: agent, verb: starts agent, style: dashed }

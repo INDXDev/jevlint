@@ -1,12 +1,28 @@
 id: scoring
-title: Scoring
+title: Scoring and pins
 summary: >
-  Pure functions from the scoring formulas: AST scores, model scores, file and repository scores.
+  Pure functions from docs/scoring.md that turn AST findings and raw answers into file and repository
+  scores and a refactor-first priority, plus the parser of `jevlint-score` pins, which it strips
+  before a model sees the code.
 layer: engines
-paths: ["src/scoring.ts"]
+paths: [src/scoring.ts, src/directives.ts]
 key_files:
-  - { path: src/scoring.ts, role: "every formula in docs/scoring.md" }
-interface: [fileScore, repoScore, scaleScore, modelResult]
-depends_on: [config, contracts]
+  - { path: src/scoring.ts, role: "fileScore, modelResult, rank, repoScore" }
+  - { path: src/directives.ts, role: "parseDirectives for jevlint-score comments" }
+interface:
+  [
+    fileScore,
+    modelResult,
+    rank,
+    repoScore,
+    scaleScore,
+    astScoreFrom,
+    WEAK_COMPLIANCE,
+    parseDirectives,
+  ]
+depends_on: [configuration, contracts]
+uses: []
 rules:
   - { id: pure, kind: forbid, packages: ["node:*"] }
+checklist: []
+status: current

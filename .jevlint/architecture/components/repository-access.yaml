@@ -1,0 +1,30 @@
+id: repository-access
+title: Repository access
+summary: >
+  Decides which files jevlint may read (gitignore, exclusions, no symlinks out of the root) and reads
+  git and GitHub: churn, status, changes, diffs, blobs and pull requests. Every git call goes through
+  git(), which disables what a repository's config could execute.
+layer: infrastructure
+paths: [src/files.ts, src/git.ts]
+key_files:
+  - { path: src/files.ts, role: "discoverFiles, discoverDocs, excludedPaths" }
+  - { path: src/git.ts, role: "the git() helper and every git and gh read" }
+interface:
+  [
+    discoverFiles,
+    discoverDocs,
+    excludedPaths,
+    isOutsideRoot,
+    commitCounts,
+    changedFiles,
+    fileAt,
+    resolveCommit,
+    pullRequestChange,
+  ]
+depends_on: [configuration, contracts]
+uses: [ignore, tinyglobby, child_process]
+rules: []
+checklist:
+  - id: git-helper
+    text: "Git runs only through git() in src/git.ts, with plumbing where porcelain could run a repository-configured program, and a revision starting with - is refused."
+status: current

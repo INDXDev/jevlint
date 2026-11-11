@@ -1,0 +1,15 @@
+id: decision-cache
+title: Decision cache
+summary: >
+  Content-addressed JSON entries on disk, keyed by a SHA-256 of sorted JSON, with an optional
+  S3-compatible bucket behind them signed with SigV4 from node:crypto. Holds raw model answers and
+  architecture outlines.
+layer: infrastructure
+paths: [src/cache.ts, src/remote-cache.ts]
+key_files:
+  - { path: src/cache.ts, role: "cacheKey, readCache, writeCache" }
+  - { path: src/remote-cache.ts, role: "readThrough and writeThrough to a bucket" }
+interface: [cacheKey, readCache, writeCache, readThrough, writeThrough, cacheInfo, clearCache]
+depends_on: [configuration]
+uses: []
+status: current

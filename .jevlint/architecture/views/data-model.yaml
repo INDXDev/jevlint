@@ -1,0 +1,168 @@
+id: data-model
+kind: data
+title: Questions, answers, reports and the SSOT
+description: Presets ask questions; only raw answers are cached; scores and reports are computed after the cache.
+entities:
+  - id: preset
+    name: Preset
+    path: src/types.ts
+    description: A named set of questions, ast-grep patterns and semantic rules, loaded from TOML.
+    fields:
+      - { name: name, type: string }
+      - { name: used_by, type: PresetUse, note: "audit, architecture or intent" }
+      - { name: includes, type: "string[]" }
+      - { name: questions, type: "Question[]" }
+      - { name: rules, type: "AstRule[]" }
+  - id: question
+    name: Question
+    path: src/types.ts
+    description: One score or boolean question; its full id is preset.id.
+    fields:
+      - { name: id, type: string }
+      - { name: type, type: "'score' | 'boolean'" }
+      - { name: instructions, type: string }
+      - { name: weight, type: number }
+      - { name: fix, type: string, note: "guidance for coding agents" }
+  - id: raw-answer
+    name: RawAnswer
+    path: src/types.ts
+    description: What the decision cache stores per question, before any scoring.
+    fields:
+      - { name: value, type: number }
+      - { name: choice, type: string, note: "choice questions only" }
+  - id: pin
+    name: Pin
+    path: src/types.ts
+    description: A score a team fixed with a jevlint-score comment.
+    fields:
+      - { name: value, type: number }
+      - { name: reason, type: string }
+      - { name: line, type: number }
+  - id: audit-report
+    name: AuditReport
+    path: src/types.ts
+    description: The result of audit(), printed by audit and returned by the library.
+    fields:
+      - { name: score, type: number, note: "line-weighted, on the configured scale" }
+      - { name: files, type: "FileReport[]", note: "highest priority first" }
+      - { name: skipped, type: "string[]" }
+      - { name: usage, type: object, note: "tokens, cost, cache hits, model calls" }
+  - id: file-report
+    name: FileReport
+    path: src/types.ts
+    description: One file's score, priority, AST result and model result.
+    fields:
+      - { name: path, type: string }
+      - { name: score, type: number }
+      - { name: priority, type: number }
+      - { name: commits, type: number }
+      - { name: pin, type: Pin }
+      - { name: ast, type: "AstResult | null" }
+      - { name: model, type: "ModelResult | null" }
+  - id: ast-finding
+    name: AstFinding
+    path: src/types.ts
+    description: A metric over its limit, a pattern match or a semantic rule hit.
+    fields:
+      - { name: rule, type: string }
+      - { name: line, type: number }
+      - { name: value, type: number }
+      - { name: limit, type: number }
+      - { name: probability, type: number, note: "semantic rules only" }
+  - id: model-result
+    name: ModelResult
+    path: src/types.ts
+    description: A file's answers turned into compliance, per question and per preset.
+    fields:
+      - { name: score, type: number }
+      - { name: answers, type: "ModelAnswer[]" }
+      - { name: cached, type: boolean }
+      - { name: truncated, type: boolean }
+  - id: model-answer
+    name: ModelAnswer
+    path: src/types.ts
+    description: One question's compliance from 0 to 1, with its fix guidance.
+    fields:
+      - { name: id, type: string }
+      - { name: compliance, type: number }
+      - { name: weight, type: number }
+      - { name: pin, type: Pin }
+  - id: change-review
+    name: ChangeReview
+    path: src/types.ts
+    description: What pr, commits and hook report about one change.
+    fields:
+      - { name: base, type: "string | null" }
+      - { name: head, type: string }
+      - { name: files, type: "ChangedFile[]" }
+      - { name: intent, type: "ModelAnswer[]", note: "with --intent" }
+      - { name: architecture, type: "ArchitectureViolation[]", note: "with --architecture" }
+  - id: changed-file
+    name: ChangedFile
+    path: src/types.ts
+    description: How a change moved one file's score, and what it made worse.
+    fields:
+      - { name: path, type: string }
+      - { name: before, type: "number | null" }
+      - { name: after, type: number }
+      - { name: findings, type: "AstFinding[]" }
+      - { name: answers, type: "ModelAnswer[]" }
+  - id: ssot
+    name: ArchitectureSsot
+    path: src/types.ts
+    description: The loaded .jevlint/architecture/ directory.
+    fields:
+      - { name: dir, type: string }
+      - { name: index, type: ArchitectureIndex, note: "layers, externals, rules, checklist" }
+      - { name: components, type: "ArchitectureComponent[]" }
+      - { name: flows, type: "ArchitectureFlow[]" }
+      - { name: views, type: "ArchitectureView[]" }
+      - { name: chapters, type: "ArchitectureChapter[]" }
+  - id: component
+    name: ArchitectureComponent
+    path: src/types.ts
+    description: One component file of the SSOT.
+    fields:
+      - { name: id, type: string }
+      - { name: layer, type: string }
+      - { name: paths, type: "string[]" }
+      - { name: depends_on, type: "string[]", note: "an allowlist" }
+      - { name: uses, type: "string[]" }
+      - { name: status, type: "'current' | 'target'" }
+  - id: violation
+    name: ArchitectureViolation
+    path: src/types.ts
+    description: Code that breaks the SSOT, found from the AST with a file and line.
+    fields:
+      - { name: rule, type: ViolationRule }
+      - { name: ruleId, type: string }
+      - { name: component, type: "string | null" }
+      - { name: path, type: string }
+      - { name: line, type: number }
+      - { name: status, type: "'current' | 'target'" }
+  - id: facts
+    name: ArchitectureFacts
+    path: src/types.ts
+    description: What static analysis tells about a repository; the input of compile, show and plan.
+    fields:
+      - { name: commit, type: "string | null" }
+      - { name: components, type: "ComponentCandidate[]" }
+      - { name: dependencies, type: "ComponentDependency[]" }
+      - { name: externals, type: "ExternalUse[]" }
+      - { name: flows, type: "CandidateFlow[]" }
+      - { name: modules, type: "FactModule[]" }
+relations:
+  - { from: preset, to: question, cardinality: one-to-many, label: asks }
+  - { from: question, to: raw-answer, cardinality: one-to-many, label: is answered by }
+  - { from: audit-report, to: file-report, cardinality: one-to-many, label: ranks }
+  - { from: file-report, to: ast-finding, cardinality: one-to-many, label: has findings }
+  - { from: file-report, to: model-result, cardinality: one-to-one, label: has answers }
+  - { from: file-report, to: pin, cardinality: one-to-one, label: may be pinned }
+  - { from: model-result, to: model-answer, cardinality: one-to-many, label: scores }
+  - { from: model-answer, to: question, cardinality: many-to-one, label: answers }
+  - { from: change-review, to: changed-file, cardinality: one-to-many, label: compares }
+  - { from: changed-file, to: ast-finding, cardinality: one-to-many, label: made worse }
+  - { from: change-review, to: violation, cardinality: one-to-many, label: added }
+  - { from: ssot, to: component, cardinality: one-to-many, label: declares }
+  - { from: violation, to: component, cardinality: many-to-one, label: breaks }
+  - { from: facts, to: ssot, cardinality: one-to-one, label: drafts }

@@ -1,16 +1,30 @@
 id: decision
 title: Decision models
 summary: >
-  Sends questions to a decision model provider through the AI SDK and caches raw answers by
-  content. Every other part reaches models through here.
+  The only code that talks to a model: creates the configured provider through the AI SDK, asks one
+  state's questions through the cache, splits large sets for Cloudflare, and prices input tokens.
+  decideState is the general form that also takes choice questions.
 layer: engines
 paths: ["src/decision/**"]
 key_files:
   - { path: src/decision/decide.ts, role: "decideFile, decideState and the cache key" }
-  - { path: src/decision/providers.ts, role: "creates a model from config" }
-interface: [decideFile, decideState, createDecisionModel]
-depends_on: [config, cache, contracts]
+  - { path: src/decision/providers.ts, role: "createDecisionModel from config and keys" }
+  - { path: src/decision/pricing.ts, role: "estimateCostUsd" }
+interface:
+  [
+    decideFile,
+    decideState,
+    decisionRequest,
+    isDecisionCached,
+    requestsPerFile,
+    createDecisionModel,
+    configuredTarget,
+    estimateCostUsd,
+  ]
+depends_on: [configuration, decision-cache, contracts]
 uses: [ai_sdk]
+rules: []
 checklist:
   - id: cache-key
-    text: "A cache key covers provider, model, endpoint, questions and content."
+    text: "A decision cache key covers provider, model, endpoint, questions and content, and only raw answers are cached."
+status: current

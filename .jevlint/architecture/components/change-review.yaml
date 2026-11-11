@@ -1,0 +1,31 @@
+id: change-review
+title: Change review
+summary: >
+  Judges a change rather than a repository: audits its files on both sides in private snapshots read
+  with git plumbing, keeps what got worse, optionally asks change-intent about the message, and
+  records or compares a baseline. Also serves the agent and pre-commit hooks.
+layer: pipeline
+paths: [src/review.ts, src/intent.ts, src/baseline.ts, src/hook.ts]
+key_files:
+  - { path: src/review.ts, role: "reviewChange, auditAt snapshots and UNSAFE_PATH" }
+  - { path: src/intent.ts, role: "judgeIntent: message, instructions and diff in one request" }
+  - { path: src/baseline.ts, role: ".jevlint/baseline.json and what is new" }
+  - { path: src/hook.ts, role: "the edited path and the pre-commit hook" }
+interface:
+  [
+    reviewChange,
+    reviewFile,
+    madeWorse,
+    judgeIntent,
+    readBaseline,
+    writeBaseline,
+    newViolations,
+    editedPath,
+  ]
+depends_on: [audit, configuration, decision, presets, repository-access, scoring, contracts]
+uses: [zod]
+rules: []
+checklist:
+  - id: snapshot-safety
+    text: "A change's files are read with git plumbing into a private directory, never checked out; paths with .., .git or .gitignore are not written, and the caller's config judges them."
+status: current

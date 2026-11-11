@@ -1,9 +1,21 @@
 id: audit
 title: Audit a repository
-trigger: "jevlint audit"
+trigger: "jevlint audit (or jevlint with no command)"
 steps:
-  - { from: cli, to: audit, verb: "runs audit()" }
-  - { from: audit, to: ast, verb: "measures each file" }
-  - { from: audit, to: decision, verb: "asks each file's questions" }
+  - { from: cli, to: commands, verb: "dispatches audit" }
+  - { from: commands, to: configuration, verb: "loads layered config", returns: Config }
+  - { from: commands, to: audit, verb: "runs audit()", returns: AuditReport }
+  - { from: audit, to: presets, verb: "loads active questions" }
+  - { from: audit, to: repository-access, verb: "discovers files, reads churn" }
+  - { from: audit, to: ast-metrics, verb: "measures each file", returns: AstResult }
+  - { from: audit, to: scoring, verb: "strips pins" }
+  - {
+      from: audit,
+      to: decision,
+      verb: "asks preset questions",
+      returns: "raw answers",
+      optional: true,
+    }
+  - { from: decision, to: decision-cache, verb: "reads or writes answers", optional: true }
   - { from: audit, to: scoring, verb: "scores and ranks" }
-  - { from: cli, to: output, verb: "prints the report" }
+  - { from: commands, to: reports, verb: "formats table or SARIF" }

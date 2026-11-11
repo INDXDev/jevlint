@@ -1,0 +1,13 @@
+id: preset-fixtures
+title: Preset fixtures
+summary: >
+  `jevlint test`: asks each fixture in .jevlint/fixtures its one question, checks good and bad files
+  land on the right side, and writes or compares calibration.json to notice when a model moves.
+layer: pipeline
+paths: [src/fixtures.ts]
+key_files:
+  - { path: src/fixtures.ts, role: "testFixtures and the calibration record" }
+interface: [testFixtures, FixtureReport, FixtureResult, DEFAULT_DRIFT_LIMIT]
+depends_on: [ssot-conformance, audit, configuration, decision, scoring, presets, contracts]
+uses: [p_limit, zod]
+status: current

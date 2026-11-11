@@ -1,42 +1,68 @@
 version: 1
 name: jevlint
-compiled_at: 7527c37
+compiled_at: eaed90c
 description: >
-  A model-based linter CLI in TypeScript, published to npm with a library API. Commands stay thin:
-  they call pipelines, which call engines, which call infrastructure, and everything shares the
-  contracts in src/types.ts. Only src/decision/ talks to model providers, and only the interface
-  layer writes to the terminal.
+  A model-based linter CLI and library. It scores every file with AST metrics and a decision model,
+  ranks what to refactor first, reviews changes, and checks code against a spec and an architecture
+  SSOT. Commands stay thin; pipelines call engines, which call infrastructure. Only src/decision/
+  talks to model providers, and the repository being audited is treated as hostile.
 layers: [interface, pipeline, engines, infrastructure, contracts]
-ignore: ["tsdown.config.ts"]
+ignore: ["test/**", "examples/**", "tsdown.config.ts"]
 externals:
-  - id: ai_sdk
-    title: AI SDK
-    packages: ["ai", "ai/*", "@ai-sdk/*"]
-    summary: The experimental decision API, which must stay in one folder.
-  - id: ast_grep
-    title: ast-grep
-    packages: ["@ast-grep/napi", "@ast-grep/lang-*"]
+  - {
+      id: ai_sdk,
+      title: AI SDK,
+      packages: ["ai", "@ai-sdk/*"],
+      summary: "Decision model providers",
+    }
+  - { id: ast_grep_napi, title: ast-grep, packages: ["@ast-grep/napi"] }
+  - {
+      id: child_process,
+      title: Child processes,
+      packages: ["node:child_process"],
+      summary: "git, gh, agents, fixers and editors",
+    }
+  - { id: citty, title: citty, packages: [citty] }
+  - { id: clack_prompts, title: "@clack/prompts", packages: ["@clack/prompts"] }
+  - { id: clipboardy, title: clipboardy, packages: [clipboardy] }
+  - { id: diff, title: jsdiff, packages: [diff] }
+  - { id: ignore, title: ignore, packages: [ignore] }
+  - { id: p_limit, title: p-limit, packages: [p-limit] }
+  - { id: picocolors, title: picocolors, packages: [picocolors] }
+  - { id: smol_toml, title: smol-toml, packages: [smol-toml] }
+  - { id: tinyglobby, title: tinyglobby, packages: [tinyglobby] }
+  - { id: yaml, title: yaml, packages: [yaml] }
+  - { id: zod, title: zod, packages: [zod] }
 rules:
-  - id: layers-point-down
-    kind: layers
-  - id: no-component-cycles
-    kind: no-cycles
-  - id: ai-sdk-in-decision
-    kind: only
-    externals: [ai_sdk]
-    components: [decision]
-  - id: terminal-only-interface
-    kind: forbid-call
-    pattern: console.$M($$$)
-    except: [cli, output, agents, architecture-views, spec-views]
-  - id: no-stdout-writes-outside-interface
-    kind: forbid-call
-    pattern: process.$S.write($$$)
-    except: [cli, output, agents, architecture-views, spec-views]
+  - { id: layers-point-down, kind: layers }
+  - { id: no-component-cycles, kind: no-cycles }
+  - { id: ai-sdk-only-in-decision, kind: only, externals: [ai_sdk], components: [decision] }
+  - {
+      id: ast-grep-only-in-analysis,
+      kind: only,
+      externals: [ast_grep_napi],
+      components: [ast-metrics, code-facts, architecture-verbs],
+    }
+  - {
+      id: processes-in-few-places,
+      kind: only,
+      externals: [child_process],
+      components: [repository-access, agent-handoff, fixer-commands, commands],
+    }
+  - {
+      id: terminal-only-interface,
+      kind: forbid-call,
+      pattern: "console.$M($$$)",
+      except: [cli, commands],
+    }
 checklist:
   - id: user-error
-    text: "A problem the user can fix is thrown as UserError, and any other error is treated as a bug."
-  - id: plain-functions
-    text: "Code uses plain functions and data, and a class only for an error type."
-  - id: hostile-repository
-    text: "Repository text printed to the terminal goes through withoutControlCharacters or withoutEscapes, and files are written with writeFileAtomic."
+    text: "A problem the user can fix is thrown as UserError from src/config.ts; any other error reaches cli.ts as a bug."
+  - id: repo-text-escaped
+    text: "Repository text printed for a terminal or prompt passes through withoutControlCharacters or withoutEscapes from src/report.ts; --json keeps the original."
+  - id: stdout-results-only
+    text: "stdout carries only results; warnings, progress and prompts go to stderr, as PROMPT_IO in src/commands/shared.ts does."
+  - id: atomic-writes
+    text: "A file jevlint keeps or writes into a repository is written with writeFileAtomic from src/config.ts, never through a planted symlink."
+  - id: doc-comments
+    text: "Every exported symbol has a short doc comment; inline comments explain why, never what."
