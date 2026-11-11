@@ -334,3 +334,69 @@ export async function pullRequestChange(root: string, requested?: number): Promi
     message: [title, body].filter(Boolean).join('\n\n'),
   };
 }
+
+/** The full hash of HEAD, or null outside git or before the first commit. */
+export async function headCommit(root: string): Promise<string | null> {
+  const head = await git(root, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']).catch(
+    () => '',
+  );
+  return head.trim() || null;
+}
+
+/** Resolves a revision the user or the SSOT named to a full commit hash, or throws a UserError. */
+export async function resolveCommit(root: string, revision: string): Promise<string> {
+  // A revision starting with `-` would be read as an option.
+  const fail = () => new UserError(`${revision} is not a commit in this repository.`);
+  if (revision.startsWith('-') || revision === '') throw fail();
+  const hash = await git(root, ['rev-parse', '--verify', '--quiet', `${revision}^{commit}`]).catch(
+    () => '',
+  );
+  if (!hash.trim()) throw fail();
+  return hash.trim();
+}
+
+/** Lists the root-relative files a commit holds under the root. */
+export async function filesAt(root: string, commit: string): Promise<string[]> {
+  const names = await git(root, ['ls-tree', '-r', '-z', '--name-only', commit]);
+  return names.split('\0').filter(Boolean);
+}
+
+/** Lists files that differ between `base` and the working tree, root-relative. Untracked files are not listed. */
+export async function changedSince(root: string, base: string): Promise<string[]> {
+  const names = await git(root, [
+    'diff',
+    '--name-only',
+    '-z',
+    '--relative',
+    '--no-renames',
+    '--no-ext-diff',
+    '--no-textconv',
+    base,
+    '--',
+  ]);
+  return names.split('\0').filter(Boolean);
+}
+
+/** The root-relative files of each of the last `count` non-merge commits, newest first. */
+export async function recentCommitFiles(root: string, count: number): Promise<string[][]> {
+  const log = await git(root, [
+    'log',
+    '--no-show-signature',
+    '--no-renames',
+    '--no-merges',
+    `--max-count=${count}`,
+    '--name-only',
+    '--relative',
+    '--format=%x01',
+    '-z',
+  ]).catch(() => '');
+  return log
+    .split('\x01')
+    .map((chunk) =>
+      chunk
+        .split('\0')
+        .map((name) => name.replace(/^\n/, ''))
+        .filter(Boolean),
+    )
+    .filter((files) => files.length > 0);
+}

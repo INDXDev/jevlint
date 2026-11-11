@@ -1,0 +1,28 @@
+id: architecture-engines
+title: Architecture analysis
+summary: >
+  Reads imports and declarations from the AST, resolves them, builds the module, directory and class
+  graphs, proposes components, and decides conformance to the SSOT. Pure but for parsing.
+layer: engines
+paths:
+  [
+    "src/architecture/extract.ts",
+    "src/architecture/resolve.ts",
+    "src/architecture/graph.ts",
+    "src/architecture/structure.ts",
+    "src/architecture/outline.ts",
+    "src/architecture/facts.ts",
+    "src/architecture/externals.ts",
+    "src/architecture/entrypoints.ts",
+    "src/architecture/conformance.ts",
+    "src/architecture/questions.ts",
+    "src/architecture/draft.ts",
+  ]
+key_files:
+  - { path: src/architecture/facts.ts, role: "component candidates, layers, interfaces and flows" }
+  - { path: src/architecture/conformance.ts, role: "structural rules, the map and static drift" }
+  - { path: src/architecture/structure.ts, role: "the three graphs and their findings" }
+  - { path: src/architecture/graph.ts, role: "cycles, layers, PageRank and clustering" }
+interface: [buildFacts, conformance, buildStructure, extractModule, resolveImport]
+depends_on: [ast, decision, config, contracts]
+uses: [ast_grep]

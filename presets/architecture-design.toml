@@ -1,0 +1,46 @@
+name = "architecture-design"
+description = "The SSOT as a whole: separate responsibilities, clear layers, obvious dependency direction"
+source = "Common software architecture guidance on layering and separation of concerns. Independent paraphrase."
+used_by = "architecture"
+
+[[questions]]
+id = "responsibilities"
+type = "score"
+title = "Responsibilities do not overlap"
+instructions = "You are given an architecture document in YAML: the system's description, its layers, and each component's summary, dependencies and rules. Does each component own one responsibility that no other component also claims?"
+levels = [
+  "Several components claim the same responsibility, or one component does most of the work",
+  "Some responsibilities are split across components, or a component mixes unrelated ones",
+  "Responsibilities are mostly separate, with one overlap or one component that does two things",
+  "Every component owns one responsibility, and no two overlap",
+]
+weight = 2
+fix = "Merge components that do the same job, and split one that mixes unrelated jobs."
+
+[[questions]]
+id = "layering"
+type = "score"
+title = "The layers make sense"
+instructions = "Given the document, do the layers group components by level of abstraction, so that each layer builds on the ones below it and the lowest layers hold what everything else needs?"
+levels = [
+  "There are no layers, or they group components with no common level of abstraction",
+  "The layers exist, but several components sit in a layer that does not fit them",
+  "The layers fit, with one or two components in the wrong layer",
+  "Each layer holds one level of abstraction, and every component sits where it belongs",
+]
+weight = 2
+fix = "Move components to the layer that matches what they depend on and what depends on them, and rename layers after their level."
+
+[[questions]]
+id = "direction"
+type = "score"
+title = "Dependencies point one obvious way"
+instructions = "Given the document, do the declared dependencies between components run in one direction, from the parts that start work to the parts they rely on, with no cycles and no surprising back references?"
+levels = [
+  "Dependencies run both ways between many components, or form cycles",
+  "Most dependencies run one way, with several that point back up",
+  "Dependencies run one way, with one exception that needs a reason",
+  "Every dependency runs from a higher component to a lower one, and the direction is obvious",
+]
+weight = 1
+fix = "Invert the dependencies that point back up, for example with a callback or a type moved to a lower layer."

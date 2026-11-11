@@ -1,0 +1,12 @@
+id: output
+title: Reports and prompts
+summary: >
+  Formats audit reports for the terminal, SARIF and GitHub, renders fix prompts, and draws diffs.
+layer: interface
+paths: ["src/report.ts", "src/formats.ts", "src/prompt.ts", "src/diff.ts", "src/diff-view.ts"]
+key_files:
+  - { path: src/report.ts, role: "terminal formatting and withoutControlCharacters" }
+  - { path: src/prompt.ts, role: "fix and quick fix prompts" }
+  - { path: src/formats.ts, role: "SARIF and GitHub workflow commands" }
+interface: [withoutControlCharacters, withoutEscapes, formatReport, renderPrompt]
+depends_on: [audit, scoring, contracts]

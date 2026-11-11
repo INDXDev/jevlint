@@ -1,0 +1,9 @@
+id: audit
+title: Audit a repository
+trigger: "jevlint audit"
+steps:
+  - { from: cli, to: audit, verb: "runs audit()" }
+  - { from: audit, to: ast, verb: "measures each file" }
+  - { from: audit, to: decision, verb: "asks each file's questions" }
+  - { from: audit, to: scoring, verb: "scores and ranks" }
+  - { from: cli, to: output, verb: "prints the report" }

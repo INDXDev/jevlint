@@ -1,0 +1,10 @@
+Component: common (Common)
+Layer: shared
+Summary: Shared helpers used across the app.
+Modules:
+- src/common/helpers.ts (300 lines): formatDate, retry, slugify, parseMoney, chunk
+- src/common/misc.ts (180 lines): sleep, uuid, deepMerge
+Depends on: contracts (2)
+Declared dependencies: not declared
+Used by: web (9), billing (4), orders (6), admin (3)
+Externals: none

@@ -1,13 +1,20 @@
 # Architecture review
 
 `jevlint audit` judges files one at a time. `jevlint architecture` looks at how they fit together,
-from three perspectives, and ranks everything from worst to best in one list.
+from up to five perspectives, and ranks everything from worst to best in one list. It is the same as
+`jevlint architecture review`.
 
 | Perspective | Reviews | Asks about |
 | --- | --- | --- |
 | `codebase` | The repository as one unit | Visible shape, one-way layers, balance of size |
 | `directory` | Each directory | Cohesion, boundaries, naming |
 | `class` | Each class with methods | Single responsibility, relationships, naming |
+| `component` | Each component of the [architecture SSOT](architecture-reference.md), when there is one | Summary fits the code, dependencies fit the role, naming |
+| `design` | The SSOT as a whole, when there is one | Separate responsibilities, clear layers, one direction of dependencies |
+
+`component` and `design` read the SSOT, so they run only when `.jevlint/architecture/` exists. Without
+it, the review and its output are what they always were. To write the SSOT, check code against it
+and keep it current, see [Architecture-driven development](architecture-driven-development.md).
 
 ```sh
 jevlint architecture                            # summary in the terminal
@@ -24,9 +31,13 @@ jevlint architecture --perspective class --top 50
    by inheritance and by use.
 3. **Measure.** The graphs are checked against the limits below.
 4. **Ask.** Each unit's outline goes to the decision model, with the questions for its perspective.
-   An outline holds paths, line counts, names and dependencies. It never holds file contents.
+   An outline holds paths, line counts, names and dependencies. It never holds file contents. A
+   component's outline adds its summary and declared dependencies, and the design review sends the
+   SSOT's YAML.
 
-One unit is one request, so a review costs 1 + directories + classes with methods. Use
+One unit is one request, so a review costs 1 + directories + classes with methods, plus components
+and one for the design when there is an SSOT. `--copy` also copies a prompt that asks a coding agent
+to explain the scores in prose, and `--prompt` prints it instead of the report. Use
 `--perspective` to limit that in a repository with many classes. It takes `codebase`, `directory` or
 `class`, comma-separated, reviews only those, and rejects any other name. Results are cached like any
 other decision.
@@ -81,8 +92,8 @@ The model part moves with small changes, as it does in an audit. See
 
 ## Changing the questions
 
-Each perspective has a built-in preset: `architecture-codebase`, `architecture-directory` and
-`architecture-class`. To replace one, install a preset with the same name. `[weights]` works as
+Each perspective has a built-in preset: `architecture-codebase`, `architecture-directory`,
+`architecture-class`, `architecture-component` and `architecture-design`. To replace one, install a preset with the same name. `[weights]` works as
 usual:
 
 ```toml
@@ -96,14 +107,16 @@ Do not add these to `presets`, which would ask their questions about single file
 
 | Language | Imports | Classes |
 | --- | --- | --- |
-| JavaScript, TypeScript | Relative imports, `require`, dynamic `import()` | `class` |
+| JavaScript, TypeScript | Relative imports, `require`, dynamic `import()`, the root `tsconfig.json`'s `paths`, and packages of pnpm, npm and bun workspaces | `class` |
 | Python | Absolute from the root or `src/`, and relative | `class` |
 | Go | Packages inside the module named in `go.mod` | Types, with their methods |
 | Rust | `crate::`, `self::`, `super::`, and `mod name;` | `impl` blocks and traits |
 
 Known limits:
 
-- TypeScript `paths` aliases and workspace packages are not followed, so those links are missing.
+- Only the root `tsconfig.json` is read for `paths`, and its `extends` is not followed.
+- An import that resolves to no repository file is kept as an external package, such as
+  `@ai-sdk/openai` or `node:fs`, which the [SSOT rules](architecture-reference.md#rules) can name.
 - A Go package maps to its first non-test `.go` file. Read Go repositories at directory level.
 - A class name declared in two files links to nothing, because a name alone cannot say which is meant.
 - Go methods merge with their type only within one file.

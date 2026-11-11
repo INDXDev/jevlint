@@ -1,0 +1,12 @@
+id: git
+title: Git and fixers
+summary: >
+  Runs git with what a repository's config could execute turned off, reads changes, commits and
+  pull requests, runs the project's fixers without a shell, and records trusted fixers.
+layer: infrastructure
+paths: ["src/git.ts", "src/fixers.ts", "src/trust.ts"]
+key_files:
+  - { path: src/git.ts, role: "the git() helper and every read of history" }
+  - { path: src/fixers.ts, role: "quickfix.after commands with timeouts" }
+interface: [commitCounts, changedFiles, fileAt, filesAt, headCommit]
+depends_on: [config, contracts]

@@ -94,6 +94,7 @@ beforeEach(async () => {
       max_class_methods: 20,
       max_class_lines: 300,
       max_inheritance_depth: 3,
+      dir: '.jevlint/architecture',
     },
     weights: {},
     patterns: [],

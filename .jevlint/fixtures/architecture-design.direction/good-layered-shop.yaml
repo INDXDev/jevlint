@@ -1,0 +1,35 @@
+version: 1
+name: shop
+description: >
+  An online shop. Web pages and routes stay thin and call the services; services hold the business
+  rules; only the data layer talks to Postgres; every layer shares the contract types.
+layers: [interface, services, data, contracts]
+rules:
+  - { id: layers-point-down, kind: layers }
+  - { id: no-component-cycles, kind: no-cycles }
+components:
+  - id: web
+    title: Web
+    summary: HTTP routes and pages. Parses requests, calls one service, and renders the result.
+    layer: interface
+    depends_on: [catalogue, checkout, contracts]
+  - id: catalogue
+    title: Catalogue
+    summary: Lists products and their prices for browsing and search.
+    layer: services
+    depends_on: [store, contracts]
+  - id: checkout
+    title: Checkout
+    summary: Turns a basket into a paid order, charging the card through the payment provider.
+    layer: services
+    depends_on: [store, contracts]
+  - id: store
+    title: Database access
+    summary: Reads and writes products and orders in Postgres. Owns every query and transaction.
+    layer: data
+    depends_on: [contracts]
+  - id: contracts
+    title: Contracts
+    summary: The types every layer shares. Imports nothing.
+    layer: contracts
+    depends_on: []

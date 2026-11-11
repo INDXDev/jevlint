@@ -14,7 +14,10 @@ import type {
 import type { ClassOutline, ModuleOutline } from './extract.ts';
 import { cyclicNodes, type Dependencies, layersOf, stronglyConnected } from './graph.ts';
 
-type Limits = Config['architecture'];
+type Limits = Omit<Config['architecture'], 'dir'>;
+
+/** A file outline whose imports are resolved to repository paths. */
+export type ResolvedOutline = Omit<ModuleOutline, 'imports'> & { imports: string[] };
 
 /** Everything the AST can tell about a repository's structure. */
 export interface Structure extends Pick<ArchitectureReport, 'modules' | 'classes' | 'edges'> {
@@ -45,7 +48,7 @@ function locate(finding: AstFinding, path: string, directories: string[]): Archi
   return { ...finding, path, directories: [...new Set(directories)] };
 }
 
-function moduleGraph(files: ModuleOutline[], limits: Limits) {
+function moduleGraph(files: ResolvedOutline[], limits: Limits) {
   const dependencies: Dependencies = new Map(
     files.map(({ path, imports }) => [path, new Set(imports)]),
   );
@@ -150,7 +153,7 @@ function directoryGraph(modules: ModuleNode[], moduleEdges: ArchitectureEdge[], 
 const classId = (path: string, name: string) => `${path}#${name}`;
 
 /** shortcut: a name declared twice is ambiguous and links nothing; resolve via imports if needed. */
-function uniqueClassIds(files: ModuleOutline[]): Map<string, string> {
+function uniqueClassIds(files: ResolvedOutline[]): Map<string, string> {
   const owners = new Map<string, string[]>();
   for (const { path, classes } of files) {
     for (const { name } of classes) {
@@ -169,7 +172,7 @@ function classLinks(id: string, { bases, references }: ClassOutline, ids: Map<st
   return { parents, used };
 }
 
-function classGraph(files: ModuleOutline[], limits: Limits) {
+function classGraph(files: ResolvedOutline[], limits: Limits) {
   const ids = uniqueClassIds(files);
   const owned = files.flatMap(({ path, classes }) =>
     classes.map((outline) => {
@@ -228,7 +231,7 @@ function classGraph(files: ModuleOutline[], limits: Limits) {
 }
 
 /** Builds every graph and lists what is wrong with them. */
-export function buildStructure(files: ModuleOutline[], limits: Limits): Structure {
+export function buildStructure(files: ResolvedOutline[], limits: Limits): Structure {
   const modules = moduleGraph(files, limits);
   const directories = directoryGraph(modules.modules, modules.edges, limits);
   const classes = classGraph(files, limits);

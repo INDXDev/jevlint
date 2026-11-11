@@ -1,0 +1,16 @@
+id: decision
+title: Decision models
+summary: >
+  Sends questions to a decision model provider through the AI SDK and caches raw answers by
+  content. Every other part reaches models through here.
+layer: engines
+paths: ["src/decision/**"]
+key_files:
+  - { path: src/decision/decide.ts, role: "decideFile, decideState and the cache key" }
+  - { path: src/decision/providers.ts, role: "creates a model from config" }
+interface: [decideFile, decideState, createDecisionModel]
+depends_on: [config, cache, contracts]
+uses: [ai_sdk]
+checklist:
+  - id: cache-key
+    text: "A cache key covers provider, model, endpoint, questions and content."

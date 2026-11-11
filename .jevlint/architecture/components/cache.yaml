@@ -1,0 +1,12 @@
+id: cache
+title: Decision cache
+summary: >
+  Stores decisions and outlines by content hash on disk, with an optional S3-compatible bucket
+  behind it signed with SigV4.
+layer: infrastructure
+paths: ["src/cache.ts", "src/remote-cache.ts"]
+key_files:
+  - { path: src/cache.ts, role: "content-addressed storage on disk" }
+  - { path: src/remote-cache.ts, role: "the bucket, read-through and write-through" }
+interface: [cacheKey, readCache, writeCache, readThrough, writeThrough]
+depends_on: [config]

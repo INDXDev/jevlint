@@ -91,7 +91,7 @@ export async function driftSpec(
   spec: Spec,
   options: SpecRunOptions = {},
 ): Promise<SpecDriftReport> {
-  const run = await startRun(config, 'drift', options.noCache);
+  const run = await startRun(config, 'spec drift', options.noCache);
   const paths = await discoverDocs(config, options.paths);
   const accepted = new Map(spec.index.accept_uncovered.map(({ path, reason }) => [path, reason]));
   const docs = (

@@ -1,0 +1,11 @@
+id: library
+title: Library API
+summary: >
+  The npm entry point. Re-exports the pipelines and the contracts, and must stay silent.
+layer: interface
+paths: ["src/index.ts"]
+key_files:
+  - { path: src/index.ts, role: "every public export" }
+depends_on: [audit, architecture-pipeline, spec-pipeline, config, ssot-loading, contracts]
+rules:
+  - { id: silent, kind: forbid-call, pattern: "console.$M($$$)" }

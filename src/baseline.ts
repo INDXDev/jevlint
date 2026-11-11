@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { ifExists, parseWith, readRegularFile, UserError, writeFileAtomic } from './config.ts';
 import { assertInRepo } from './presets.ts';
 import { worseAnswers, worseFindings } from './review.ts';
-import type { AuditReport, FileReport } from './types.ts';
+import type { ArchitectureViolation, AuditReport, FileReport } from './types.ts';
 
 /** Where a baseline lives, relative to the root. */
 export const BASELINE_PATH = join('.jevlint', 'baseline.json');
@@ -25,6 +25,17 @@ const baselineSchema = z.strictObject({
       answers: z.array(z.strictObject({ id: z.string(), compliance: z.number() })),
     }),
   ),
+  /** Architecture violations known when the baseline was taken, for `architecture check --new`. */
+  architecture: z
+    .array(
+      z.strictObject({
+        rule: z.string(),
+        rule_id: z.string(),
+        path: z.string(),
+        target: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 /** The findings and weak answers a repository had when its baseline was taken. */
@@ -54,6 +65,40 @@ export function toBaseline(report: AuditReport): Baseline {
     .map(baselineEntry)
     .filter(({ findings, answers }) => findings.length > 0 || answers.length > 0);
   return { files: stableOrder(files) };
+}
+
+/** The architecture part of a baseline, without lines, which edits move. Stable. */
+export function architectureBaseline(
+  violations: ArchitectureViolation[],
+): Baseline['architecture'] {
+  return stableOrder(
+    violations.map(({ rule, ruleId, path, target }) =>
+      target === undefined
+        ? { rule, rule_id: ruleId, path }
+        : { rule, rule_id: ruleId, path, target },
+    ),
+  );
+}
+
+/** Leaves out the violations a baseline records, saying how many it left out. */
+export function newViolations(
+  violations: ArchitectureViolation[],
+  baseline: Baseline,
+): { fresh: ArchitectureViolation[]; known: number } {
+  const recorded = new Map<string, number>();
+  const keyOf = (rule: string, ruleId: string, path: string, target?: string) =>
+    JSON.stringify([rule, ruleId, path, target ?? null]);
+  for (const { rule, rule_id, path, target } of baseline.architecture ?? []) {
+    const key = keyOf(rule, rule_id, path, target);
+    recorded.set(key, (recorded.get(key) ?? 0) + 1);
+  }
+  const fresh = violations.filter(({ rule, ruleId, path, target }) => {
+    const key = keyOf(rule, ruleId, path, target);
+    const left = recorded.get(key) ?? 0;
+    if (left > 0) recorded.set(key, left - 1);
+    return left === 0;
+  });
+  return { fresh, known: violations.length - fresh.length };
 }
 
 /** Writes a baseline under `root`. */

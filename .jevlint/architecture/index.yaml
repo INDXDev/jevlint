@@ -1,0 +1,42 @@
+version: 1
+name: jevlint
+compiled_at: 7527c37
+description: >
+  A model-based linter CLI in TypeScript, published to npm with a library API. Commands stay thin:
+  they call pipelines, which call engines, which call infrastructure, and everything shares the
+  contracts in src/types.ts. Only src/decision/ talks to model providers, and only the interface
+  layer writes to the terminal.
+layers: [interface, pipeline, engines, infrastructure, contracts]
+ignore: ["tsdown.config.ts"]
+externals:
+  - id: ai_sdk
+    title: AI SDK
+    packages: ["ai", "ai/*", "@ai-sdk/*"]
+    summary: The experimental decision API, which must stay in one folder.
+  - id: ast_grep
+    title: ast-grep
+    packages: ["@ast-grep/napi", "@ast-grep/lang-*"]
+rules:
+  - id: layers-point-down
+    kind: layers
+  - id: no-component-cycles
+    kind: no-cycles
+  - id: ai-sdk-in-decision
+    kind: only
+    externals: [ai_sdk]
+    components: [decision]
+  - id: terminal-only-interface
+    kind: forbid-call
+    pattern: console.$M($$$)
+    except: [cli, output, agents, architecture-views, spec-views]
+  - id: no-stdout-writes-outside-interface
+    kind: forbid-call
+    pattern: process.$S.write($$$)
+    except: [cli, output, agents, architecture-views, spec-views]
+checklist:
+  - id: user-error
+    text: "A problem the user can fix is thrown as UserError, and any other error is treated as a bug."
+  - id: plain-functions
+    text: "Code uses plain functions and data, and a class only for an error type."
+  - id: hostile-repository
+    text: "Repository text printed to the terminal goes through withoutControlCharacters or withoutEscapes, and files are written with writeFileAtomic."

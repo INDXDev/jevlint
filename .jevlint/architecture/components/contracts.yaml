@@ -1,0 +1,9 @@
+id: contracts
+title: Contracts
+summary: >
+  Every shared type: reports, findings, facts and the SSOT. It imports nothing.
+layer: contracts
+paths: ["src/types.ts"]
+key_files:
+  - { path: src/types.ts, role: "every report and data type" }
+depends_on: []

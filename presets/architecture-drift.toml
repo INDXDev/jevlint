@@ -1,0 +1,13 @@
+name = "architecture-drift"
+description = "Whether an SSOT component's summary still fits its code, for jevlint architecture drift"
+source = "Independent wording for jevlint's drift check."
+used_by = "architecture"
+
+[[questions]]
+id = "summary-current"
+type = "boolean"
+good = true
+title = "The summary still fits the code"
+instructions = "You are given one component of an architecture document: its summary, and an outline of the modules it owns now, the names they declare and what they depend on. Does the summary still describe what these modules do, with no large part of them left out or contradicted?"
+weight = 1
+fix = "Rewrite the summary from what the component's modules do now."

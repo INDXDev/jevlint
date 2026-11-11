@@ -11,11 +11,21 @@ import {
   worstIssue,
 } from '../report.ts';
 import type {
+  ArchitectureCheckReport,
+  ArchitectureComponent,
+  ArchitectureDriftReport,
   ArchitectureFinding,
+  ArchitectureFlow,
+  ArchitecturePlan,
   ArchitectureReport,
+  ArchitectureSsot,
   ArchitectureUnit,
+  ArchitectureViolation,
+  FactModule,
+  MapEdge,
   Perspective,
 } from '../types.ts';
+import type { ShowModel, View } from './show.ts';
 
 const BAR_WIDTH = 10;
 const SEPARATOR = '  ·  ';
@@ -75,6 +85,8 @@ const PERSPECTIVE_LABELS: Record<Perspective, string> = {
   codebase: 'Codebase',
   directory: 'Directories',
   class: 'Classes',
+  component: 'Components',
+  design: 'Design',
 };
 
 function formatSummary({ score, scale, perspectives, modules, edges }: ArchitectureReport): string {
@@ -116,5 +128,239 @@ export function formatArchitecture(untrusted: ArchitectureReport, opts: { top: n
     ]),
     '',
     ' Next: jevlint architecture --html architecture.html',
+  ].join('\n');
+}
+
+const STATUS_MARKS: Record<MapEdge['status'], (text: string) => string> = {
+  declared: (text) => text,
+  actual: (text) => text,
+  violation: (text) => pc.red(`${text} ✗`),
+  unused: (text) => pc.dim(`(${text}, unused)`),
+};
+
+/** Lists the SSOT's components, one line each, with its size warnings. */
+export function formatSsotList(untrusted: ArchitectureSsot, warnings: string[]): string {
+  const ssot = withoutControlCharacters(untrusted);
+  const { index, components, flows } = ssot;
+  const width = Math.max(...components.map(({ id }) => id.length));
+  const layerWidth = Math.max(1, ...components.map(({ layer }) => layer?.length ?? 1));
+  const lines = components.map(
+    ({ id, title, layer, paths, status }) =>
+      `  ${id.padEnd(width)}  ${pc.dim((layer ?? '-').padEnd(layerWidth))}  ${title}${status === 'target' ? pc.dim(' (target)') : ''}  ${pc.dim(paths.join(' '))}`,
+  );
+  return [
+    ` ${pc.bold(index.name)}  ${pc.dim(ssot.dir)}${index.compiled_at ? pc.dim(`  compiled at ${index.compiled_at}`) : ''}`,
+    ` ${[plural(components.length, 'component'), plural(index.layers.length, 'layer'), plural(flows.length, 'flow'), plural(index.rules.length + components.reduce((n, c) => n + c.rules.length, 0), 'rule'), plural(index.checklist.length + components.reduce((n, c) => n + c.checklist.length, 0), 'checklist item')].join(SEPARATOR)}`,
+    '',
+    ...lines,
+    ...formatSection(
+      'Over the size budget',
+      withoutControlCharacters(warnings).map((w) => `  ${w}`),
+    ),
+  ].join('\n');
+}
+
+function formatMap({ ssot, edges }: ShowModel): string[] {
+  return ssot.index.layers.length > 0
+    ? formatLayers({ ssot, edges })
+    : formatComponents(ssot.components, edges);
+}
+
+function formatComponents(components: ArchitectureComponent[], edges: MapEdge[]): string[] {
+  return components.map(({ id }) => {
+    const out = edges
+      .filter(({ from }) => from === id)
+      .map(({ to, weight, status }) => STATUS_MARKS[status](`${to} (${weight})`));
+    return `  ${pc.bold(id)} → ${out.join(', ') || pc.dim('nothing')}`;
+  });
+}
+
+function formatLayers({ ssot, edges }: Pick<ShowModel, 'ssot' | 'edges'>): string[] {
+  const unplaced = ssot.components.filter(
+    ({ layer }) => !layer || !ssot.index.layers.includes(layer),
+  );
+  return [
+    ...ssot.index.layers.flatMap((layer) => {
+      const members = ssot.components.filter((component) => component.layer === layer);
+      return members.length > 0 ? [` ${pc.cyan(layer)}`, ...formatComponents(members, edges)] : [];
+    }),
+    ...(unplaced.length > 0
+      ? [` ${pc.cyan('no layer')}`, ...formatComponents(unplaced, edges)]
+      : []),
+  ];
+}
+
+function formatFlow(flow: ArchitectureFlow, edges: MapEdge[]): string[] {
+  const real = new Set(
+    edges.filter(({ status }) => status !== 'unused').map(({ from, to }) => `${from}\0${to}`),
+  );
+  return [
+    ` ${pc.bold(flow.title)}${flow.trigger ? pc.dim(`  ${flow.trigger}`) : ''}`,
+    ...flow.steps.map(({ from, to, verb }) => {
+      const step = `  ${from} → ${to}  ${verb}`;
+      return from === to || real.has(`${from}\0${to}`)
+        ? step
+        : pc.red(`${step}  ✗ no import in the code`);
+    }),
+  ];
+}
+
+function formatComponentView(
+  model: ShowModel,
+  component: ArchitectureComponent,
+  modules: FactModule[],
+): string[] {
+  return [
+    ` ${pc.bold(component.title)} ${pc.dim(`(${component.id}, ${component.layer ?? 'no layer'})`)}`,
+    `  ${component.summary.trim()}`,
+    ...formatSection(
+      'Key files',
+      component.key_files.map(({ path, role }) => `  ${path}  ${pc.dim(role)}`),
+    ),
+    ...formatSection(
+      'Interface',
+      component.interface.length > 0 ? [`  ${component.interface.join(', ')}`] : [],
+    ),
+    ...formatSection(
+      'Modules',
+      modules.map(
+        ({ path, lines, symbols }) =>
+          `  ${path} ${pc.dim(`(${lines} lines)`)} ${pc.dim(symbols.slice(0, 8).join(', '))}`,
+      ),
+    ),
+    ...formatSection('Depends on', formatComponents([component], model.edges)),
+  ];
+}
+
+/** Draws one view of the SSOT, or of the draft, for the terminal. */
+export function formatShow(untrusted: ShowModel, view: View, modules: FactModule[] = []): string {
+  const model = withoutControlCharacters(untrusted);
+  const { ssot } = model;
+  const header = ` ${pc.bold('jevlint architecture show')}  ${[model.root, model.draft ? 'draft from the facts' : ssot.dir].join(SEPARATOR)}`;
+  const legend = pc.dim(
+    ' Arrows point to what a component depends on. ✗ breaks the SSOT; (unused) is declared but not imported.',
+  );
+  let body: string[];
+  if (view.kind === 'flow')
+    body = formatFlow(ssot.flows.find(({ id }) => id === view.id) as ArchitectureFlow, model.edges);
+  else if (view.kind === 'component') {
+    const component = ssot.components.find(({ id }) => id === view.id) as ArchitectureComponent;
+    body = formatComponentView(model, component, modules);
+  } else body = view.kind === 'layers' ? formatLayers(model) : formatMap(model);
+  return [header, legend, '', ...body].join('\n');
+}
+
+const violationRow = ({ path, line, rule, message, ruleId }: ArchitectureViolation) => [
+  `  ${path}:${line}`,
+  `    ${pc.red('✗')} ${rule.padEnd(22)} ${message} ${pc.dim(`(${ruleId})`)}`,
+];
+
+/** The check report: structural violations, checklist violations and unimplemented items. */
+export function formatArchitectureCheck(
+  untrusted: ArchitectureCheckReport,
+  verbose = false,
+): string {
+  const report = withoutControlCharacters(untrusted);
+  const scope = report.base ? `since ${report.base.slice(0, 7)}` : report.dir;
+  const header = ` ${pc.bold('Architecture check')}: ${plural(report.violations.length, 'structural violation')}, ${plural(report.checklistViolations, 'checklist violation')} (${scope})`;
+  const checklist = report.files.flatMap(({ path, component, items }) => {
+    const shown = items.filter(({ verdict }) => verbose || verdict === 'violates');
+    if (shown.length === 0) return [];
+    return [
+      `  ${path}  ${pc.dim(component ?? 'no component')}`,
+      ...shown.map(({ id, text, verdict, confidence }) => {
+        const mark =
+          verdict === 'violates'
+            ? pc.red('✗')
+            : verdict === 'satisfies'
+              ? pc.green('✓')
+              : pc.dim('-');
+        return `    ${mark} ${id} ${pc.dim(`(${confidence.toFixed(2)})`)} ${text}`;
+      }),
+    ];
+  });
+  const warnings = [
+    ...report.warnings,
+    ...report.files.flatMap(({ path, warnings: w }) => w.map((x) => `${path}: ${x}`)),
+  ];
+  return [
+    header,
+    ...(report.baselined > 0
+      ? [pc.dim(` ${plural(report.baselined, 'violation')} in the baseline left out.`)]
+      : []),
+    ...formatUsage(report.usage),
+    ...formatSection('Structural', report.violations.flatMap(violationRow)),
+    ...formatSection('Checklist', checklist),
+    ...formatSection(
+      'Unimplemented: no file satisfies these',
+      report.unimplemented.map(({ id, text }) => `  ${id}  ${text}`),
+    ),
+    ...formatSection(
+      'Distance from the target (does not fail the check)',
+      report.targetGaps.flatMap(violationRow),
+    ),
+    ...formatSection(
+      'Warnings',
+      warnings.map((w) => `  ${w}`),
+    ),
+  ].join('\n');
+}
+
+/** The drift report, grouped by kind. */
+export function formatArchitectureDrift(untrusted: ArchitectureDriftReport): string {
+  const report = withoutControlCharacters(untrusted);
+  const since = report.compiledAt ? `since ${report.compiledAt}` : 'no compiled_at';
+  const header = ` ${pc.bold('Architecture drift')}: ${plural(report.items.length, 'item')} (${report.dir}, ${since})`;
+  const kinds = Map.groupBy(report.items, ({ kind }) => kind);
+  const sections = [...kinds].flatMap(([kind, items]) =>
+    formatSection(
+      kind,
+      items.map(
+        ({ path, line, message, since: isNew }) =>
+          `  ${path}${line ? `:${line}` : ''}  ${message}${isNew ? pc.yellow(' (new)') : ''}`,
+      ),
+    ),
+  );
+  return [
+    header,
+    ...formatUsage(report.usage),
+    ...sections,
+    ...formatSection(
+      'Warnings',
+      report.warnings.map((w) => `  ${w}`),
+    ),
+    ...(report.items.length > 0
+      ? ['', ' Next: jevlint architecture drift --copy, then hand the prompt to an agent']
+      : []),
+  ].join('\n');
+}
+
+/** The ranked plan. */
+export function formatArchitecturePlan(untrusted: ArchitecturePlan): string {
+  const plan = withoutControlCharacters(untrusted);
+  const steps = plan.steps.flatMap(({ rank, priority, problem, move, evidence }) => [
+    `  ${String(rank).padStart(2)}. ${problem} ${pc.dim(`(priority ${priority})`)}`,
+    `      ${move}`,
+    ...(evidence.length > 0
+      ? [pc.dim(`      ${evidence.map(({ path, line }) => `${path}:${line}`).join(', ')}`)]
+      : []),
+  ]);
+  return [
+    ` ${pc.bold('Architecture plan')}: ${plural(plan.steps.length, 'step')}`,
+    ...(steps.length > 0 ? ['', ...steps] : ['', '  Nothing to do.']),
+    ...formatSection(
+      'Warnings',
+      plan.warnings.map((w) => `  ${w}`),
+    ),
+  ].join('\n');
+}
+
+/** The SSOT violations a change added, as `pr --architecture` shows them under a review. */
+export function formatAddedViolations(untrusted: ArchitectureViolation[]): string {
+  const violations = withoutControlCharacters(untrusted);
+  if (violations.length === 0) return ` ${pc.green('✓')} Architecture: no new violations`;
+  return [
+    ` ${pc.bold('Architecture')}: ${plural(violations.length, 'new violation')}`,
+    ...violations.flatMap(violationRow),
   ].join('\n');
 }

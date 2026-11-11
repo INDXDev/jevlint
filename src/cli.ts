@@ -67,10 +67,22 @@ function startsAuditArgs(arg: string): boolean {
   return arg.startsWith('-') ? !isRootFlag(arg) : existsSync(arg);
 }
 
+/** `jevlint architecture` with no subcommand reviews, as it did before it had subcommands. */
+function withArchitectureDefault([group, ...rest]: string[]): string[] {
+  const subCommand = rest[0];
+  const onlyHelp = rest.length > 0 && rest.every((arg) => HELP_FLAGS.includes(arg));
+  const named =
+    subCommand !== undefined && Object.hasOwn(architectureCommand.subCommands ?? {}, subCommand);
+  // A bare string flag would take the next argument as its value, so `--docs` alone means none named.
+  const args = rest.map((arg) => (arg === '--docs' ? '--docs=' : arg));
+  return named || onlyHelp ? [group as string, ...args] : [group as string, 'review', ...args];
+}
+
 /** Citty only falls back to a default command with no arguments at all, so route here instead. */
 function withDefaultCommand(argv: string[]): string[] {
   const [first] = argv;
   if (first === undefined) return ['audit'];
+  if (first === 'architecture') return withArchitectureDefault(argv);
   if (Object.hasOwn(subCommands, first)) return argv;
   return startsAuditArgs(first) ? ['audit', ...argv] : argv;
 }

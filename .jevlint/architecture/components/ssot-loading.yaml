@@ -1,0 +1,13 @@
+id: ssot-loading
+title: SSOT loading
+summary: >
+  Reads and validates the spec and architecture YAML with zod, and reads tsconfig paths and
+  workspace manifests for import resolution.
+layer: infrastructure
+paths: ["src/spec/load.ts", "src/architecture/load.ts", "src/architecture/workspace.ts"]
+key_files:
+  - { path: src/architecture/load.ts, role: "the architecture SSOT schema and size budget" }
+  - { path: src/spec/load.ts, role: "the spec schema and the hardened YAML reader" }
+  - { path: src/architecture/workspace.ts, role: "tsconfig paths and workspaces" }
+interface: [loadArchitecture, loadSpec, readYaml, budgetWarnings]
+depends_on: [config, contracts]

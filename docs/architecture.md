@@ -35,10 +35,11 @@ jevlint/
 │   ├── commands/        One file per CLI command
 │   ├── ast/             Local code metrics
 │   ├── decision/        Everything that talks to a decision model
-│   ├── architecture/    Structure review: extraction, graphs and views
+│   ├── architecture/    Structure review and the architecture SSOT: facts, graphs, rules and views
 │   ├── spec/            Spec-driven development: load, check, drift and their output
 │   └── *.ts             Core modules, listed below
 ├── presets/             Built-in presets, as TOML
+├── .jevlint/            jevlint's own spec and architecture SSOT
 ├── examples/messy-shop/ A deliberately messy project for demos
 ├── .claude-plugin/      Claude Code plugin manifests, with commands/, hooks/ and skills/ beside
 │                        them. The plugin installs from git and does not ship to npm
@@ -51,7 +52,7 @@ jevlint/
 | `src/commands/` | It parses flags or prints for one command | Business logic |
 | `src/ast/` | It measures source code without a network | Scoring, I/O |
 | `src/decision/` | It depends on the AI SDK or a provider | Scoring, file discovery |
-| `src/architecture/` | It reviews structure across files | Per-file metrics |
+| `src/architecture/` | It reviews structure across files, or reads, checks or renders the SSOT | Per-file metrics, terminal output outside `terminal.ts` |
 | `src/spec/` | It reads a spec or judges code or documents against one | Terminal output outside `prompt.ts` and `terminal.ts` |
 | `presets/` | It is a principle or a question | Code of any kind |
 | `test/` | It verifies behaviour without a real provider | Real API calls |
@@ -62,13 +63,17 @@ Dependencies point downward only. A module never imports from a layer above it.
 
 | Layer | Modules | May use |
 | --- | --- | --- |
-| Interface | `cli.ts`, `commands/`, `report.ts`, `formats.ts`, `prompt.ts`, `agent.ts`, `diff.ts`, `diff-view.ts`, `architecture/terminal.ts`, `architecture/html.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
-| Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `fixtures.ts`, `architecture/review.ts`, `spec/check.ts`, `spec/drift.ts` | Everything below |
-| Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts`, `spec/questions.ts` | Infrastructure, contracts |
-| Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `fixers.ts`, `trust.ts`, `node-version.ts`, `spec/load.ts` | Contracts |
+| Interface | `cli.ts`, `commands/`, `index.ts`, `report.ts`, `formats.ts`, `prompt.ts`, `agent.ts`, `diff.ts`, `diff-view.ts`, `architecture/terminal.ts`, `html.ts`, `markdown.ts`, `prompt.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
+| Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `fixtures.ts`, `architecture/collect.ts`, `review.ts`, `check.ts`, `drift.ts`, `compile.ts`, `plan.ts`, `show.ts`, `spec/check.ts`, `spec/drift.ts`, `spec/run.ts` | Everything below |
+| Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts`, `facts.ts`, `externals.ts`, `entrypoints.ts`, `conformance.ts`, `questions.ts`, `draft.ts`, `spec/questions.ts` | Infrastructure, contracts |
+| Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `fixers.ts`, `trust.ts`, `node-version.ts`, `spec/load.ts`, `architecture/load.ts`, `workspace.ts` | Contracts |
 | Contracts | `types.ts` | Nothing |
 
 Modules in the same layer may import each other, as `ast/analyze.ts` does with `scoring.ts`.
+
+jevlint's own [architecture SSOT](architecture-reference.md) in `.jevlint/architecture/` states these
+layers and the three rules below as structural rules, so `jevlint architecture check --static`
+decides them from the import graph with no network.
 
 Three rules keep these layers clean:
 
@@ -110,7 +115,16 @@ Three rules keep these layers clean:
 | `src/architecture/structure.ts` | Builds the three graphs and their findings |
 | `src/architecture/outline.ts` | Lists the units to review, with the outline each sends to a model |
 | `src/architecture/review.ts` | Runs the review and returns an `ArchitectureReport` |
-| `src/architecture/terminal.ts`, `html.ts` | Render the report |
+| `src/architecture/facts.ts` | Proposes component candidates, layers, interfaces, flows and co-changes from the resolved modules |
+| `src/architecture/externals.ts`, `entrypoints.ts` | Tables of known external systems and of entry-point patterns |
+| `src/architecture/workspace.ts` | Reads `go.mod`, the root `tsconfig.json`'s `paths` and workspace manifests for resolution |
+| `src/architecture/collect.ts` | Reads the working tree or a commit into outlines, cached by content hash, and builds the facts |
+| `src/architecture/load.ts` | Reads and validates the architecture SSOT, and its size budget |
+| `src/architecture/conformance.ts` | Decides the SSOT's structural rules, lays real dependencies over declared ones, and finds static drift |
+| `src/architecture/draft.ts` | Turns the facts into a draft SSOT |
+| `src/architecture/questions.ts` | The check, drift and review questions and outlines, as pure data |
+| `src/architecture/check.ts`, `drift.ts`, `compile.ts`, `plan.ts`, `show.ts` | Run each SSOT verb |
+| `src/architecture/terminal.ts`, `html.ts`, `markdown.ts`, `prompt.ts` | Render the reports, the SSOT as ARCHITECTURE.md, and the agent prompts |
 | `src/directives.ts` | Parses `jevlint-score` comments and removes them from the sent code |
 | `src/cache.ts` | Content-addressed storage on disk |
 | `src/remote-cache.ts` | Puts an optional S3-compatible bucket behind the disk cache |
@@ -126,6 +140,7 @@ Three rules keep these layers clean:
 | `src/spec/load.ts` | Reads and validates the spec YAML in `spec.dir` |
 | `src/spec/questions.ts` | Builds the routing, item and coverage questions, as pure data |
 | `src/spec/check.ts`, `drift.ts` | Judge code files and documents against the spec in two requests each |
+| `src/spec/run.ts` | The model, the per-path loop and verdicts that spec and architecture checks share |
 | `src/spec/prompt.ts`, `terminal.ts` | Render the compile prompt and the reports |
 | `src/scoring.ts` | Pure functions from the [scoring formulas](scoring.md) |
 | `src/audit.ts` | Runs the pipeline and returns an `AuditReport` |

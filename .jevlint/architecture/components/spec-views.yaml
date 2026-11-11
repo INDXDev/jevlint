@@ -1,0 +1,10 @@
+id: spec-views
+title: Spec views
+summary: >
+  Renders the spec compile prompt and the spec check and drift reports.
+layer: interface
+paths: ["src/spec/prompt.ts", "src/spec/terminal.ts"]
+key_files:
+  - { path: src/spec/prompt.ts, role: "the compile, check and drift prompts" }
+  - { path: src/spec/terminal.ts, role: "the reports" }
+depends_on: [output, ssot-loading, contracts]

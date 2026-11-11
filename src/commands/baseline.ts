@@ -1,7 +1,10 @@
 /** `jevlint baseline`: records today's findings, so that `audit --new` shows only later ones. */
 import { defineCommand } from 'citty';
-import { BASELINE_PATH, toBaseline, writeBaseline } from '../baseline.ts';
-import { UserError } from '../config.ts';
+import { violationsOf } from '../architecture/check.ts';
+import { collect } from '../architecture/collect.ts';
+import { loadArchitecture } from '../architecture/load.ts';
+import { architectureBaseline, BASELINE_PATH, toBaseline, writeBaseline } from '../baseline.ts';
+import { type Config, UserError } from '../config.ts';
 import { plural } from '../report.ts';
 import {
   auditProject,
@@ -13,9 +16,20 @@ import {
   splitPositionals,
 } from './shared.ts';
 
+/** The SSOT's structural violations, when there is an SSOT, for `architecture check --new`. */
+async function architectureEntries(config: Config) {
+  const ssot = await loadArchitecture(config);
+  if (!ssot) return undefined;
+  const collected = await collect(config, { keepSources: true, skipHistory: true });
+  return architectureBaseline(violationsOf(ssot, collected, config.root));
+}
+
 /** The `baseline` command. */
 export const baselineCommand = defineCommand({
-  meta: { name: 'jevlint baseline', description: 'Record current issues for audit --new' },
+  meta: {
+    name: 'jevlint baseline',
+    description: 'Record current issues for audit --new and architecture check --new',
+  },
   args: {
     paths: {
       type: 'positional',
@@ -36,10 +50,14 @@ export const baselineCommand = defineCommand({
     if (everyProviderCallFailed(report)) {
       throw new UserError('Every provider request failed, so no baseline was written.');
     }
-    const baseline = toBaseline(report);
+    const architecture = await architectureEntries(config);
+    const baseline = { ...toBaseline(report), ...(architecture ? { architecture } : {}) };
     await writeBaseline(config.root, baseline);
+    const recorded = architecture
+      ? ` and ${plural(architecture.length, 'architecture violation')}`
+      : '';
     console.error(
-      `Wrote ${BASELINE_PATH}, with ${plural(baseline.files.length, 'file')} of issues.`,
+      `Wrote ${BASELINE_PATH}, with ${plural(baseline.files.length, 'file')} of issues${recorded}.`,
     );
   },
 });

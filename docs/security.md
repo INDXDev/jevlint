@@ -5,6 +5,7 @@
 | Action | Sent | To |
 | --- | --- | --- |
 | `audit --ast-only`, `baseline --ast-only`, `architecture --ast-only`, `commits --ast-only`, `hook` | Nothing | |
+| `architecture compile`, `list`, `show`, `plan`, `check --static`, `drift --static`, `pr --architecture` | Nothing. `compile` and `plan` print a prompt; with `--agent`, the agent sends it | |
 | `audit --dry-run` | Nothing, unless `cache.remote` is set | |
 | `audit`, `baseline`, `explain`, `prompt`, `fix`, `quickfix` | File contents, up to `max_file_chars`, and preset questions. For each [semantic rule](presets.md#semantic-rules), the matched code and the rule's question | Your configured provider |
 | `pr`, `commits`, `hook --model` | The same, for changed files on both sides of the change | Your configured provider |
@@ -14,7 +15,10 @@
 | `spec check` | File contents, up to `max_file_chars`, the project description, feature summaries and checklist items | Your configured provider |
 | `spec drift` | Document contents, the checklist they are compared with and every other checklist item, up to `max_file_chars` | Your configured provider |
 | `spec compile`, `spec list` | Nothing | |
-| `architecture` | Paths, line counts, top-level names and internal dependencies, but no file contents | Your configured provider |
+| `architecture`, `architecture review` | Paths, line counts, top-level names and internal dependencies, but no file contents. With an SSOT, also each component's summary and dependencies, and the SSOT's YAML for `design` | Your configured provider |
+| `architecture check` | File contents, up to `max_file_chars`, and the SSOT's checklist items with the component's title and summary, for files that have items to judge | Your configured provider |
+| `architecture drift` | Each changed component's outline and summary. With `--docs`, document contents and the SSOT's summaries and checklist items, as `spec drift` sends | Your configured provider |
+| `architecture compile --agent`, `plan --agent` | The prompt, with paths, line numbers and names but no file contents, plus whatever the agent reads | The agent's provider |
 | `fix`, `quickfix` | The prompt, plus whatever the agent reads | The agent's provider |
 | Any model run, `--dry-run`, with `cache.remote` set | Entry keys, numeric answers and token counts, but no source code | Your cache bucket |
 
@@ -116,6 +120,18 @@ jevlint also guards against what a repository contains:
   own `jevlint.toml` and presets do not apply. Only your checkout's do. A path containing `..`, `.git`
   or `.gitignore` is not written, so a crafted commit cannot escape the directory, make it a
   repository or hide its own files.
+- The architecture SSOT in `.jevlint/architecture/` is the repository's. It can hold globs, package
+  names, ast-grep patterns and prose only, never a command, URL or path outside the root: a glob with
+  `..` or a leading `/` is refused, and `architecture.dir` must stay inside the root. Its YAML is read
+  as `spec` is, with links outside the repository refused and aliases capped. `tsconfig.json`,
+  `package.json` and `pnpm-workspace.yaml` are parsed for import resolution only, and a workspace
+  manifest linked from outside the repository is skipped.
+- Outlines of files are cached by content hash in your cache directory, never in the repository.
+  jevlint writes into the repository only `.jevlint/baseline.json` and the `--html` file you name;
+  `show --markdown` and every prompt go to stdout.
+- `architecture check --diff`, `pr --architecture` and `commits --architecture` read both sides from
+  git with `ls-tree` and `cat-file`, so nothing is checked out and no filter runs. A revision is
+  resolved to a commit hash first, and one starting with `-` is refused.
 
 Some risks remain:
 
@@ -134,6 +150,9 @@ Some risks remain:
   `--intent`, where a message can also imitate the section labels, or be long enough to crowd the diff
   out, which shows as a truncation warning. Fixtures and a calibration record from an untrusted
   repository prove nothing either.
+- The architecture prompts carry repository paths, names and SSOT text, which could aim to steer the
+  agent they are handed to. `compile --agent` and `plan --agent` tell the agent to change no code,
+  but treat their runs as you treat `fix`.
 - `jevlint fix` and `jevlint quickfix` run an agent over repository content that could carry prompt
   injection. Only use them on code you trust, and review every diff. Their clean-tree check runs
   `git status` on the project root, and `quickfix` finds changed files with `git ls-files`, both of which can run programs

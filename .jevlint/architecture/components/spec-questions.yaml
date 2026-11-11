@@ -1,0 +1,9 @@
+id: spec-questions
+title: Spec questions
+summary: >
+  Builds the routing, item and coverage questions of the spec, as pure data.
+layer: engines
+paths: ["src/spec/questions.ts"]
+key_files:
+  - { path: src/spec/questions.ts, role: "every spec question" }
+depends_on: [decision, ssot-loading, contracts]

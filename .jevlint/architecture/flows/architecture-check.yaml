@@ -1,0 +1,13 @@
+id: architecture-check
+title: Check the code against the SSOT
+trigger: "jevlint architecture check"
+steps:
+  - { from: cli, to: ssot-loading, verb: "loads the SSOT" }
+  - { from: cli, to: architecture-pipeline, verb: "runs checkArchitecture()" }
+  - {
+      from: architecture-pipeline,
+      to: architecture-engines,
+      verb: "extracts, resolves and decides the rules",
+    }
+  - { from: architecture-pipeline, to: spec-pipeline, verb: "asks the checklist items" }
+  - { from: cli, to: architecture-views, verb: "prints the violations" }

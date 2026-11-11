@@ -29,6 +29,15 @@ const LIMITS = {
 const outline = (path: string, source: string, language: Language = 'typescript') =>
   extractModule(path, source, language);
 
+const specifiers = (path: string, source: string, language: Language = 'typescript') =>
+  outline(path, source, language).imports.map(({ specifier }) => specifier);
+
+/** An outline with its imports already resolved, as `buildStructure` takes it. */
+const resolvedOutline = (path: string, source: string) => ({
+  ...outline(path, source),
+  imports: [],
+});
+
 const moduleAt = (path: string, imports: string[] = []) => ({
   path,
   language: 'typescript' as const,
@@ -45,11 +54,11 @@ export { b } from './b.ts';
 const c = require('./c.js');
 const d = await import('./d.ts');
 `;
-    expect(outline('x.ts', source).imports).toEqual(['./a.ts', './b.ts', './c.js', './d.ts']);
+    expect(specifiers('x.ts', source)).toEqual(['./a.ts', './b.ts', './c.js', './d.ts']);
   });
 
   it('reads TypeScript import-require', () => {
-    expect(outline('x.ts', `import a = require('./a');\n`).imports).toEqual(['./a']);
+    expect(specifiers('x.ts', `import a = require('./a');\n`)).toEqual(['./a']);
   });
 
   it('reads Python imports, keeping relative dots', () => {
@@ -58,7 +67,7 @@ from . import sibling
 from ..core import a as b, c
 from .models import *
 `;
-    expect(outline('x.py', source, 'python').imports).toEqual([
+    expect(specifiers('x.py', source, 'python')).toEqual([
       'os',
       'pkg.mod',
       '.sibling',
@@ -75,7 +84,7 @@ import (
   store "example.com/app/store"
 )
 `;
-    expect(outline('x.go', source, 'go').imports).toEqual(['fmt', 'example.com/app/store']);
+    expect(specifiers('x.go', source, 'go')).toEqual(['fmt', 'example.com/app/store']);
   });
 
   it('reads Rust use groups and file modules, but not inline modules', () => {
@@ -84,7 +93,7 @@ use super::e;
 mod f;
 mod inline { }
 `;
-    expect(outline('src/x.rs', source, 'rust').imports).toEqual([
+    expect(specifiers('src/x.rs', source, 'rust')).toEqual([
       'crate::a::b',
       'crate::a::c',
       'super::e',
@@ -328,7 +337,7 @@ class B extends A {}
 class C extends B { m() {} n() {} o() { return new D(); } }
 class D {}
 `;
-    const structure = buildStructure([outline('a.ts', source)], LIMITS);
+    const structure = buildStructure([resolvedOutline('a.ts', source)], LIMITS);
     expect(structure.edges.classes).toContainEqual(
       expect.objectContaining({ from: 'a.ts#C', to: 'a.ts#B', kind: 'inherits' }),
     );
@@ -348,7 +357,7 @@ class User extends Model {}
 class Repo<T> {}
 class UserRepo extends Repo<User> {}
 `;
-    const structure = buildStructure([outline('a.ts', source)], LIMITS);
+    const structure = buildStructure([resolvedOutline('a.ts', source)], LIMITS);
     expect(structure.findings.map(({ symbol }) => symbol)).toEqual(['User']);
     expect(structure.edges.classes).toContainEqual(
       expect.objectContaining({ from: 'a.ts#UserRepo', to: 'a.ts#User', kind: 'uses' }),
@@ -357,8 +366,8 @@ class UserRepo extends Repo<User> {}
 
   it('leaves a class name declared twice unlinked', () => {
     const files = [
-      outline('a.ts', 'class Same {}\nclass A extends Same {}'),
-      outline('b.ts', 'class Same {}'),
+      resolvedOutline('a.ts', 'class Same {}\nclass A extends Same {}'),
+      resolvedOutline('b.ts', 'class Same {}'),
     ];
     expect(buildStructure(files, LIMITS).edges.classes).toEqual([]);
   });

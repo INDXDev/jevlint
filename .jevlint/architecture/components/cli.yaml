@@ -1,0 +1,29 @@
+id: cli
+title: Command line
+summary: >
+  Declares every command, parses flags and maps errors to exit codes. Each command is a thin file
+  that calls a pipeline and prints its report.
+layer: interface
+paths: ["src/cli.ts", "src/commands/**"]
+key_files:
+  - { path: src/cli.ts, role: "routing, unknown flags and exit codes" }
+  - { path: src/commands/shared.ts, role: "flag parsing and the audit flow commands share" }
+  - { path: src/commands/architecture.ts, role: "the architecture subcommands" }
+interface: [architectureCommand, specCommand, auditCommand]
+depends_on:
+  [
+    output,
+    agents,
+    architecture-views,
+    spec-views,
+    audit,
+    architecture-pipeline,
+    spec-pipeline,
+    architecture-engines,
+    decision,
+    config,
+    cache,
+    git,
+    ssot-loading,
+    contracts,
+  ]

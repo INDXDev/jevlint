@@ -1,0 +1,13 @@
+id: ast
+title: AST metrics
+summary: >
+  Maps languages to ast-grep grammars and measures complexity, nesting and size, with a lexical
+  fallback for files that have no grammar.
+layer: engines
+paths: ["src/ast/**"]
+key_files:
+  - { path: src/ast/languages.ts, role: "grammars and node kinds per language" }
+  - { path: src/ast/analyze.ts, role: "the language-independent metrics" }
+interface: [LANGUAGES, languageOf, countLines]
+depends_on: [scoring, config, contracts]
+uses: [ast_grep]

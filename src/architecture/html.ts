@@ -1,6 +1,7 @@
 /** Renders an architecture report as one HTML file, with no scripts and no network requests. */
 import { describeFinding, findingHealth, formatScore, worstIssue } from '../report.ts';
-import type { ArchitectureEdge, ArchitectureReport, ArchitectureUnit } from '../types.ts';
+import type { ArchitectureEdge, ArchitectureReport, ArchitectureUnit, MapEdge } from '../types.ts';
+import type { ShowModel } from './show.ts';
 import { findingLocation } from './terminal.ts';
 
 const NODE_WIDTH = 220;
@@ -240,6 +241,87 @@ ${LEGEND}
 ${section('Directories', 'Each box shows its score.', renderDiagram(directoryNodes(report), edges.directories))}
 ${section('Modules', 'Every file with AST support.', renderDiagram(moduleNodes(report), edges.modules))}
 ${classes}
+</body></html>
+`;
+}
+
+/** Unused declarations are dashed and violations red, reusing the review's edge styles. */
+function mapEdgesAsEdges(edges: MapEdge[]): ArchitectureEdge[] {
+  return edges.map(({ from, to, weight, status }) => ({
+    from,
+    to,
+    weight,
+    cyclic: status === 'violation',
+    ...(status === 'unused' ? { kind: 'uses' as const } : {}),
+  }));
+}
+
+/** Components sit in columns by layer, foundations on the right, as in the review report. */
+function componentNodes({ ssot, edges }: ShowModel): DiagramNode[] {
+  const { layers } = ssot.index;
+  const levelOf = (layer: string | undefined) => {
+    const index = layer === undefined ? -1 : layers.indexOf(layer);
+    return index === -1 ? layers.length : layers.length - 1 - index;
+  };
+  const broken = new Set(
+    edges.filter(({ status }) => status === 'violation').map(({ from }) => from),
+  );
+  return ssot.components.map(({ id, title, layer, summary }) => ({
+    id,
+    label: title,
+    layer: levelOf(layer),
+    status: broken.has(id) ? 'critical' : 'good',
+    detail: `${id} (${layer ?? 'no layer'}): ${summary.trim()}`,
+  }));
+}
+
+function componentTable({ ssot, edges }: ShowModel): string {
+  const rows = ssot.components.map((component) => {
+    const out = edges
+      .filter(({ from, status }) => from === component.id && status !== 'unused')
+      .map(({ to, status }) =>
+        status === 'violation' ? `<b class="bad">${escapeHtml(to)} ✕</b>` : escapeHtml(to),
+      );
+    const keyFiles = component.key_files.map(
+      ({ path, role }) => `<code>${escapeHtml(path)}</code> ${escapeHtml(role)}`,
+    );
+    return `<tr><td><code>${escapeHtml(component.id)}</code><br>${escapeHtml(component.title)}</td><td>${escapeHtml(component.layer ?? '')}</td><td>${escapeHtml(component.summary)}${keyFiles.length > 0 ? `<br><small>${keyFiles.join('<br>')}</small>` : ''}</td><td>${out.join(', ')}</td></tr>`;
+  });
+  return `<table><thead><tr><th>Component</th><th>Layer</th><th>Summary and key files</th><th>Depends on</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
+
+function flowTables({ ssot, edges }: ShowModel): string {
+  const real = new Set(
+    edges.filter(({ status }) => status !== 'unused').map(({ from, to }) => `${from}\0${to}`),
+  );
+  return ssot.flows
+    .map(({ title, trigger, steps }) => {
+      const rows = steps.map(({ from, to, verb }) => {
+        const exists = from === to || real.has(`${from}\0${to}`);
+        return `<tr><td><code>${escapeHtml(from)}</code> → <code>${escapeHtml(to)}</code></td><td>${escapeHtml(verb)}</td><td>${exists ? '' : '<b class="bad">no import in the code</b>'}</td></tr>`;
+      });
+      return `<h3>${escapeHtml(title)}</h3><p>${escapeHtml(trigger ?? '')}</p><table>${rows.join('')}</table>`;
+    })
+    .join('');
+}
+
+const SHOW_LEGEND = `<div class="legend"><span>Solid line: a real dependency, as declared</span><span><i class="swatch" style="background:var(--critical)"></i>Red: breaks the SSOT</span><span>Dashed: declared but not imported</span><span>Top layer on the left, foundations on the right.</span></div>`;
+
+/** Renders `show` as one standalone page, with no scripts and no network requests. */
+export function renderShowHtml(model: ShowModel): string {
+  const { ssot, root } = model;
+  const intro = model.draft
+    ? 'A draft from static analysis. Run jevlint architecture compile to turn it into an SSOT.'
+    : `From ${ssot.dir}${ssot.index.compiled_at ? `, compiled at ${ssot.index.compiled_at}` : ''}.`;
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Architecture of ${escapeHtml(ssot.index.name)}</title><style>${STYLES}.bad{color:var(--critical)}</style></head><body>
+<h1>${escapeHtml(ssot.index.name)} architecture</h1><p><code>${escapeHtml(root)}</code></p>
+<p>${escapeHtml(intro)}</p><p>${escapeHtml(ssot.index.description)}</p>
+${SHOW_LEGEND}
+${section('Components', 'Hover a box to trace its links.', renderDiagram(componentNodes(model), mapEdgesAsEdges(model.edges)))}
+${section('Each component', 'What it does, where to start reading, and what it depends on.', componentTable(model))}
+${ssot.flows.length > 0 ? section('Flows', 'The main workflows, step by step.', flowTables(model)) : ''}
 </body></html>
 `;
 }

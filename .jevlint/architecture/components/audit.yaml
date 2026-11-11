@@ -1,0 +1,22 @@
+id: audit
+title: Audit pipeline
+summary: >
+  Scores every file with AST metrics and decision models and ranks what to refactor first. Also
+  reviews changes, judges semantic rules, keeps the baseline, and tests questions on fixtures.
+layer: pipeline
+paths:
+  [
+    "src/audit.ts",
+    "src/rules.ts",
+    "src/review.ts",
+    "src/baseline.ts",
+    "src/hook.ts",
+    "src/intent.ts",
+    "src/fixtures.ts",
+  ]
+key_files:
+  - { path: src/audit.ts, role: "the audit pipeline and AuditReport" }
+  - { path: src/review.ts, role: "audits both sides of a change in snapshots" }
+  - { path: src/baseline.ts, role: ".jevlint/baseline.json" }
+interface: [audit, reviewChange, readBaseline, newViolations]
+depends_on: [ast, decision, scoring, architecture-engines, config, git, contracts]

@@ -1,0 +1,46 @@
+name = "architecture-component"
+description = "SSOT components: a summary that fits the code, sensible dependencies, a telling name"
+source = "Common software design guidance on cohesion, coupling and naming. Independent paraphrase."
+used_by = "architecture"
+
+[[questions]]
+id = "summary-fit"
+type = "score"
+title = "The summary describes the code"
+instructions = "You are given one component of an architecture document: its title, summary and layer, and an outline of the modules it owns, the names they declare and what they depend on. Does the summary say what these modules actually do, without leaving out a large part or claiming what is not there?"
+levels = [
+  "The summary describes something else, or most of the modules do things it never mentions",
+  "The summary covers part of the component, and a large part is missing or wrong",
+  "The summary fits, with one or two modules it does not account for",
+  "The summary states what the component does, and every module fits it",
+]
+weight = 2
+fix = "Rewrite the summary from what the modules do, or move the modules that do not fit to the component they serve."
+
+[[questions]]
+id = "dependencies"
+type = "score"
+title = "Its dependencies fit its role"
+instructions = "Given the component's summary, layer and outline, do its dependencies and the components that use it fit what it is for? Consider a foundation that depends on higher-level parts, and a component that reaches into many unrelated ones."
+levels = [
+  "Dependencies run against the component's role, and it is tangled with many unrelated parts",
+  "Several dependencies do not fit what the component is for",
+  "Most dependencies fit, with one or two that look out of place",
+  "Every dependency follows from what the component does, and the direction of use is obvious",
+]
+weight = 2
+fix = "Remove or invert the dependencies that do not fit, for example by moving a shared type down or passing a function in."
+
+[[questions]]
+id = "naming"
+type = "score"
+title = "The name tells what it does"
+instructions = "Given the outline, do the component's id and title tell a reader what this part of the system does, in terms of its domain?"
+levels = [
+  "The name is generic, such as core, common, utils or misc, and says nothing about the purpose",
+  "The name is vague and needs the summary to make sense",
+  "The name is specific, but a little broader or narrower than what the component does",
+  "The name states the component's purpose precisely",
+]
+weight = 1
+fix = "Rename the component after what it does, or split it if no single name fits."

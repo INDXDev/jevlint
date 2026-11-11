@@ -1,0 +1,12 @@
+id: scoring
+title: Scoring
+summary: >
+  Pure functions from the scoring formulas: AST scores, model scores, file and repository scores.
+layer: engines
+paths: ["src/scoring.ts"]
+key_files:
+  - { path: src/scoring.ts, role: "every formula in docs/scoring.md" }
+interface: [fileScore, repoScore, scaleScore, modelResult]
+depends_on: [config, contracts]
+rules:
+  - { id: pure, kind: forbid, packages: ["node:*"] }

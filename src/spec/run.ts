@@ -24,18 +24,15 @@ export interface SpecRun {
   modelCalls: number;
 }
 
-/** Starts a run, or stops with a hint when there is no model to ask. */
+/** Starts a run, or stops with a hint when there is no model to ask. `command` names it. */
 export async function startRun(
   config: Config,
-  command: 'check' | 'drift',
+  command: string,
   noCache?: boolean,
+  hint = 'Run: jevlint auth set <provider name>',
 ): Promise<SpecRun> {
   const resolved = await createDecisionModel(config);
-  if (!resolved) {
-    throw new UserError(
-      `jevlint spec ${command} needs a decision model. Run: jevlint auth set <provider name>`,
-    );
-  }
+  if (!resolved) throw new UserError(`jevlint ${command} needs a decision model. ${hint}`);
   return { config, resolved, noCache, inputTokens: 0, cacheHits: 0, modelCalls: 0 };
 }
 
