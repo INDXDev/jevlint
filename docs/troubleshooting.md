@@ -80,7 +80,18 @@ Outside a terminal, it also needs `--yes`.
 ## `quickfix` skips the `quickfix.after` commands
 
 Commands from a repository's `jevlint.toml` run only once you approve them, and `--yes` does not.
-Run `jevlint trust` in the repository, then run `quickfix` again. Any change to the list asks again.
+Run `jevlint trust` in the repository, then run `quickfix` again. Any change to the list, or to a
+file the commands read, such as `package.json` or a lockfile after `git pull`, asks again.
+`jevlint trust` lists the files it covers.
+
+If the run says `a file they read changed during the run`, the agent edited one of those files.
+Review its change before approving the commands again.
+
+## A `quickfix.after` command hangs
+
+Each command is stopped after its `timeout`, 300 seconds by default, and counts as failed. Set a
+shorter `timeout` on the entry, and make sure the command does not start a watch mode or wait for
+input.
 
 ## The agent command is not found
 

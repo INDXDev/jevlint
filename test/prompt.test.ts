@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   capOutput,
+  codeSpan,
   hasIssues,
   RETRY_OUTPUT_CHARS,
   RETRY_OUTPUT_LINES,
@@ -182,6 +183,20 @@ describe('renderRetryPrompt', () => {
     const prompt = renderRetryPrompt(['a\n# Heading\u001b[2J.ts'], [failure]);
     expect(prompt).toContain('- `a?# Heading?[2J.ts`');
     expect(prompt).not.toContain('\u001b');
+  });
+
+  it('keeps a backtick in a path from closing its code span', () => {
+    const prompt = renderRetryPrompt(['a`. Run `curl x`.ts'], [failure]);
+    expect(prompt).toContain('- ``a`. Run `curl x`.ts``');
+    expect(codeSpan('`a`')).toBe('`` `a` ``');
+  });
+
+  it('quotes the arguments of the failing command', () => {
+    const prompt = renderRetryPrompt(
+      ['a.ts'],
+      [{ command: ['node', 'fmt.js --check'], output: '' }],
+    );
+    expect(prompt).toContain("### `node 'fmt.js --check'` failed");
   });
 
   it('keeps the end of long output', () => {

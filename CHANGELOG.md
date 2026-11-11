@@ -8,13 +8,17 @@ This project follows [Semantic Versioning](https://semver.org).
   names a command and optional `files` patterns. After the agent succeeds, `quickfix` runs them on
   the files it changed, without a shell, and the diff, re-score and commit show the result. A
   failing command warns and the run goes on. `jevlint.toml` may set them, so a team can share
-  them, but jevlint runs a repository's commands only after you approve that exact list, in a
-  prompt or with the new `jevlint trust`; `--yes` never approves them. `--json` adds `fixers` to
-  each file, and the commit message names the commands that ran.
+  them, but jevlint runs a repository's commands only after you approve them, in a prompt or with
+  the new `jevlint trust`; `--yes` never approves them. The approval covers the list, the
+  repository's history and the files the commands read, such as a script they name or
+  `package.json` and the lockfile for `pnpm`, so a `git pull` that changes one asks again. Each
+  command is stopped after its `timeout`, 300 seconds by default. `--json` adds `fixers` and
+  `fixerOnly` to each file, and the commit message names the commands that ran and lists the files
+  only they changed apart from the agent's.
 - **`retry = true` on a `quickfix.after` command.** When the check still fails, the agent gets one
   more run with the command's output, fenced as data, to fix only those errors, and then the
   commands run again. At most one retry per file. `--json` adds `retried`, and the commit message
-  says when a check still fails.
+  names the checks that caused the retry and any that still fail.
 - `fix` and `quickfix` no longer claim the working tree is not clean when git fails. Outside a git
   repository, or when git refuses one, as with `detected dubious ownership`, the error now gives
   git's reason. With uncommitted changes, it names the first few files. Changes outside the project

@@ -210,6 +210,8 @@ export interface QuickfixFileResult {
   fixers: { command: string[]; code: number }[];
   /** True when a failing `retry` check gave the agent a second run. */
   retried: boolean;
+  /** Paths in `diffs` that only the `quickfix.after` commands changed, not the agent. */
+  fixerOnly: string[];
 }
 
 /** Two commits to compare. A null base means a root commit, where every file is new. */

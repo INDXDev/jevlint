@@ -101,7 +101,8 @@ files = ["**/*.ts"]
 
 Commands from `jevlint.toml` run only once you approve them, in the prompt or with
 `jevlint trust`; `--yes` does not approve them. A command that fixes files changes the diff and the
-commit, which is the point, and may reformat lines the agent did not touch.
+commit, which is the point, and may reformat lines the agent did not touch. Files only the commands
+changed are listed apart from the agent's in the commit message.
 
 It runs each agent's `quickfix_command`, or its `command` when there is none. The built-in ones keep
 the run short: Claude Code gets only the file tools and at most 10 turns, and Codex reasons at low

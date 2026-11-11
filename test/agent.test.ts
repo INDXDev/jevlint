@@ -13,6 +13,7 @@ import {
   quickfixFile,
   runAgent,
   runFixers,
+  TIMED_OUT_CODE,
 } from '../src/agent.ts';
 import { type Config, loadConfig, UserError } from '../src/config.ts';
 import { diffFiles } from '../src/diff.ts';
@@ -262,5 +263,18 @@ describe('runFixers', () => {
       { code: 127, retry: false },
     ]);
     expect(runs[1]?.output).toContain('Command not found: jevlint-no-such-command');
+  });
+
+  it('stops a command that runs past its timeout, and counts it as failed', async () => {
+    const cwd = realpathSync(tmpdir());
+    const started = Date.now();
+    const runs = await runFixers(
+      cwd,
+      [{ command: node('setTimeout(() => {}, 60000)'), timeout: 0.3, retry: true }],
+      ['a.ts'],
+    );
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(runs[0]).toMatchObject({ code: TIMED_OUT_CODE, timedOut: true });
+    expect(runs[0]?.output).toContain('Timed out after 0.3s');
   });
 });

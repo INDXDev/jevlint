@@ -57,7 +57,9 @@ config, git, output or file writes, read [docs/security.md](docs/security.md). I
 - Run git through the `git()` helper in `src/git.ts`, which disables what a repository's config
   could execute.
 - A new setting that names an endpoint, a command or a path on the user's machine belongs in
-  `USER_ONLY_KEYS` in `src/config.ts`, so a repository's `jevlint.toml` cannot set it.
+  `USER_ONLY_KEYS` in `src/config.ts`, so a repository's `jevlint.toml` cannot set it. The one
+  exception is `quickfix.after`, which runs a repository's commands only once `src/trust.ts`
+  says the user approved them as they are now.
 - A model cache key must cover everything that changes the answer: provider, model, endpoint,
   questions and content. Only raw answers are cached, and scoring runs after the cache.
 

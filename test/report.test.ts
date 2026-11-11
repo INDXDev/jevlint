@@ -1,6 +1,12 @@
 import { stripVTControlCharacters } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
-import { formatExplain, formatPlan, formatReport, formatUsage } from '../src/report.ts';
+import {
+  commandLine,
+  formatExplain,
+  formatPlan,
+  formatReport,
+  formatUsage,
+} from '../src/report.ts';
 import type { AuditReport, FileReport } from '../src/types.ts';
 
 const file = (overrides: Partial<FileReport> = {}): FileReport => ({
@@ -244,5 +250,18 @@ describe('formatPlan', () => {
 
   it('promises nothing leaves the machine with no provider', () => {
     expect(formatPlan(plan, null)).toContain('nothing would be sent');
+  });
+});
+
+describe('commandLine', () => {
+  it('quotes arguments so a reader sees where each one ends', () => {
+    expect(commandLine(['pnpm', 'biome', 'check', '--write'])).toBe('pnpm biome check --write');
+    expect(commandLine(['node', 'fmt.js --check'])).toBe("node 'fmt.js --check'");
+    expect(commandLine(['node', 'fmt.js', '--check'])).toBe('node fmt.js --check');
+    expect(commandLine(['echo', "it's", ''])).toBe(`echo 'it'\\''s' ''`);
+  });
+
+  it('keeps control characters out', () => {
+    expect(commandLine(['a\nb\u001b[2J'])).toBe("'a?b?[2J'");
   });
 });

@@ -2,19 +2,21 @@
 import { defineCommand } from 'citty';
 import {
   agentFailure,
-  collectChanges,
-  editedPaths,
   type FixerRun,
-  quickfixFile,
+  type QuickfixEvents,
+  quickfixWithFixers,
   rescoreFiles,
-  retryQuickfix,
-  runFixers,
 } from '../agent.ts';
-import type { Fixer } from '../config.ts';
-import { diffFiles, type FileChange } from '../diff.ts';
+import { diffFiles } from '../diff.ts';
 import { type DiffView, formatDiffStat, formatDiffs, SPLIT_MIN_WIDTH } from '../diff-view.ts';
 import { commitPaths, isWorkTree } from '../git.ts';
-import { formatScore, plural, withoutControlCharacters, withoutEscapes } from '../report.ts';
+import {
+  commandLine,
+  formatScore,
+  plural,
+  withoutControlCharacters,
+  withoutEscapes,
+} from '../report.ts';
 import type { FileDiff, FileReport, QuickfixFileResult } from '../types.ts';
 import {
   AGENT_RUN_ARGS,
@@ -23,7 +25,7 @@ import {
   printJson,
   withSpinner,
 } from './shared.ts';
-import { commandLine, fixersToRun } from './trust.ts';
+import { fixersToRun, type RunnableFixers } from './trust.ts';
 
 const NOTHING_TO_FIX = 'Nothing to fix in the selected files. Pinned scores are left out.';
 /** Side by side output for a pipe or file has no terminal width to fill. */
@@ -74,21 +76,33 @@ function scoreAfterOf(file: FileReport, diffs: FileDiff[]): number | null {
   return diffs.find(({ path }) => path === file.path)?.scoreAfter ?? null;
 }
 
-/** What ran after the agent: the fixers' last runs, and whether the agent had a retry. */
+/** What ran after the agent, and which changed paths only the fixers changed. */
 export interface AfterAgent {
+  /** Each fixer's last run. */
   fixers: FixerRun[];
-  retried: boolean;
+  /** The failing checks that gave the agent its one retry. */
+  retriedFor: FixerRun[];
+  /** The changed paths the agent never edited. */
+  fixerOnly: string[];
 }
 
-function fixerLines({ fixers, retried }: AfterAgent): string[] {
-  if (fixers.length === 0) return [];
+const NOTHING_AFTER: AfterAgent = { fixers: [], retriedFor: [], fixerOnly: [] };
+
+const commandList = (runs: FixerRun[]) =>
+  runs.map(({ command }) => commandLine(command)).join(', ');
+
+function fixerLines({ fixers, retriedFor, fixerOnly }: AfterAgent): string[] {
+  if (fixers.length === 0 && fixerOnly.length === 0) return [];
   const failing = fixers
     .filter(({ code }) => code !== 0)
     .map(({ command }) => commandLine(command));
-  const retriedFor = fixers.filter(({ retry }) => retry).map(({ command }) => commandLine(command));
+  const others = withoutControlCharacters(fixerOnly).join(', ');
   return [
-    `Then ran: ${fixers.map(({ command }) => commandLine(command)).join(', ')}.`,
-    ...(retried ? [`Retried once for: ${retriedFor.join(', ')}.`] : []),
+    ...(fixers.length > 0 ? [`Then ran: ${commandList(fixers)}.`] : []),
+    ...(fixerOnly.length > 0
+      ? [`They also changed ${plural(fixerOnly.length, 'file')} the agent did not edit: ${others}.`]
+      : []),
+    ...(retriedFor.length > 0 ? [`Retried once for: ${commandList(retriedFor)}.`] : []),
     ...failing.map((command) => `${command} still fails.`),
   ];
 }
@@ -101,19 +115,20 @@ export function commitMessage(
   file: FileReport,
   diffs: FileDiff[],
   agent: string,
-  after: AfterAgent = { fixers: [], retried: false },
+  after: AfterAgent = NOTHING_AFTER,
 ): string {
   // Repository paths stay on one line each, so a name cannot add lines or trailers to the message.
   const path = withoutControlCharacters(file.path);
   const scoreAfter = scoreAfterOf(file, diffs);
   const score =
     scoreAfter === null ? [] : [`Score ${formatScore(file.score)} -> ${formatScore(scoreAfter)}.`];
-  const paths = diffs.map((diff) => withoutControlCharacters(diff.path)).join(', ');
+  const edited = diffs.filter(({ path }) => !after.fixerOnly.includes(path));
+  const paths = edited.map((diff) => withoutControlCharacters(diff.path)).join(', ');
   return [
     `Refactor ${path} with jevlint quickfix`,
     '',
     ...score,
-    `${agent} edited ${plural(diffs.length, 'file')}: ${paths}.`,
+    `${agent} edited ${plural(edited.length, 'file')}: ${paths}.`,
     ...fixerLines(after),
     'jevlint quickfix ran no tests on this change.',
   ].join('\n');
@@ -162,7 +177,7 @@ interface QuickfixContext {
   /** Each file's latest score, updated as runs re-score files. */
   known: Map<string, number>;
   /** The `quickfix.after` commands this run may use. */
-  fixers: Fixer[];
+  fixers: RunnableFixers;
 }
 
 /** One file's run: what goes in the JSON report, and the agent's exit code. */
@@ -184,62 +199,30 @@ function stepLabel(index: number, total: number): string {
   return total > 1 ? `[${index + 1}/${total}] ` : '';
 }
 
-const FIXER_EVENTS = {
-  onStart: (command: string[], paths: string[]) =>
-    console.error(`Running ${commandLine(command)} on ${plural(paths.length, 'file')}`),
-  // The tool's output goes to stderr, so stdout stays a patch or JSON.
-  onOutput: (text: string) => process.stderr.write(withoutEscapes(text)),
-};
-
-/** Runs the fixers on what the agent edited, and warns about each one that failed. */
-async function fix(context: QuickfixContext, changes: FileChange[]): Promise<FixerRun[]> {
-  const runs = await runFixers(
-    context.run.config.root,
-    context.fixers,
-    editedPaths(changes),
-    FIXER_EVENTS,
-  );
-  for (const { command, code } of runs.filter(({ code }) => code !== 0)) {
-    console.error(`Warning: ${commandLine(command)} exited with code ${code}.`);
-  }
-  return runs;
-}
-
-/** What the agent, the fixers and any retry left: the exit code, the changes and what ran. */
-interface FixedFile extends AfterAgent {
-  code: number;
-  changes: FileChange[];
-  uncommittedBefore: string[];
-}
-
-/**
- * Runs the agent on one file, then the fixers. When a check marked `retry` still fails, the agent
- * gets one more run with its output, and the fixers run again. The diff covers the whole run.
- */
-async function runAndFix(file: FileReport, context: QuickfixContext): Promise<FixedFile> {
-  const { run } = context;
-  const { root } = run.config;
-  const first = await quickfixFile(file, run.report, run.config, run.launch);
-  const { snapshot, uncommittedBefore } = first;
-  const done = { ...first, fixers: [], retried: false };
-  if (first.code !== 0 || context.fixers.length === 0) return done;
-  if (editedPaths(first.changes).length === 0) return done;
-  let fixers = await fix(context, first.changes);
-  let changes = await collectChanges(root, snapshot);
-  const failing = fixers.filter(({ retry, code }) => retry && code !== 0);
-  if (failing.length === 0) return { code: 0, changes, uncommittedBefore, fixers, retried: false };
-  const names = failing.map(({ command }) => commandLine(command)).join(', ');
-  const fails = failing.length === 1 ? 'still fails' : 'still fail';
-  console.error(`${names} ${fails}. Running ${run.launch.name} once more to fix what it printed`);
-  const code = await retryQuickfix(run.config, run.launch, editedPaths(changes), failing);
-  changes = await collectChanges(root, snapshot);
-  if (code !== 0) return { code, changes, uncommittedBefore, fixers, retried: true };
-  fixers = await fix(context, changes);
-  changes = await collectChanges(root, snapshot);
-  for (const { command } of fixers.filter(({ retry, code }) => retry && code !== 0)) {
-    console.error(`${commandLine(command)} still fails after one retry. Fix it by hand.`);
-  }
-  return { code, changes, uncommittedBefore, fixers, retried: true };
+/** Prints a quick fix's steps after the agent to stderr, so stdout stays a patch or JSON. */
+function quickfixEvents(agent: string): QuickfixEvents {
+  return {
+    onStart: (command, paths) =>
+      console.error(`Running ${commandLine(command)} on ${plural(paths.length, 'file')}`),
+    onOutput: (text) => process.stderr.write(withoutEscapes(text)),
+    onFixerFailed: ({ command, code, timedOut }) =>
+      console.error(
+        timedOut
+          ? `Warning: ${commandLine(command)} timed out and was stopped.`
+          : `Warning: ${commandLine(command)} exited with code ${code}.`,
+      ),
+    onRetry: (failing) => {
+      const fails = failing.length === 1 ? 'still fails' : 'still fail';
+      console.error(
+        `${commandList(failing)} ${fails}. Running ${agent} once more to fix what it printed`,
+      );
+    },
+    onStillFailing: (failing) => {
+      for (const { command } of failing) {
+        console.error(`${commandLine(command)} still fails after one retry. Fix it by hand.`);
+      }
+    },
+  };
 }
 
 /**
@@ -255,11 +238,22 @@ async function fixFile(
   const agent = run.launch.name;
   const shownPath = withoutControlCharacters(file.path);
   console.error(`${step}Running ${agent} on ${shownPath} (score ${formatScore(file.score)})`);
-  const fixed = await runAndFix(file, context);
+  const fixed = await quickfixWithFixers(file, run.report, run.config, run.launch, {
+    fixers: context.fixers.fixers,
+    fixersAllowed: context.fixers.stillApproved,
+    events: quickfixEvents(agent),
+  });
   const { code } = fixed;
+  const changed = diffFiles(fixed.changes);
+  const after: AfterAgent = {
+    fixers: fixed.fixers,
+    retriedFor: fixed.retriedFor,
+    fixerOnly: changed.map(({ path }) => path).filter((path) => !fixed.agentPaths.includes(path)),
+  };
   const ran = {
     fixers: fixed.fixers.map(({ command, code }) => ({ command, code })),
-    retried: fixed.retried,
+    retried: fixed.retriedFor.length > 0,
+    fixerOnly: after.fixerOnly,
   };
   const unchanged = {
     path: file.path,
@@ -269,7 +263,6 @@ async function fixFile(
     commit: null,
     ...ran,
   };
-  const changed = diffFiles(fixed.changes);
   if (changed.length === 0) {
     console.error(`${agent} changed nothing for ${shownPath}.`);
     return { result: unchanged, code };
@@ -277,9 +270,13 @@ async function fixFile(
   const succeeded = code === 0;
   const diffs = succeeded ? await scoreDiffs(run, changed, context.known) : changed;
   if (!context.json) printDiffs(diffs, context.view);
+  if (after.fixerOnly.length > 0) {
+    const names = withoutControlCharacters(after.fixerOnly).join(', ');
+    console.error(`The commands after ${agent} also changed files it did not edit: ${names}`);
+  }
   const commit =
     context.commit && succeeded
-      ? await commitRun(run, file, diffs, fixed.uncommittedBefore, fixed)
+      ? await commitRun(run, file, diffs, fixed.uncommittedBefore, after)
       : null;
   return { result: { ...unchanged, after: scoreAfterOf(file, diffs), diffs, commit }, code };
 }

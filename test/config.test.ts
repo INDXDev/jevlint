@@ -110,6 +110,13 @@ describe('quickfix.after', () => {
     await expect(loadConfig({ cwd: repo })).rejects.toThrow(/shell: unknown key/);
   });
 
+  it('takes a positive timeout in seconds', async () => {
+    await writeRepo('[[quickfix.after]]\ncommand = ["fmt"]\ntimeout = 30\n');
+    expect((await loadConfig({ cwd: repo })).quickfix.after[0]?.timeout).toBe(30);
+    await writeRepo('[[quickfix.after]]\ncommand = ["fmt"]\ntimeout = 0\n');
+    await expect(loadConfig({ cwd: repo })).rejects.toThrow(/quickfix\.after\.0\.timeout/);
+  });
+
   it('stays out of config show', async () => {
     await writeRepo(FIXER);
     const toml = renderConfigToml(await loadConfig({ cwd: repo }));

@@ -47,6 +47,15 @@ export async function commitCounts(root: string, days: number): Promise<Map<stri
   return counts;
 }
 
+/**
+ * The repository's root commits, sorted, which tell one history from another at the same path.
+ * Empty outside git or before the first commit.
+ */
+export async function rootCommits(root: string): Promise<string[]> {
+  const list = await git(root, ['rev-list', '--max-parents=0', 'HEAD']).catch(() => '');
+  return list.split('\n').filter(Boolean).sort();
+}
+
 /** Says why a git command failed, in git's own words when it gave any. */
 export function gitFailureReason(error: unknown): string {
   const { code, stderr } = error as NodeJS.ErrnoException & { stderr?: string };

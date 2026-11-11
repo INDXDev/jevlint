@@ -343,21 +343,25 @@ When the config declares [`[[quickfix.after]]`](configuration.md#quickfix-after)
 formatter, `quickfix` runs them after the agent succeeds, on the files it changed. The diff, the
 re-score and the commit then show the code after those commands. Their output goes to stderr, so
 stdout stays a patch or JSON. A command that exits non-zero gets a warning and does not stop the
-run. A command marked `retry = true` that still fails gives the agent one more run, with the
+run. A command that runs past its `timeout`, 300 seconds by default, is stopped and counts as
+failed. A command marked `retry = true` that still fails gives the agent one more run, with the
 command's output, to fix only those errors. Then the commands run again, and the run goes on
-whatever the result. The commit message names the commands that ran, the retry, and any that still
-fail.
+whatever the result. The commit message names the commands that ran, the checks that caused the
+retry, any that still fail, and the files only the commands changed, apart from the agent's.
 
 Commands from a repository's `jevlint.toml` run only once you approve them. In a terminal,
 `quickfix` lists them and asks before the first agent runs. With `--yes` or outside a terminal it
 skips them and says so, because `--yes` never approves them. Approve them ahead of time with
-[`jevlint trust`](#jevlint-trust).
+[`jevlint trust`](#jevlint-trust). Before each round of commands, `quickfix` checks the approval
+again, and skips them if the agent changed a file they read.
 
 ## `jevlint trust`
 
-Lists the `quickfix.after` commands in this repository's `jevlint.toml` and approves them, after
-asking. The approval is kept in `~/.config/jevlint/trusted.json` for this project root and this
-exact list. Changing any command, its `files` or `retry` asks again.
+Lists the `quickfix.after` commands in this repository's `jevlint.toml`, and the files they read,
+and approves them, after asking. The approval is kept in `~/.config/jevlint/trusted.json` for this
+project root. Changing any command, its `files` or `retry`, the repository's history, or a file the
+commands read, such as a script they name or `package.json` for `pnpm`, asks again. See
+[Quickfix after](configuration.md#quickfix-after) for what it covers.
 
 | Flag | Description |
 | --- | --- |

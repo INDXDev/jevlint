@@ -792,12 +792,21 @@ describe('quickfix', () => {
     userToml?: string;
     /** Approve the repository's commands with `jevlint trust --yes` first. */
     trust?: boolean;
+    /** More files to commit with the project. */
+    files?: Record<string, string>;
   }
 
   /** Runs quickfix in a fresh git repository, after making any `dirty` changes. */
   const inRepo = (
     script: string,
-    { dirty = {}, flags = [], repoToml, userToml = '', trust = false }: RepoOptions = {},
+    {
+      dirty = {},
+      flags = [],
+      repoToml,
+      userToml = '',
+      trust = false,
+      files = {},
+    }: RepoOptions = {},
   ) => {
     const home = tempDir();
     mkdirSync(join(home, 'jevlint'));
@@ -806,7 +815,11 @@ describe('quickfix', () => {
       join(home, 'jevlint/config.toml'),
       `${userToml}\n[agents.stub]\ncommand = ${command}\n`,
     );
-    const cwd = project({ 'a.ts': MESSY, ...(repoToml ? { 'jevlint.toml': repoToml } : {}) });
+    const cwd = project({
+      'a.ts': MESSY,
+      ...files,
+      ...(repoToml ? { 'jevlint.toml': repoToml } : {}),
+    });
     const git = (...args: string[]) =>
       spawnSync('git', args, { cwd, encoding: 'utf8' }).stdout.trim();
     git('init', '-q');
@@ -1048,6 +1061,39 @@ key_env = ["JEVLINT_FAKE_KEY"]
       expect(run().stderr).toContain('Skipping them, because you have not approved them');
     });
 
+    it('skips approved commands once the agent changes a file they run', () => {
+      const tool = 'require("node:fs").writeFileSync(process.argv[2], "// tool ran\\n");\n';
+      const agent = `require('node:fs').writeFileSync('a.ts', ${JSON.stringify(FIXED)});
+        require('node:fs').appendFileSync('tool.js', '// changed\\n');`;
+      const { status, stderr, cwd } = inRepo(agent, {
+        repoToml: after(JSON.stringify([process.execPath, 'tool.js'])),
+        files: { 'tool.js': tool },
+        trust: true,
+        flags: ['--no-commit'],
+      });
+      expect(status).toBe(0);
+      expect(readFileSync(join(cwd, 'a.ts'), 'utf8')).toBe(FIXED);
+      expect(stderr).toContain('a file they read changed during the run');
+    });
+
+    it('tells apart the files only a command changed, in JSON and the commit', () => {
+      const command = JSON.stringify([
+        process.execPath,
+        '-e',
+        'require("node:fs").writeFileSync("other.ts", "export const g = 2;\\n")',
+      ]);
+      const { status, stdout, stderr, git } = inRepo(writes(FIXED), {
+        userToml: after(command),
+        flags: ['--json'],
+      });
+      expect(status).toBe(0);
+      expect(JSON.parse(stdout).files[0].fixerOnly).toEqual(['other.ts']);
+      expect(stderr).toContain('also changed files it did not edit: other.ts');
+      const message = git('log', '-1', '--format=%B');
+      expect(message).toContain('stub edited 1 file: a.ts.');
+      expect(message).toContain('They also changed 1 file the agent did not edit: other.ts.');
+    });
+
     it('runs commands from the user config without approval', () => {
       const log = logFile();
       const { status, cwd } = inRepo(writes(FIXED), { userToml: after(formatter(log)) });
@@ -1115,6 +1161,20 @@ key_env = ["JEVLINT_FAKE_KEY"]
         expect(git('show', 'HEAD:a.ts')).toBe(`${FIXED}// ok`);
         expect(git('log', '-1', '--format=%B')).toContain('Retried once for: ');
         expect(git('log', '-1', '--format=%B')).not.toContain('still fails');
+      });
+
+      it('names only the failing checks as the reason for the retry', () => {
+        const file = promptsFile();
+        const passing = JSON.stringify([process.execPath, '-e', 'process.exit(0)']);
+        const { status, git } = inRepo(agent(file, '// ok\n'), {
+          userToml: `${after(check, 'retry = true\n')}\n${after(passing, 'retry = true\n')}`,
+        });
+        expect(status).toBe(0);
+        const retried = git('log', '-1', '--format=%B')
+          .split('\n')
+          .find((line) => line.startsWith('Retried once for: '));
+        expect(retried).toContain('missing marker');
+        expect(retried).not.toContain('process.exit(0)');
       });
 
       it('retries once at most, then says the check still fails', () => {

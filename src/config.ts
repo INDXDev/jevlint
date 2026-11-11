@@ -14,6 +14,8 @@ export class UserError extends Error {}
 /** Name of the repository config file. */
 export const REPO_CONFIG = 'jevlint.toml';
 
+// `quickfix.after` names commands but is left out on purpose: a team shares it in `jevlint.toml`,
+// and `src/trust.ts` runs a repository's list only once the user approves it.
 const USER_ONLY_KEYS = ['provider.base_url', 'agents', 'cache', 'max_rule_matches'];
 
 /** Letters, digits, `-` and `_`: safe in file names and in `<preset>.<id>`. */
@@ -119,6 +121,8 @@ const fixer = z.strictObject({
   files: z.array(z.string()).optional(),
   /** When the command exits non-zero, ask the agent once to fix what it printed. */
   retry: z.boolean().optional(),
+  /** Seconds the command may run before it is killed and counted as failed. Default 300. */
+  timeout: z.number().positive().optional(),
 });
 
 /** A command `quickfix` runs after the agent, as configured. */

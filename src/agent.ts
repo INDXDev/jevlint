@@ -207,6 +207,12 @@ export function retryQuickfix(
 
 /** How much of a fixer's output is kept for the retry prompt, from the end. */
 const FIXER_OUTPUT_KEPT = 64 * 1024;
+/** How long a fixer may run when its entry sets no `timeout`. */
+export const DEFAULT_FIXER_TIMEOUT_SECONDS = 300;
+/** The exit code of a fixer stopped for running too long, as `timeout(1)` reports it. */
+export const TIMED_OUT_CODE = 124;
+/** The longest delay `setTimeout` takes. A longer one fires at once. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /** One fixer that ran: its command, exit code and the end of what it printed. */
 export interface FixerRun {
@@ -214,9 +220,14 @@ export interface FixerRun {
   code: number;
   /** True when a failure asks the agent to fix what the command printed. */
   retry: boolean;
+  /** True when it ran past its timeout and was killed. */
+  timedOut: boolean;
   /** Its stdout and stderr together, as printed, keeping the end. */
   output: string;
 }
+
+/** A failure the agent can fix: a `retry` check that exited non-zero, not one that hung. */
+const needsRetry = ({ retry, code, timedOut }: FixerRun) => retry && code !== 0 && !timedOut;
 
 /** Picks the paths a fixer takes: those matching its `files` patterns, or all of them. */
 export function fixerPaths(fixer: Fixer, paths: string[]): string[] {
@@ -233,27 +244,40 @@ export interface FixerEvents {
 }
 
 function runFixer(
-  command: string[],
+  fixer: Fixer,
   paths: string[],
   root: string,
   { onOutput }: FixerEvents,
-): Promise<{ code: number; output: string }> {
-  const [bin = '', ...args] = command;
+): Promise<{ code: number; output: string; timedOut: boolean }> {
+  const [bin = '', ...args] = fixer.command;
+  const seconds = fixer.timeout ?? DEFAULT_FIXER_TIMEOUT_SECONDS;
   // `./`, so a file named like an option reaches the tool as a path.
   const argv = [...args, ...paths.map((path) => `./${path}`)];
   return new Promise((resolve) => {
     let output = '';
     let settled = false;
-    const finish = (code: number) => {
-      if (settled) return;
-      settled = true;
-      resolve({ code, output });
-    };
     const keep = (text: string) => {
       onOutput?.(text);
       output = `${output}${text}`.slice(-FIXER_OUTPUT_KEPT);
     };
     const child = spawn(bin, argv, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    const finish = (code: number, timedOut = false) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code, output, timedOut });
+    };
+    const timer = setTimeout(
+      () => {
+        keep(`Timed out after ${seconds}s, so jevlint stopped it.\n`);
+        child.kill('SIGKILL');
+        // A process it started may still hold the pipes open, so do not wait for them to close.
+        child.stdout.destroy();
+        child.stderr.destroy();
+        finish(TIMED_OUT_CODE, true);
+      },
+      Math.min(seconds * 1000, MAX_TIMER_MS),
+    );
     child.stdout.setEncoding('utf8').on('data', keep);
     child.stderr.setEncoding('utf8').on('data', keep);
     child.on('error', (error: NodeJS.ErrnoException) => {
@@ -267,8 +291,8 @@ function runFixer(
 
 /**
  * Runs each fixer, in order and never through a shell, on the paths it matches, with the paths
- * appended to its command. A fixer that matches no path does not run. A failing fixer does not
- * throw: its exit code is in the result.
+ * appended to its command. A fixer that matches no path does not run. A failing or hung fixer
+ * does not throw: its exit code is in the result.
  */
 export async function runFixers(
   root: string,
@@ -281,10 +305,96 @@ export async function runFixers(
     const matched = fixerPaths(fixer, paths);
     if (matched.length === 0) continue;
     events.onStart?.(fixer.command, matched);
-    const { code, output } = await runFixer(fixer.command, matched, root, events);
-    runs.push({ command: fixer.command, code, retry: fixer.retry === true, output });
+    const { code, output, timedOut } = await runFixer(fixer, matched, root, events);
+    runs.push({ command: fixer.command, code, retry: fixer.retry === true, timedOut, output });
   }
   return runs;
+}
+
+/** The paths whose content in `later` differs from `earlier`, or from before the run. */
+function changedSince(earlier: FileChange[], later: FileChange[]): string[] {
+  const contents = new Map(earlier.map(({ path, after }) => [path, after]));
+  return later
+    .filter(
+      ({ path, before, after }) => (contents.has(path) ? contents.get(path) : before) !== after,
+    )
+    .map(({ path }) => path);
+}
+
+/** Reports a quick fix's steps after the agent to the interface layer. */
+export interface QuickfixEvents extends FixerEvents {
+  /** A fixer exited non-zero or timed out. */
+  onFixerFailed?: (run: FixerRun) => void;
+  /** Checks marked `retry` failed, so the agent runs once more. */
+  onRetry?: (failing: FixerRun[]) => void;
+  /** Checks marked `retry` still fail after the one retry. */
+  onStillFailing?: (failing: FixerRun[]) => void;
+}
+
+/** The fixers a quick fix runs after the agent, and how to tell whether they may still run. */
+export interface QuickfixOptions {
+  fixers: Fixer[];
+  /** Asked before each round of fixers. False skips that round, as when an approval lapsed. */
+  fixersAllowed?: () => Promise<boolean>;
+  events?: QuickfixEvents;
+}
+
+/** A quick fix with the project's fixers: what ran after the agent, and what the agent edited. */
+export interface FixedQuickfix extends QuickfixResult {
+  /** Each fixer's last run. */
+  fixers: FixerRun[];
+  /** The failing checks that gave the agent its one retry. Empty when it had none. */
+  retriedFor: FixerRun[];
+  /** The paths the agent itself changed. Any other changed path, only a fixer changed. */
+  agentPaths: string[];
+}
+
+/**
+ * Runs a quick fix, then the fixers on the files the agent edited. When a check marked `retry`
+ * still fails, the agent gets one more run with its output, and the fixers run again. The changes
+ * cover the whole run.
+ */
+export async function quickfixWithFixers(
+  file: FileReport,
+  report: AuditReport,
+  config: Config,
+  launch: AgentLaunch,
+  { fixers, fixersAllowed, events = {} }: QuickfixOptions,
+): Promise<FixedQuickfix> {
+  const { root } = config;
+  const first = await quickfixFile(file, report, config, launch);
+  const agentPaths = new Set(changedSince([], first.changes));
+  const done = (code: number, changes: FileChange[], runs: FixerRun[], retriedFor: FixerRun[]) => ({
+    ...first,
+    code,
+    changes,
+    fixers: runs,
+    retriedFor,
+    agentPaths: [...agentPaths],
+  });
+  const agentEdited = (changes: FileChange[]) =>
+    editedPaths(changes).filter((path) => agentPaths.has(path));
+  const fix = async (changes: FileChange[]) => {
+    const paths = agentEdited(changes);
+    if (paths.length === 0 || (fixersAllowed && !(await fixersAllowed()))) return [];
+    const runs = await runFixers(root, fixers, paths, events);
+    for (const run of runs.filter(({ code }) => code !== 0)) events.onFixerFailed?.(run);
+    return runs;
+  };
+  if (first.code !== 0 || fixers.length === 0) return done(first.code, first.changes, [], []);
+  const runs = await fix(first.changes);
+  const fixed = await collectChanges(root, first.snapshot);
+  const failing = runs.filter(needsRetry);
+  if (failing.length === 0) return done(0, fixed, runs, []);
+  events.onRetry?.(failing);
+  const code = await retryQuickfix(config, launch, agentEdited(fixed), failing);
+  const retried = await collectChanges(root, first.snapshot);
+  for (const path of changedSince(fixed, retried)) agentPaths.add(path);
+  if (code !== 0) return done(code, retried, runs, failing);
+  const rerun = await fix(retried);
+  const still = rerun.filter(needsRetry);
+  if (still.length > 0) events.onStillFailing?.(still);
+  return done(code, await collectChanges(root, first.snapshot), rerun, failing);
 }
 
 /** Re-audits files an agent left behind, keyed by path. A file no audit covers has no entry. */

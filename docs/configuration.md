@@ -170,11 +170,22 @@ retry = true
 | `command` | string[] | The program and its arguments. It runs without a shell, so quotes, `;` and `$(...)` mean nothing special |
 | `files` | string[] | Gitignore-style patterns a changed file must match to be passed. Default: every changed file. With no match, the command does not run |
 | `retry` | boolean | When the command exits non-zero, give the agent one more run with its output, to fix only those errors. Default `false`. It doubles the agent's cost for that file |
+| `timeout` | number | Seconds the command may run before it is stopped and counted as failed, with exit code 124. Default `300`. A stopped command never triggers `retry` |
 
 Commands in your user config run without asking, like `agents`. Commands in a repository's
 `jevlint.toml` run only after you approve them, with a prompt in `quickfix` or with
-[`jevlint trust`](cli.md#jevlint-trust). The approval covers that project root and that exact list,
-so any change to it asks again. A `jevlint.toml` list replaces the user config's, as arrays do.
+[`jevlint trust`](cli.md#jevlint-trust). The approval covers that project root, that exact list, the repository's history (its root
+commits), and the content of the files the commands read to decide what they run: any argument
+that names a file in the repository, such as `scripts/fix.sh`, and each program's own files, such
+as `package.json` and the lockfile for `pnpm`, `Cargo.toml` for `cargo`, or `eslint.config.js` for
+`eslint`. A change to any of these asks again, and `quickfix` checks again before each round of
+commands, so an agent that edits one of them stops them. Tools already installed, such as
+`node_modules`, are not covered, so approve only repositories whose dependencies you trust. A `jevlint.toml` list replaces the
+user config's, as arrays do.
+
+A command may change files the agent did not edit, as a project-wide formatter does. Those files are
+in the diff and the commit too, and the commit message and `--json` list them apart from the
+agent's.
 
 ## Files that are always excluded
 
@@ -200,11 +211,11 @@ These keys work only in your user config. In `jevlint.toml` they are a config er
 | --- | --- |
 | `provider.base_url` | A cloned repository could send your API key to its own server |
 | `agents` | A cloned repository could run arbitrary commands through `fix` or `quickfix` |
+| `cache` | `cache clear` deletes this directory, and a bucket's answers set your scores |
+| `max_rule_matches` | It caps what a repository's [rules](presets.md#semantic-rules) can spend of your money |
 
 `quickfix.after` names commands too, but a repository may set it, because its commands run only
 after you approve them. See [Quickfix after](#quickfix-after).
-| `cache` | `cache clear` deletes this directory, and a bucket's answers set your scores |
-| `max_rule_matches` | It caps what a repository's [rules](presets.md#semantic-rules) can spend of your money |
 
 API keys never belong in either config file. See [Providers](providers.md#storing-keys).
 
