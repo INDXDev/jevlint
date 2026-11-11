@@ -35,6 +35,8 @@ const ssotOf = (components: ArchitectureComponent[]): ArchitectureSsot => ({
   },
   components,
   flows: [],
+  views: [],
+  chapters: [],
 });
 
 const mod = (path: string, imports: string[] = []): FactModule => ({

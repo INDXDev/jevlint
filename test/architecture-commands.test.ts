@@ -191,7 +191,7 @@ describe('jevlint architecture compile and plan', () => {
     const cwd = project({ ...CODE, 'README.md': '# Shop\n' });
     const fresh = jevlint(cwd, 'architecture', 'compile');
     expect(fresh.status).toBe(0);
-    expect(fresh.stdout).toContain('# Write the architecture SSOT');
+    expect(fresh.stdout).toContain('# Write the architecture document');
     expect(fresh.stdout).toContain('jevlint architecture list');
     const withDocs = jevlint(cwd, 'architecture', 'compile', '--docs');
     expect(withDocs.status).toBe(0);
@@ -257,5 +257,97 @@ describe('the SSOT in other commands', () => {
     expect(
       JSON.parse(readFileSync(join(cwd, '.jevlint/baseline.json'), 'utf8')).architecture,
     ).toBeUndefined();
+  });
+});
+
+const OVERVIEW = (from: string, to: string) =>
+  `title: Overview\nnodes:\n  - { id: web, label: Web, component: web }\n  - { id: db, label: Database, kind: store, component: db }\nedges:\n  - { from: ${from}, to: ${to}, verb: queries }\n`;
+const CHAPTER = `---\ntitle: Pages\nevidence: [src/web/page.ts:1]\n---\n\nPages ask the database.\n\n<!-- jevlint:diagram overview -->\n`;
+
+describe('views and chapters on the command line', () => {
+  it('lists views and chapters, and warns about an arrow with no import, exiting 0', () => {
+    const cwd = project({
+      ...CODE,
+      ...SSOT,
+      [`${DIR}/views/overview.yaml`]: OVERVIEW('db', 'web'),
+      [`${DIR}/chapters/10-pages.md`]: CHAPTER,
+    });
+    const { status, stdout, stderr } = jevlint(cwd, 'architecture', 'list');
+    expect(status).toBe(0);
+    expect(stdout).toContain('Views');
+    expect(stdout).toContain('Chapters');
+    expect(stderr).toContain(
+      'Warning: .jevlint/architecture/views/overview.yaml: Database → Web: the import runs the other way',
+    );
+  });
+
+  it('shows a view by id, refuses an unknown one, and builds the document around chapters', () => {
+    const cwd = project({
+      ...CODE,
+      ...SSOT,
+      [`${DIR}/views/overview.yaml`]: OVERVIEW('web', 'db'),
+      [`${DIR}/chapters/10-pages.md`]: CHAPTER,
+    });
+    const view = jevlint(cwd, 'architecture', 'show', '--view', 'overview');
+    expect(view.status).toBe(0);
+    expect(view.stdout).toContain('Web → Database  queries src/web/page.ts:1');
+    const unknown = jevlint(cwd, 'architecture', 'show', '--view', 'ghost');
+    expect(unknown.status).toBe(2);
+    expect(unknown.stderr).toContain('or overview');
+    const markdown = jevlint(cwd, 'architecture', 'show', '--markdown');
+    expect(markdown.stdout).toContain('## Pages\n\nPages ask the database.');
+    expect(markdown.stdout).toContain('flowchart TD');
+    expect(markdown.stdout).toContain('## Reference');
+    expect(
+      jevlint(cwd, 'architecture', 'show', '--markdown', '--view', 'overview').stdout,
+    ).toContain('## Overview');
+  });
+});
+
+/** An agent that writes an SSOT whose view draws the arrow backwards, and fixes it if told to. */
+const FAKE_AGENT = `
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+const prompt = readFileSync(0, 'utf8');
+appendFileSync('agent.log', prompt.split('\\n')[0] + '\\n');
+const files = JSON.parse(process.argv[3]);
+const write = (path, text) => { mkdirSync(path.replace(/\\/[^/]+$/, ''), { recursive: true }); writeFileSync(path, text); };
+if (prompt.startsWith('# Write')) for (const [path, text] of Object.entries(files)) write(path, text);
+if (prompt.startsWith('# Fix') && process.argv[2] === 'fix') write('${DIR}/views/overview.yaml', ${JSON.stringify(OVERVIEW('web', 'db'))});
+`;
+
+describe('compile --agent', () => {
+  const run = (mode: 'fix' | 'never') => {
+    const home = tempDir();
+    const cwd = project(CODE);
+    const agent = join(home, 'agent.mjs');
+    writeFileSync(agent, FAKE_AGENT);
+    const files = JSON.stringify({
+      ...SSOT,
+      [`${DIR}/views/overview.yaml`]: OVERVIEW('db', 'web'),
+    });
+    mkdirSync(join(home, 'jevlint'), { recursive: true });
+    writeFileSync(
+      join(home, 'jevlint/config.toml'),
+      `[agents.fake]\ncommand = ${JSON.stringify([process.execPath, agent, mode, files])}\n`,
+    );
+    const result = jevlintAt(home, cwd, 'architecture', 'compile', '--agent', 'fake');
+    const log = readFileSync(join(cwd, 'agent.log'), 'utf8').trim().split('\n');
+    return { ...result, log };
+  };
+
+  it('hands what list reports back to the agent until it is fixed', () => {
+    const { status, stderr, log } = run('fix');
+    expect(status).toBe(0);
+    expect(log).toEqual(['# Write the architecture document', '# Fix the architecture document']);
+    expect(stderr).toContain('round 1 of 2');
+    expect(stderr).toContain('loads, with nothing to fix');
+  });
+
+  it('stops after two rounds, saying what is left', () => {
+    const { status, stderr, log } = run('never');
+    expect(status).toBe(0);
+    expect(log).toHaveLength(3);
+    expect(stderr).toContain('After 2 repair rounds');
+    expect(stderr).toContain('the import runs the other way');
   });
 });

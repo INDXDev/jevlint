@@ -2,13 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { mapEdges } from '../src/architecture/conformance.ts';
 import { draftSsot } from '../src/architecture/draft.ts';
 import { buildFacts } from '../src/architecture/facts.ts';
-import { renderShowHtml } from '../src/architecture/html.ts';
-import { renderMarkdown, renderView } from '../src/architecture/markdown.ts';
+import { chapterHtml, renderShowHtml } from '../src/architecture/html.ts';
+import {
+  dataViewDiagram,
+  flowDiagram,
+  graphViewDiagram,
+  renderMarkdown,
+  renderView,
+} from '../src/architecture/markdown.ts';
 import {
   renderCheckPrompt,
   renderCompilePrompt,
   renderDriftPrompt,
   renderPlanPrompt,
+  renderRepairPrompt,
 } from '../src/architecture/prompt.ts';
 import {
   allChecklistRefs,
@@ -32,7 +39,9 @@ import type {
   ArchitectureCheckReport,
   ArchitectureSsot,
   ArchitectureViolation,
+  DataView,
   FactModule,
+  GraphView,
 } from '../src/types.ts';
 
 const EVIL = '\u001b[31m<script>alert(1)</script>‮';
@@ -118,6 +127,8 @@ const ssot: ArchitectureSsot = {
       ],
     },
   ],
+  views: [],
+  chapters: [],
 };
 
 const model: ShowModel = { root: '/r', draft: false, ssot, edges: mapEdges(ssot, modules), facts };
@@ -194,11 +205,14 @@ describe('prompts', () => {
     ssotFiles: [],
     delta: null,
     docs: [],
+    commits: [],
+    comments: [],
+    instructions: [],
   };
 
   it('asks for a new SSOT from the facts and the draft, with paths and lines only', () => {
     const prompt = renderCompilePrompt(base);
-    expect(prompt).toContain('# Write the architecture SSOT');
+    expect(prompt).toContain('# Write the architecture document');
     expect(prompt).toContain('## The draft');
     expect(prompt).toContain('jevlint architecture list');
     expect(prompt).toContain('src/web/a.ts:1');
@@ -226,7 +240,7 @@ describe('prompts', () => {
       },
       docs: ['README.md'],
     });
-    expect(update).toContain('# Update the architecture SSOT');
+    expect(update).toContain('# Update the architecture document');
     expect(update).toContain('compiled from def5678');
     expect(update).toContain(
       '- unmapped-code: src/new/x.ts: a file in no component (new since compiled_at)',
@@ -340,5 +354,282 @@ describe('terminal', () => {
     expect(text).toContain('2 violations in the baseline left out');
     expect(text).toContain('Unimplemented');
     expect(formatAddedViolations([])).toContain('no new violations');
+  });
+});
+
+const overview: GraphView = {
+  id: 'overview',
+  kind: 'graph',
+  title: 'Overview',
+  description: 'How a page is served.',
+  groups: [
+    { id: 'front', label: 'Front "end"' },
+    { id: 'back', label: 'Back' },
+  ],
+  nodes: [
+    { id: 'shopper', label: 'Shopper', kind: 'actor' },
+    { id: 'web', label: `Web <b>${EVIL}`, kind: 'component', path: 'src/web/a.ts', group: 'front' },
+    { id: 'db', label: 'Database', kind: 'store', path: 'src/db/**', group: 'back' },
+    { id: 'pg', label: 'Postgres', kind: 'external', packages: ['pg'] },
+    { id: 'jobs', label: 'Jobs', kind: 'queue' },
+    { id: 'doc', label: 'Doc', kind: 'document' },
+  ],
+  edges: [
+    { from: 'shopper', to: 'web', verb: 'browses', style: 'solid' },
+    { from: 'web', to: 'db', verb: 'reads', style: 'solid' },
+    { from: 'db', to: 'web', verb: 'pushes', style: 'solid' },
+    { from: 'db', to: 'pg', verb: 'queries', style: 'dashed' },
+  ],
+};
+
+const dataView: DataView = {
+  id: 'data-model',
+  kind: 'data',
+  title: 'Data',
+  entities: [
+    {
+      id: 'order',
+      name: 'Order',
+      path: 'src/db/c.ts',
+      description: 'A paid basket.',
+      fields: [
+        { name: 'lines', type: 'OrderLine[]' },
+        { name: 'status', type: 'string | null', note: 'paid "or" shipped' },
+        { name: 'meta', type: 'readonly Record<string, X>' },
+      ],
+    },
+    { id: 'line', name: 'Order Line', path: 'src/db/c.ts', fields: [] },
+  ],
+  relations: [
+    { from: 'order', to: 'line', cardinality: 'one-to-many', label: 'holds' },
+    { from: 'line', to: 'order', cardinality: 'many-to-one', label: 'belongs' },
+    { from: 'order', to: 'order', cardinality: 'one-to-one', label: 'self' },
+    { from: 'line', to: 'line', cardinality: 'many-to-many', label: 'pairs' },
+  ],
+};
+
+const documented: ShowModel = {
+  ...model,
+  ssot: {
+    ...ssot,
+    flows: [
+      {
+        id: 'buy',
+        title: 'Buy',
+        steps: [
+          { from: 'web', to: 'db', verb: 'stores', returns: 'an id' },
+          { from: 'web', to: 'db', verb: 'notifies', optional: true },
+        ],
+      },
+    ],
+    views: [overview, dataView],
+    chapters: [
+      {
+        id: '10-overview',
+        title: `Overview ${EVIL}`,
+        evidence: ['src/web/a.ts'],
+        body: `Line one.\nLine two \u001b[2J.\n\n<!-- jevlint:diagram overview -->\n\n<!-- jevlint:diagram flow:buy -->`,
+      },
+    ],
+  },
+};
+
+describe('graph and data views', () => {
+  it('compiles a graph view to a flowchart with groups, tones, shapes and verbs', () => {
+    const diagram = graphViewDiagram(overview, model);
+    expect(diagram).toContain('```mermaid\nflowchart TD');
+    expect(diagram).toContain('subgraph g_front["Front #quot;end#quot;"]');
+    expect(diagram).toContain('n_shopper(("Shopper"))');
+    expect(diagram).toContain('n_db[("Database<br/>[src/db/]")]');
+    expect(diagram).toContain('n_pg{{"Postgres"}}');
+    expect(diagram).toContain('n_jobs[["Jobs"]]');
+    expect(diagram).toContain('n_doc[/"Doc"/]');
+    expect(diagram).toContain('[a.ts]');
+    expect(diagram).toContain('Web #lt;b#gt;');
+    expect(diagram).toContain('n_web -->|"reads"| n_db');
+    // db → web has no import behind it here, so it is drawn dashed though declared solid.
+    expect(diagram).toContain('n_db -.->|"pushes"| n_web');
+    expect(diagram).toContain('n_db -.->|"queries"| n_pg');
+    expect(diagram).toContain('classDef toneBlue fill:#dbeafe');
+    expect(diagram).toContain('class n_shopper,n_web toneBlue');
+    expect(diagram).toContain('class n_db,n_jobs toneAmber');
+    expect(diagram).toContain('class n_doc toneNeutral');
+    expect(diagram).toContain('classDef toneAmber');
+    expect(diagram).toContain('classDef toneIndigo');
+  });
+
+  it('compiles a data view to an ER diagram', () => {
+    const diagram = dataViewDiagram(dataView);
+    expect(diagram).toContain('```mermaid\nerDiagram');
+    expect(diagram).toContain('Order ||--o{ Order_Line : "holds"');
+    expect(diagram).toContain('Order_Line }o--|| Order : "belongs"');
+    expect(diagram).toContain('Order ||--|| Order : "self"');
+    expect(diagram).toContain('Order_Line }o--o{ Order_Line : "pairs"');
+    expect(diagram).toContain('OrderLine[] lines');
+    expect(diagram).toContain('string status "paid #quot;or#quot; shipped"');
+    expect(diagram).toContain('Record meta');
+  });
+
+  it('draws flow returns and optional steps', () => {
+    const diagram = flowDiagram(documented.ssot.flows[0] as never, documented);
+    expect(diagram).toContain('participant c_web as Web');
+    expect(diagram).toContain('c_web->>c_db: stores');
+    expect(diagram).toContain('c_db-->>c_web: an id');
+    expect(diagram).toContain('c_web-->>c_db: notifies');
+  });
+});
+
+describe('the document', () => {
+  it('builds around chapters, placing diagrams and appending the rest and a reference', () => {
+    const markdown = renderMarkdown(documented);
+    expect(markdown).toContain('## Overview');
+    expect(markdown).toContain('Line one.\nLine two ?[2J.');
+    expect(markdown).not.toContain('\u001b');
+    expect(markdown).not.toContain('jevlint:diagram');
+    expect(markdown).toContain('flowchart TD');
+    expect(markdown).toContain('sequenceDiagram');
+    expect(markdown).toContain('## More diagrams\n\n### Data');
+    expect(markdown).toContain('erDiagram');
+    expect(markdown).not.toContain('### Buy');
+    expect(markdown).toContain('## Reference\n\n### Components');
+    expect(markdown).toContain('### External systems');
+    expect(markdown.indexOf('## Overview')).toBeLessThan(markdown.indexOf('## Reference'));
+  });
+
+  it('includes the views in the structural document when there are no chapters', () => {
+    const markdown = renderMarkdown({ ...documented, ssot: { ...documented.ssot, chapters: [] } });
+    expect(markdown).toContain('## Overview\n\nHow a page is served.');
+    expect(markdown).toContain('## Data\n\n```mermaid\nerDiagram');
+    expect(markdown).toContain('## Map');
+    expect(renderView(documented, { kind: 'view', id: 'data-model' })).toContain('erDiagram');
+  });
+});
+
+describe('chapterHtml', () => {
+  it('converts Markdown with everything escaped and links reduced to text', () => {
+    const html = chapterHtml(
+      [
+        '### Why <script>alert(1)</script>',
+        'A **bold** `code` and [a link](https://evil.example/x).',
+        '- one\n- two',
+        '1. first\n2. second',
+        '| A | B |\n| --- | --- |\n| `x` | y |',
+        '> quoted',
+        '```ts\nconst a = "<b>";\n```',
+        '<!-- jevlint:diagram data-model -->',
+      ].join('\n\n'),
+      documented,
+    );
+    expect(html).not.toMatch(/<script/i);
+    expect(html).toContain('<h4>Why &lt;script&gt;alert(1)&lt;/script&gt;</h4>');
+    expect(html).toContain('A <b>bold</b> <code>code</code> and a link.');
+    expect(html).not.toContain('evil.example');
+    expect(html).toContain('<ul><li>one</li><li>two</li></ul>');
+    expect(html).toContain('<ol><li>first</li><li>second</li></ol>');
+    expect(html).toContain('<th>A</th>');
+    expect(html).toContain('<td><code>x</code></td>');
+    expect(html).toContain('<blockquote>quoted</blockquote>');
+    expect(html).toContain('<pre><code>const a = &quot;&lt;b&gt;&quot;;</code></pre>');
+    expect(html).toContain('<code>Order</code>');
+  });
+
+  it('puts chapters and views on the show page, with no scripts', () => {
+    const html = renderShowHtml(documented);
+    expect(html).not.toMatch(/<script/i);
+    expect(html).toContain('<h2>Overview');
+    expect(html).toContain('<svg');
+    expect(html).toContain('<summary>Arrows</summary>');
+    expect(html).toContain('A paid basket.');
+  });
+});
+
+describe('the compile prompt', () => {
+  const draft = draftSsot(facts, 'shop', '.jevlint/architecture');
+  const input = {
+    dir: '.jevlint/architecture',
+    facts: {
+      ...facts,
+      dataTypes: [
+        {
+          name: 'Order',
+          path: 'src/db/c.ts',
+          line: 3,
+          fields: [{ name: 'id', type: 'string' }],
+          component: 'db',
+          refs: [],
+          usedBy: 2,
+        },
+      ],
+    },
+    draft,
+    ssot: null,
+    ssotFiles: [],
+    delta: null,
+    docs: [],
+    commits: [
+      { hash: 'abc1234', subject: 'Cache outlines', body: 'Because parsing is slow.', files: 7 },
+    ],
+    comments: [{ path: 'src/db/c.ts', line: 9, text: 'Kept because the pool is shared.' }],
+    instructions: ['AGENTS.md'],
+  };
+
+  it('sets out the process, the formats, the rules, the outline and the material', () => {
+    const prompt = renderCompilePrompt(input);
+    for (const heading of [
+      '## How to work',
+      '## The SSOT format',
+      '## The views and chapters format',
+      '## How to draw the views',
+      '## The chapters to write',
+      '## How to write the chapters',
+      '## Material for the document',
+      '## The facts',
+      '## The draft',
+    ]) {
+      expect(prompt).toContain(heading);
+    }
+    expect(prompt).toContain('jevlint architecture list');
+    expect(prompt).toContain('20-principles.md');
+    expect(prompt).toContain('<!-- jevlint:diagram');
+    expect(prompt).toContain('- AGENTS.md');
+    expect(prompt).toContain('- Order (src/db/c.ts:3, used by 2): id: string');
+    expect(prompt).toContain('- src/db/c.ts:9: Kept because the pool is shared.');
+    expect(prompt).toContain('- abc1234 (7 files) Cache outlines: Because parsing is slow.');
+  });
+
+  it('asks an update to rewrite only stale chapters and views', () => {
+    const update = renderCompilePrompt({
+      ...input,
+      ssot,
+      ssotFiles: ['.jevlint/architecture/index.yaml'],
+      delta: {
+        base: 'def5678',
+        added: [],
+        removed: [],
+        items: [
+          {
+            kind: 'stale-chapter',
+            component: null,
+            path: '.jevlint/architecture/chapters/10-a.md',
+            message: 'cites a changed file',
+          },
+        ],
+      },
+    });
+    expect(update).toContain('stale-chapter');
+    expect(update).toContain(
+      '- stale-chapter: .jevlint/architecture/chapters/10-a.md: cites a changed file',
+    );
+    expect(update).not.toContain('## The draft');
+  });
+
+  it('lists the problems in the repair prompt, without control characters', () => {
+    const repair = renderRepairPrompt('.jevlint/architecture', [
+      `a.yaml: no import ${EVIL}`,
+      'b.md: no evidence',
+    ]);
+    expect(repair).toContain('jevlint architecture list');
+    expect(repair).toContain('- b.md: no evidence');
+    expect(repair).not.toContain('\u001b');
   });
 });

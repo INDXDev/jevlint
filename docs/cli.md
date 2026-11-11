@@ -102,7 +102,7 @@ files in `.jevlint/architecture/` that describes the system's components, layers
 | `jevlint architecture [paths...]` | The same as `review` | As `review` |
 | `jevlint architecture review [paths...]` | Review the codebase, directories, classes and, with an SSOT, each component and the design. Rank them worst to best | Yes, unless `--ast-only` |
 | `jevlint architecture compile [paths...]` | Print a prompt that tells a coding agent to write the SSOT from the code, or to update it | No |
-| `jevlint architecture list` | Load and validate the SSOT, and print it. Exits 2 when it does not load, and warns on stderr when it is over the size budget | No |
+| `jevlint architecture list` | Load and validate the SSOT, and print it. Exits 2 when it does not load, and warns on stderr when it is over the size budget or its views and chapters do not fit the code | No |
 | `jevlint architecture show` | Draw the SSOT, or a draft from the code when there is none, with the real dependencies laid over the declared ones | No |
 | `jevlint architecture check [paths...]` | Check that the code follows the SSOT. Exits 1 on a violation or an unimplemented checklist item | Checklist items only |
 | `jevlint architecture drift` | Find where the SSOT no longer describes the code. Exits 1 when it finds any | Summaries and `--docs` only |
@@ -116,7 +116,7 @@ there is no SSOT.
 
 | Flag | Meaning |
 | --- | --- |
-| `--perspective <names>` | Review only some of `codebase`, `directory`, `class`, `component` and `design`, comma-separated. `component` and `design` need an SSOT |
+| `--perspective <names>` | Review only some of `codebase`, `directory`, `class`, `component`, `design` and `chapter`, comma-separated. The last three need an SSOT |
 | `--top <n>` | Rows to show (default 20) |
 | `--html <file>` | Write a visual report to this file. The file name is required |
 | `--json` | Print the [JSON report](json-output.md#architecture-report) |
@@ -128,11 +128,17 @@ there is no SSOT.
 ### `compile`
 
 Collects [facts](architecture-reference.md#facts) from the code with no network, builds a draft
-SSOT from them, and prints a prompt that tells a coding agent to read the key files, name and
-summarise each component, merge or split candidates, and write `.jevlint/architecture/`. When an SSOT
-exists, the prompt asks for an update of what changed since `compiled_at` instead, keeping ids. The
-prompt holds paths and line numbers, never file contents. It exits 0 even when the current SSOT does
-not load, and the prompt then says why.
+SSOT from them, and prints a prompt that tells a coding agent to write the whole architecture
+document in `.jevlint/architecture/`: the structure, curated diagrams (`views/`) and chapters
+(`chapters/`) that explain the design and the reasons behind it. The prompt adds the material for
+those reasons: instruction files, data types, comments in central files and the commits most worth
+reading. See [Compile](architecture-reference.md#compile). When an SSOT exists, the prompt asks for
+an update of what changed since `compiled_at` instead, keeping ids and rewriting only stale chapters
+and views. The prompt holds paths, line numbers, names and commit subjects, never file contents. It
+exits 0 even when the current SSOT does not load, and the prompt then says why.
+
+With `--agent`, jevlint then runs the checks of `list` and, while they report anything, hands the
+problems back to the agent, at most twice.
 
 | Flag | Meaning |
 | --- | --- |
@@ -147,8 +153,8 @@ not load, and the prompt then says why.
 
 | Flag | Meaning |
 | --- | --- |
-| `--view <view>` | `map` (default), `layers`, `flow:<id>` or `component:<id>` |
-| `--markdown` | Print the SSOT as an ARCHITECTURE.md with Mermaid diagrams, or only the chosen `--view` |
+| `--view <view>` | `map` (default), `layers`, `flow:<id>`, `component:<id>`, or the id of a view such as `overview` |
+| `--markdown` | Print the SSOT as an ARCHITECTURE.md with Mermaid diagrams, built around its chapters when it has them, or only the chosen `--view` |
 | `--html <file>` | Write one page with no scripts and no network requests |
 | `--json` | Print the SSOT, the map edges and the facts |
 

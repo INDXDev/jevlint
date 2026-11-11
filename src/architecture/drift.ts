@@ -16,7 +16,7 @@ import type {
   DriftVerdict,
   SpecDocResult,
 } from '../types.ts';
-import { collect, existsIn, filesOfCommit } from './collect.ts';
+import { collect, existsIn, filesOfCommit, lineCountIn } from './collect.ts';
 import { assign, componentsTouching, mapEdges, staticDrift } from './conformance.ts';
 import {
   componentOutline,
@@ -28,6 +28,7 @@ import {
   routeQuestion,
   UNCOVERED,
 } from './questions.ts';
+import { documentDrift as ssotDocumentDrift } from './views.ts';
 
 /** Narrows and observes a drift run. */
 export interface ArchitectureDriftOptions {
@@ -202,6 +203,14 @@ export async function driftArchitecture(
     exists: existsIn(config.root),
     added: new Set(history.added),
   });
+  // With no base, nothing is known to have changed, so no chapter is stale for that reason.
+  const changed = new Set(base ? history.changed : []);
+  const lookup = {
+    modules: collected.modules,
+    exists: existsIn(config.root),
+    lineCount: lineCountIn(config.root),
+  };
+  items.push(...ssotDocumentDrift(ssot, lookup, changed));
   let docs: SpecDocResult[] = [];
   let run: SpecRun | null = null;
   if (!options.static) {

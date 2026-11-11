@@ -12,6 +12,7 @@ import type {
   EntryPoint,
   Evidence,
   ExternalUse,
+  FactDataType,
   FactModule,
 } from '../types.ts';
 import { classifyPackage } from './externals.ts';
@@ -35,6 +36,7 @@ const MAX_CENTRAL = 5;
 const MAX_INTERFACE = 12;
 const MAX_FLOWS = 10;
 const MAX_CO_CHANGES = 10;
+const MAX_DATA_TYPES = 40;
 /** Pairs that change together fewer times than this are coincidence. */
 const MIN_CO_CHANGES = 3;
 
@@ -463,6 +465,35 @@ function flowsOf(
     .slice(0, MAX_FLOWS);
 }
 
+/**
+ * The data types the rest of the data refers to most: what an ER diagram is drawn from. A type
+ * name declared twice links by its first declaration.
+ */
+function dataTypesOf(modules: FactModule[], componentOf: Map<string, string>): FactDataType[] {
+  const declared = modules.flatMap(({ path, types = [] }) =>
+    types.map((type) => ({ ...type, path })),
+  );
+  const names = new Set(declared.map(({ name }) => name));
+  const withRefs = declared.map((type) => {
+    const mentioned = type.fields.flatMap(
+      ({ type: text }) => text.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [],
+    );
+    const refs = [...new Set(mentioned.filter((name) => names.has(name) && name !== type.name))];
+    return { ...type, component: componentOf.get(type.path) ?? null, refs, usedBy: 0 };
+  });
+  for (const type of withRefs) {
+    for (const ref of type.refs) {
+      const target = withRefs.find(({ name }) => name === ref);
+      if (target) target.usedBy += 1;
+    }
+  }
+  const weight = ({ refs, usedBy }: FactDataType) => refs.length + 2 * usedBy;
+  return withRefs
+    .filter((type) => weight(type) > 0)
+    .sort((a, b) => weight(b) - weight(a) || a.name.localeCompare(b.name))
+    .slice(0, MAX_DATA_TYPES);
+}
+
 /** Builds the facts. Test files stay out of components and are listed as globs. */
 export function buildFacts(input: FactsInput): ArchitectureFacts {
   const code = input.modules.filter(({ path }) => !isTestPath(path));
@@ -513,6 +544,7 @@ export function buildFacts(input: FactsInput): ArchitectureFacts {
     cycles: [...new Set(cyclicNodes(sccs).values())],
     coChanges: coChangesOf(input.commits, componentOf, graph),
     tests: testGlobs(input.modules.map(({ path }) => path)),
+    dataTypes: dataTypesOf(code, componentOf),
     modules: input.modules,
     warnings: input.warnings,
   };

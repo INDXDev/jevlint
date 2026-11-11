@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { Experimental_DecisionMockModelV4 as MockModel } from 'ai/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { changeViolations, checkArchitecture } from '../src/architecture/check.ts';
+import { validateSsot } from '../src/architecture/compile.ts';
 import { driftArchitecture } from '../src/architecture/drift.ts';
 import { loadArchitecture } from '../src/architecture/load.ts';
 import { reviewArchitecture } from '../src/architecture/review.ts';
@@ -311,5 +312,108 @@ describe('reviewArchitecture with an SSOT', () => {
     expect(design).toContain('Serves pages.');
     expect(requests.join()).not.toContain('return 1');
     expect(await readFile(join(root, 'src/db/client.ts'), 'utf8')).toContain('return 1');
+  });
+});
+
+const CHAPTER = `---
+title: How pages are served
+evidence: [src/web/page.ts:1]
+---
+
+The web layer asks the database through \`src/db/client.ts:1\`.
+`;
+const OVERVIEW = `title: Overview
+nodes:
+  - { id: web, label: Web, component: web }
+  - { id: db, label: Database, kind: store, component: db }
+edges:
+  - { from: web, to: db, verb: queries }
+`;
+
+describe('chapters and views', () => {
+  it('reviews each chapter from its text, with the chapter perspective', async () => {
+    await write({ [`${DIR}/chapters/10-pages.md`]: CHAPTER });
+    const requests = useModel(() => 'agrees');
+    const report = await reviewArchitecture(config, { perspectives: ['chapter'] });
+    expect(report.units.map(({ perspective, name, path }) => [perspective, name, path])).toEqual([
+      ['chapter', '10-pages', `${DIR}/chapters/10-pages.md`],
+    ]);
+    expect(report.units[0]?.model?.answers.length).toBeGreaterThan(0);
+    expect(requests.join()).toContain('Chapter: How pages are served');
+    expect(requests.join()).toContain('Evidence: src/web/page.ts:1');
+    expect(requests.join()).not.toContain('return 1');
+  });
+
+  it('refuses the chapter perspective without an SSOT', async () => {
+    await rm(join(root, DIR), { recursive: true });
+    await expect(
+      reviewArchitecture(config, { astOnly: true, perspectives: ['chapter'] }),
+    ).rejects.toThrow('The chapter perspective reviews the architecture SSOT');
+  });
+
+  it('reports a chapter whose cited file changed since compiled_at', async () => {
+    git('init', '-q');
+    const base = commit('base');
+    await write({
+      [`${DIR}/index.yaml`]: SSOT[`${DIR}/index.yaml`].replace(
+        'name: shop',
+        `name: shop\ncompiled_at: ${base}`,
+      ),
+      [`${DIR}/chapters/10-pages.md`]: CHAPTER,
+      [`${DIR}/views/overview.yaml`]: OVERVIEW,
+    });
+    commit('document');
+    // Only the SSOT changed, and a file the chapter mentions without citing does not count.
+    await write({ 'src/db/client.ts': 'export function query() { return 2; }\n' });
+    const quiet = await driftArchitecture(config, await ssot(), { static: true });
+    expect(quiet.items).toEqual([]);
+    await write({
+      'src/web/page.ts':
+        "import { query } from '../db/client.ts';\nexport const page = () => query() + 1;\n",
+    });
+    const items = (await driftArchitecture(config, await ssot(), { static: true })).items;
+    expect(items).toEqual([
+      expect.objectContaining({
+        kind: 'stale-chapter',
+        path: `${DIR}/chapters/10-pages.md`,
+        target: 'src/web/page.ts',
+      }),
+    ]);
+  });
+
+  it('reports no stale chapter without compiled_at', async () => {
+    await write({ [`${DIR}/chapters/10-pages.md`]: CHAPTER });
+    const report = await driftArchitecture(config, await ssot(), { static: true });
+    expect(report.items).toEqual([]);
+  });
+});
+
+describe('validateSsot', () => {
+  it('says why the SSOT does not load', async () => {
+    await write({ [`${DIR}/index.yaml`]: 'version: 2\n' });
+    const result = await validateSsot(config);
+    expect(result.ssot).toBeNull();
+    expect(result.error).toContain('index.yaml');
+  });
+
+  it('is clean without views or chapters, and reports what does not fit when there are', async () => {
+    expect(await validateSsot(config)).toMatchObject({ problems: [] });
+    await write({
+      [`${DIR}/views/overview.yaml`]: OVERVIEW.replace(
+        '{ from: web, to: db',
+        '{ from: db, to: web',
+      ),
+      [`${DIR}/chapters/10-pages.md`]: CHAPTER.replace('src/web/page.ts:1', 'src/web/page.ts:40'),
+    });
+    const { problems } = await validateSsot(config);
+    expect(problems).toEqual([
+      `${DIR}/views/overview.yaml: Database → Web: the import runs the other way (src/web/page.ts:1); the caller owns the arrow`,
+      `${DIR}/chapters/10-pages.md: evidence src/web/page.ts has only 3 lines, not 40`,
+    ]);
+  });
+
+  it('is null with no SSOT and no error', async () => {
+    await rm(join(root, DIR), { recursive: true });
+    expect(await validateSsot(config)).toEqual({ ssot: null, problems: [] });
   });
 });

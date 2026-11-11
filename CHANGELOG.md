@@ -31,6 +31,16 @@ This project follows [Semantic Versioning](https://semver.org).
   - `review` adds the `component` and `design` perspectives when an SSOT exists, from the new
     `architecture-component` and `architecture-design` presets, and `--copy`/`--prompt` give a
     prompt for a prose review.
+- **The SSOT is also the architecture document.** It can hold curated diagrams in `views/` (a system
+  context, the building blocks, a data model as an ER diagram) and chapters in `chapters/` with
+  cited evidence. `show --markdown` builds an ARCHITECTURE.md around the chapters, with diagrams
+  compiled to Mermaid in GitDiagram's style: subsystems as coloured boxes, shapes by kind, verbs on
+  the arrows. `compile` now asks the agent to write all of it, with rules for drawing from
+  GitDiagram's generator, a fixed chapter outline and writing rules, and with material for the
+  reasons: data types, comments in central files and the commits most worth reading. jevlint checks
+  every solid arrow against the imports and every citation against the files, `compile --agent`
+  hands what fails back to the agent, `drift` reports chapters whose cited files changed, and
+  `review` adds a `chapter` perspective.
 - **`pr --architecture` and `commits --architecture`** report the SSOT violations each change
   added, with no model, and exit 1 when there are any. `--json` adds `architecture` to each review.
 - **`jevlint baseline` records architecture violations** when an SSOT exists, for

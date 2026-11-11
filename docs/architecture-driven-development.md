@@ -45,9 +45,13 @@ jevlint architecture compile --agent claude   # or: jevlint architecture compile
 jevlint architecture list
 ```
 
-The prompt holds the facts and a draft, never file contents. The agent reads the key files, writes
-`.jevlint/architecture/`, and checks its own work with `list` and `check --static`. Review the diff
-as you would code, then commit it.
+The prompt holds the facts, a draft and the material for the reasons behind the design: instruction
+files, data types, comments in central files and the commits most worth reading. The agent researches
+the code, notes every claim with its evidence, then writes `.jevlint/architecture/`: the structure
+jevlint checks, curated diagrams (a system context, the building blocks and the data model, drawn by
+GitDiagram's rules) and chapters on principles, runtime, data, decisions, risks and how to change
+things. jevlint then checks every arrow against the imports and every citation against the files,
+and hands what fails back to the agent. Review the diff as you would code, then commit it.
 
 ### 3. Read it, and let agents read it
 
@@ -120,6 +124,15 @@ See the [CLI reference](cli.md#jevlint-architecture) for every flag.
 nothing. `review` sends outlines and the SSOT, never code. `check` sends the contents of files that
 have checklist items to judge, as `audit` does. `drift` sends the outlines and summaries of changed
 components, and documents with `--docs`. See [Security](security.md#what-leaves-your-machine).
+
+## Why an agent writes and jevlint checks
+
+Principles, decisions and trade-offs are judgement and prose, which a coding agent does well and a
+static analyser cannot. But prose drifts into claims nobody can check. So jevlint gives the agent
+the evidence (imports with lines, data types, the comments and commits that record reasons), asks
+for evidence with every claim, and checks what it can: arrows against imports, citations against
+files and lines, and, through `drift`, which chapters cite code that has since changed. `review
+--perspective chapter` scores each chapter for reasons, specificity and evidence.
 
 ## Tips for a good SSOT
 

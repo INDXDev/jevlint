@@ -185,7 +185,7 @@ run. `fixerOnly` lists the paths in `diffs` that only those commands changed, no
 | `findings` | Each has the fields of an AST finding, plus `path` and `directories` |
 
 With an SSOT, `units` also holds `component` units, named by component id with `path` at its YAML
-file, and one `design` unit, and `perspectives` has their means. Without one, nothing changes.
+file, one `design` unit, and a `chapter` unit per chapter, and `perspectives` has their means. Without one, nothing changes.
 
 ## Architecture SSOT reports
 
@@ -219,7 +219,7 @@ A violation, in `check`, `pr --architecture` and the baseline, has these keys:
 `jevlint architecture drift --json` prints `root`, `dir`, `provider`, `model`, `usage`, `warnings`,
 `compiledAt`, `head`, `added` and `removed` (files since `compiledAt`), `docs` (as in `spec drift`),
 and `items`, each with `kind` (`unmapped-code`, `undocumented-dependency`, `undocumented-external`,
-`stale-reference`, `stale-summary` or `document`), `component`, `path`, optional `line` and
+`stale-reference`, `stale-summary`, `stale-chapter`, `stale-view` or `document`), `component`, `path`, optional `line` and
 `target`, `message`, and `since`, true for code added after `compiledAt`.
 
 `jevlint architecture show --json` prints `root`, `draft` (true when there is no SSOT), `ssot` (the
@@ -228,10 +228,12 @@ or `actual` where `depends_on` is absent) and `facts`. `facts` holds `commit`, `
 `components` (`id`, `paths`, `files`, `lines`, `layer`, `rank`, `fanIn`, `fanOut`, `central`,
 `interface`, `externals`, `churn`), `layers`, `dependencies` (`from`, `to`, `weight`, `evidence` of
 `path`, `line`, `target`), `externals` (`id`, `title`, `kind`, `packages`, `users`, `evidence`),
-`entrypoints`, `flows`, `cycles`, `coChanges`, `tests` and `modules`.
+`entrypoints`, `flows`, `cycles`, `coChanges`, `tests`, `dataTypes` (`name`, `path`, `line`, `fields`,
+`component`, `refs`, `usedBy`) and `modules`, each with `types` and `comments`.
 
-`jevlint architecture list --json` prints the loaded SSOT: `dir`, `index`, `components` and `flows`,
-with the keys of the YAML files and their defaults filled in.
+`jevlint architecture list --json` prints the loaded SSOT: `dir`, `index`, `components`, `flows`,
+`views` and `chapters` (`id`, `title`, `evidence`, `body`), with the keys of the YAML files and their
+defaults filled in.
 
 `jevlint architecture plan --json` prints `root`, `dir`, `warnings` and `steps`, each with `rank`,
 `priority` (from 0 to 1), `problem`, `move`, `component` and `evidence`.

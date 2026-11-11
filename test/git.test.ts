@@ -15,6 +15,7 @@ import {
   isWorkTree,
   pullRequestChange,
   pullRequestOfRef,
+  significantCommits,
   touchedFiles,
   uncommittedFiles,
 } from '../src/git.ts';
@@ -447,5 +448,40 @@ describe('changes to review', () => {
       vi.stubEnv('PATH', tempDir());
       await expect(pullRequestChange(dir, 7)).rejects.toThrow('GitHub CLI');
     });
+  });
+});
+
+describe('significantCommits', () => {
+  beforeEach(() => git('init'));
+
+  const commitWith = async (files: string[], message: string) => {
+    for (const file of files) await writeFile(join(dir, file), `${Math.random()}`);
+    git('add', '.');
+    git('commit', '-m', message);
+  };
+
+  it('ranks by files touched and message length, and drops trailers', async () => {
+    await commitWith(['a.ts'], 'Small fix');
+    await commitWith(['b.ts', 'c.ts', 'd.ts', 'e.ts'], 'Split the loader');
+    await commitWith(
+      ['f.ts'],
+      `Cache outlines by content\n\nRead only what changed, because a large repository parses for minutes. ${'Long reasoning. '.repeat(20)}\n\nCo-Authored-By: Someone <s@example.com>\nSigned-off-by: Someone <s@example.com>`,
+    );
+    const commits = await significantCommits(dir, 10, 2);
+    expect(commits.map(({ subject }) => subject)).toEqual([
+      'Cache outlines by content',
+      'Split the loader',
+    ]);
+    expect(commits[0]?.body).toContain('Read only what changed');
+    expect(commits[0]?.body).not.toContain('Co-Authored-By');
+    expect(commits[0]?.body).not.toContain('Signed-off-by');
+    expect(commits[1]?.files).toBe(4);
+    expect(commits[0]?.hash).toMatch(/^[0-9a-f]{7,}$/);
+  });
+
+  it('is empty outside git', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'jevlint-nogit-'));
+    scratch.push(outside);
+    expect(await significantCommits(outside, 10, 5)).toEqual([]);
   });
 });

@@ -11,8 +11,9 @@ from up to five perspectives, and ranks everything from worst to best in one lis
 | `class` | Each class with methods | Single responsibility, relationships, naming |
 | `component` | Each component of the [architecture SSOT](architecture-reference.md), when there is one | Summary fits the code, dependencies fit the role, naming |
 | `design` | The SSOT as a whole, when there is one | Separate responsibilities, clear layers, one direction of dependencies |
+| `chapter` | Each chapter of the SSOT's document, when there are any | Explains why, specific to the system, claims backed by evidence |
 
-`component` and `design` read the SSOT, so they run only when `.jevlint/architecture/` exists. Without
+`component`, `design` and `chapter` read the SSOT, so they run only when `.jevlint/architecture/` exists. Without
 it, the review and its output are what they always were. To write the SSOT, check code against it
 and keep it current, see [Architecture-driven development](architecture-driven-development.md).
 
@@ -93,7 +94,7 @@ The model part moves with small changes, as it does in an audit. See
 ## Changing the questions
 
 Each perspective has a built-in preset: `architecture-codebase`, `architecture-directory`,
-`architecture-class`, `architecture-component` and `architecture-design`. To replace one, install a preset with the same name. `[weights]` works as
+`architecture-class`, `architecture-component`, `architecture-design` and `architecture-chapter`. To replace one, install a preset with the same name. `[weights]` works as
 usual:
 
 ```toml

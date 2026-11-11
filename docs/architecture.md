@@ -65,7 +65,7 @@ Dependencies point downward only. A module never imports from a layer above it.
 | --- | --- | --- |
 | Interface | `cli.ts`, `commands/`, `index.ts`, `report.ts`, `formats.ts`, `prompt.ts`, `agent.ts`, `diff.ts`, `diff-view.ts`, `architecture/terminal.ts`, `html.ts`, `markdown.ts`, `prompt.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
 | Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `fixtures.ts`, `architecture/collect.ts`, `review.ts`, `check.ts`, `drift.ts`, `compile.ts`, `plan.ts`, `show.ts`, `spec/check.ts`, `spec/drift.ts`, `spec/run.ts` | Everything below |
-| Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts`, `facts.ts`, `externals.ts`, `entrypoints.ts`, `conformance.ts`, `questions.ts`, `draft.ts`, `spec/questions.ts` | Infrastructure, contracts |
+| Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts`, `facts.ts`, `externals.ts`, `entrypoints.ts`, `conformance.ts`, `questions.ts`, `draft.ts`, `views.ts`, `spec/questions.ts` | Infrastructure, contracts |
 | Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `fixers.ts`, `trust.ts`, `node-version.ts`, `spec/load.ts`, `architecture/load.ts`, `workspace.ts` | Contracts |
 | Contracts | `types.ts` | Nothing |
 
@@ -123,6 +123,7 @@ Three rules keep these layers clean:
 | `src/architecture/conformance.ts` | Decides the SSOT's structural rules, lays real dependencies over declared ones, and finds static drift |
 | `src/architecture/draft.ts` | Turns the facts into a draft SSOT |
 | `src/architecture/questions.ts` | The check, drift and review questions and outlines, as pure data |
+| `src/architecture/views.ts` | Checks views and chapters against the code: arrows against imports, citations against files |
 | `src/architecture/check.ts`, `drift.ts`, `compile.ts`, `plan.ts`, `show.ts` | Run each SSOT verb |
 | `src/architecture/terminal.ts`, `html.ts`, `markdown.ts`, `prompt.ts` | Render the reports, the SSOT as ARCHITECTURE.md, and the agent prompts |
 | `src/directives.ts` | Parses `jevlint-score` comments and removes them from the sent code |

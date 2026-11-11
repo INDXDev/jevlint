@@ -303,10 +303,10 @@ export interface DirectoryNode {
 }
 
 /**
- * A level of the design that the review looks at. `component` and `design` review the
+ * A level of the design that the review looks at. `component`, `design` and `chapter` review the
  * architecture SSOT, so they run only when one exists.
  */
-export type Perspective = 'codebase' | 'directory' | 'class' | 'component' | 'design';
+export type Perspective = 'codebase' | 'directory' | 'class' | 'component' | 'design' | 'chapter';
 
 /** One reviewed thing: the whole codebase, a directory or a class. */
 export interface ArchitectureUnit {
@@ -510,6 +510,10 @@ export interface FactModule {
   imports: ModuleImport[];
   externals: ExternalImport[];
   symbols: string[];
+  /** Data types it declares. */
+  types?: DataType[];
+  /** Comments that are not doc comments, which often explain why. */
+  comments?: CodeComment[];
 }
 
 /** Where a dependency comes from: a file and the line of its import. */
@@ -607,6 +611,8 @@ export interface ArchitectureFacts {
   coChanges: CoChange[];
   /** Globs of test files, which the facts leave out of components. */
   tests: string[];
+  /** The data types most referred to, with their fields. */
+  dataTypes: FactDataType[];
   modules: FactModule[];
   warnings: string[];
 }
@@ -687,6 +693,10 @@ export interface FlowStep {
   from: string;
   to: string;
   verb: string;
+  /** What comes back to `from`, drawn as a return arrow. */
+  returns?: string;
+  /** Drawn dashed: optional, asynchronous or not always taken. */
+  optional?: boolean;
 }
 
 /** `flows/<id>.yaml`: a main workflow through the components. */
@@ -705,6 +715,10 @@ export interface ArchitectureSsot {
   /** Sorted by id. */
   components: ArchitectureComponent[];
   flows: ArchitectureFlow[];
+  /** Curated diagrams, sorted by id. */
+  views: ArchitectureView[];
+  /** The document's chapters, in file name order. */
+  chapters: ArchitectureChapter[];
 }
 
 /** What a structural violation broke. */
@@ -786,6 +800,8 @@ export type DriftKind =
   | 'undocumented-external'
   | 'stale-reference'
   | 'stale-summary'
+  | 'stale-chapter'
+  | 'stale-view'
   | 'document';
 
 /** One way the SSOT no longer describes the code. */
@@ -855,4 +871,122 @@ export interface WorkspacePackage {
   dir: string;
   /** Root-relative entry files from `exports`, `module`, `main` and `types`. */
   entries: string[];
+}
+
+/** A field of a data type, with its type as written. */
+export interface DataField {
+  name: string;
+  type: string;
+}
+
+/** A type that holds data: an interface, a struct, a dataclass, or a class with fields. */
+export interface DataType {
+  name: string;
+  line: number;
+  fields: DataField[];
+}
+
+/** A comment in the code, which often says why. Doc comments are left out. */
+export interface CodeComment {
+  line: number;
+  text: string;
+}
+
+/** A data type in the facts, with the other data types its fields name. */
+export interface FactDataType extends DataType {
+  path: string;
+  component: string | null;
+  /** Names of other data types its fields refer to. */
+  refs: string[];
+  /** How many other data types refer to it. */
+  usedBy: number;
+}
+
+/** A commit worth reading for the reasons behind the design. */
+export interface CommitSummary {
+  hash: string;
+  subject: string;
+  /** The first lines of the message body. */
+  body: string;
+  files: number;
+}
+
+/** What a node of a view stands for, which sets its shape. */
+export type ViewNodeKind = 'actor' | 'component' | 'store' | 'queue' | 'external' | 'document';
+
+/** A box in a drawn view. */
+export interface ViewNode {
+  id: string;
+  label: string;
+  kind: ViewNodeKind;
+  /** The file or directory it stands for, root-relative. */
+  path?: string;
+  /** Or the SSOT component it stands for. */
+  component?: string;
+  /** For an external node: the packages that reach it, such as `ai` or `@ai-sdk/*`. */
+  packages?: string[];
+  group?: string;
+  description?: string;
+}
+
+/** An arrow in a drawn view, owned by the caller. */
+export interface ViewEdge {
+  from: string;
+  to: string;
+  /** A short verb phrase, such as `asks questions`. */
+  verb: string;
+  /** Dashed for optional or inferred relationships. */
+  style: 'solid' | 'dashed';
+}
+
+/** A curated diagram: a system context or the building blocks, for people to read. */
+export interface GraphView {
+  id: string;
+  kind: 'graph';
+  title: string;
+  description?: string;
+  groups: { id: string; label: string }[];
+  nodes: ViewNode[];
+  edges: ViewEdge[];
+}
+
+/** One entity of a data model view. */
+export interface DataEntity {
+  id: string;
+  /** The type's name in the code. */
+  name: string;
+  path: string;
+  description?: string;
+  fields: { name: string; type: string; note?: string }[];
+}
+
+/** A relation between two entities. */
+export interface DataRelation {
+  from: string;
+  to: string;
+  cardinality: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
+  label: string;
+}
+
+/** A data model diagram, drawn as an ER diagram. */
+export interface DataView {
+  id: string;
+  kind: 'data';
+  title: string;
+  description?: string;
+  entities: DataEntity[];
+  relations: DataRelation[];
+}
+
+/** A view of the SSOT, in `views/<id>.yaml`. */
+export type ArchitectureView = GraphView | DataView;
+
+/** A chapter of the architecture document, in `chapters/<name>.md`. */
+export interface ArchitectureChapter {
+  /** The file name without `.md`, which sets the order, such as `20-principles`. */
+  id: string;
+  title: string;
+  /** Where its claims come from: `path`, `path:line`, `path:10-20` or `commit:<hash>`. */
+  evidence: string[];
+  body: string;
 }

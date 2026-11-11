@@ -25,7 +25,8 @@ export type View =
   | { kind: 'map' }
   | { kind: 'layers' }
   | { kind: 'flow'; id: string }
-  | { kind: 'component'; id: string };
+  | { kind: 'component'; id: string }
+  | { kind: 'view'; id: string };
 
 /** Collects the facts and lays them over the SSOT, or over the draft when there is none. */
 export async function showArchitecture(

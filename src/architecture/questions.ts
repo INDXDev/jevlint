@@ -5,6 +5,7 @@
 import { stringify } from 'yaml';
 import type { DecisionQuestion } from '../decision/decide.ts';
 import type {
+  ArchitectureChapter,
   ArchitectureComponent,
   ArchitectureSsot,
   FactModule,
@@ -27,6 +28,7 @@ export const ARCHITECTURE_PRESETS = [
   'architecture-class',
   'architecture-component',
   'architecture-design',
+  'architecture-chapter',
   DRIFT_PRESET,
 ];
 
@@ -152,4 +154,9 @@ export function componentOutline(
 export function designState(ssot: ArchitectureSsot): string {
   const { compiled_at: _, ...index } = ssot.index;
   return stringify({ ...index, components: ssot.components, flows: ssot.flows }, { lineWidth: 0 });
+}
+
+/** What a model reads about one chapter: its title, its evidence list and its text. */
+export function chapterState({ title, evidence, body }: ArchitectureChapter): string {
+  return `Chapter: ${title}\nEvidence: ${evidence.join(', ') || 'none'}\n\n${body}`;
 }

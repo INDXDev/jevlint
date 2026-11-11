@@ -7,11 +7,11 @@ import { defineCommand } from 'citty';
 import clipboard from 'clipboardy';
 import { agentFailure, launchAgent, runAgent } from '../agent.ts';
 import { checkArchitecture } from '../architecture/check.ts';
-import { prepareCompile } from '../architecture/compile.ts';
+import { prepareCompile, validateSsot } from '../architecture/compile.ts';
 import { assign } from '../architecture/conformance.ts';
 import { driftArchitecture } from '../architecture/drift.ts';
 import { renderArchitectureHtml, renderShowHtml } from '../architecture/html.ts';
-import { architectureFiles, budgetWarnings, loadArchitecture } from '../architecture/load.ts';
+import { architectureFiles, loadArchitecture } from '../architecture/load.ts';
 import { renderMarkdown, renderView } from '../architecture/markdown.ts';
 import { planArchitecture } from '../architecture/plan.ts';
 import {
@@ -19,6 +19,7 @@ import {
   renderCompilePrompt,
   renderDriftPrompt,
   renderPlanPrompt,
+  renderRepairPrompt,
   renderReviewPrompt,
 } from '../architecture/prompt.ts';
 import { PERSPECTIVES, reviewArchitecture } from '../architecture/review.ts';
@@ -105,22 +106,43 @@ async function copyPrompt(prompt: string): Promise<void> {
   console.error('Copied the prompt to the clipboard.');
 }
 
+/** Rounds of repair after a compile run, so a run that cannot converge still ends. */
+const REPAIR_ROUNDS = 2;
+
+type PromptFlags = { copy?: boolean; agent?: string; 'agent-login'?: boolean };
+
+async function runAgentOn(config: Config, prompt: string, flags: PromptFlags, subject: string) {
+  const launch = launchAgent(config, flags.agent, 'fix', Boolean(flags['agent-login']));
+  const options = { output: 'stderr' as const, unsetEnv: launch.login ? launch.keyEnv : [] };
+  const code = await runAgent(launch.command, prompt, config.root, options);
+  if (code !== 0) throw agentFailure(launch, code, subject);
+}
+
 /** Prints, copies or hands a prompt to an agent, whose output goes to stderr. */
-async function deliverPrompt(
-  config: Config,
-  prompt: string,
-  flags: { copy?: boolean; agent?: string; 'agent-login'?: boolean },
-  subject: string,
-): Promise<void> {
-  if (flags.agent !== undefined) {
-    const launch = launchAgent(config, flags.agent, 'fix', Boolean(flags['agent-login']));
-    const options = { output: 'stderr' as const, unsetEnv: launch.login ? launch.keyEnv : [] };
-    const code = await runAgent(launch.command, prompt, config.root, options);
-    if (code !== 0) throw agentFailure(launch, code, subject);
-    return;
-  }
+async function deliverPrompt(config: Config, prompt: string, flags: PromptFlags, subject: string) {
+  if (flags.agent !== undefined) return runAgentOn(config, prompt, flags, subject);
   if (flags.copy) return copyPrompt(prompt);
   console.log(prompt);
+}
+
+/** After an agent writes the SSOT, hands it what `list` reports until nothing is left. */
+async function repairSsot(config: Config, flags: PromptFlags, dir: string): Promise<void> {
+  for (let round = 1; ; round++) {
+    const { error, problems } = await validateSsot(config);
+    const found = error ? [error] : problems;
+    if (found.length === 0) return console.error(`The SSOT in ${dir} loads, with nothing to fix.`);
+    if (round > REPAIR_ROUNDS) {
+      console.error(
+        `After ${REPAIR_ROUNDS} repair rounds, jevlint architecture list still reports:`,
+      );
+      for (const problem of found) console.error(`  ${withoutEscapes(problem)}`);
+      return;
+    }
+    console.error(
+      `Asking the agent to fix ${found.length} problem(s), round ${round} of ${REPAIR_ROUNDS}.`,
+    );
+    await runAgentOn(config, renderRepairPrompt(dir, found), flags, dir);
+  }
 }
 
 async function requireSsot(config: Config): Promise<ArchitectureSsot> {
@@ -152,6 +174,7 @@ function parseDocs(config: Config, value: string | undefined): string[] | undefi
 function parseView(value: string | undefined, ssot: ArchitectureSsot): View {
   if (value === undefined || value === 'map') return { kind: 'map' };
   if (value === 'layers') return { kind: 'layers' };
+  if (ssot.views.some(({ id }) => id === value)) return { kind: 'view', id: value };
   const [kind, id = ''] = value.split(/:(.*)/s);
   const known =
     kind === 'flow'
@@ -160,7 +183,10 @@ function parseView(value: string | undefined, ssot: ArchitectureSsot): View {
         ? ssot.components.map((component) => component.id)
         : null;
   if (known === null) {
-    throw new UserError(`Unknown view "${value}". Use map, layers, flow:<id> or component:<id>`);
+    const views = ssot.views.map(({ id }) => id);
+    throw new UserError(
+      `Unknown view "${value}". Use map, layers, flow:<id>, component:<id>${views.length > 0 ? ` or ${views.join(', ')}` : ''}`,
+    );
   }
   if (!known.includes(id)) {
     throw new UserError(`No ${kind} "${id}". Known: ${known.join(', ') || 'none'}`);
@@ -258,21 +284,27 @@ const compileCommand = defineCommand({
       noCache: !args.cache,
     });
     await deliverPrompt(config, renderCompilePrompt(input), args, input.dir);
+    if (args.agent !== undefined) await repairSsot(config, args, input.dir);
   },
 });
 
 const listCommand = defineCommand({
   meta: {
     name: 'jevlint architecture list',
-    description: 'Load the SSOT, validate it and print it',
+    description: 'Load the SSOT, validate it against the code and print it',
   },
-  args: { json: { type: 'boolean', description: 'Print the SSOT as JSON' } },
+  args: {
+    json: { type: 'boolean', description: 'Print the SSOT as JSON' },
+    cache: CACHE_ARG,
+  },
   async run({ args }) {
-    const ssot = await requireSsot(await projectConfig());
-    const warnings = budgetWarnings(ssot);
+    const config = await projectConfig();
+    const { ssot, error, problems } = await validateSsot(config, { noCache: !args.cache });
+    if (error) throw new UserError(error);
+    if (!ssot) await requireSsot(config);
     if (args.json) printJson(ssot);
-    else console.log(formatSsotList(ssot, []));
-    for (const warning of warnings) console.error(`Warning: ${withoutEscapes(warning)}`);
+    else console.log(formatSsotList(ssot as ArchitectureSsot, []));
+    for (const problem of problems) console.error(`Warning: ${withoutEscapes(problem)}`);
   },
 });
 
@@ -285,7 +317,8 @@ const showCommand = defineCommand({
     view: {
       type: 'string',
       valueHint: 'view',
-      description: 'map (default), layers, flow:<id> or component:<id>',
+      description:
+        'map (default), layers, flow:<id>, component:<id>, or a view id such as overview',
     },
     html: {
       type: 'string',

@@ -5,12 +5,33 @@
 import { basename } from 'node:path';
 import { type Config, UserError } from '../config.ts';
 import { discoverDocs } from '../files.ts';
-import { resolveCommit } from '../git.ts';
-import type { ArchitectureFacts, ArchitectureSsot, DriftItem } from '../types.ts';
-import { collect, existsIn, filesOfCommit } from './collect.ts';
+import { changedSince, resolveCommit, significantCommits } from '../git.ts';
+import type { ArchitectureFacts, ArchitectureSsot, CommitSummary, DriftItem } from '../types.ts';
+import { collect, existsIn, filesOfCommit, lineCountIn } from './collect.ts';
 import { staticDrift } from './conformance.ts';
 import { draftSsot } from './draft.ts';
-import { architectureFiles, loadArchitecture, ssotDir } from './load.ts';
+import { architectureFiles, budgetWarnings, loadArchitecture, ssotDir } from './load.ts';
+import { documentDrift, documentProblems } from './views.ts';
+
+const COMMITS_SCANNED = 400;
+const COMMITS_SHOWN = 25;
+const COMMENTS_SHOWN = 60;
+const INSTRUCTION_FILES = [
+  'AGENTS.md',
+  'CLAUDE.md',
+  'CONTRIBUTING.md',
+  'ARCHITECTURE.md',
+  'docs/architecture.md',
+];
+
+/** Comments from the files other parts use most, where a reason matters most. */
+function centralComments(facts: ArchitectureFacts): CompileInput['comments'] {
+  const central = new Set(facts.components.flatMap(({ central: files }) => files));
+  return facts.modules
+    .filter(({ path }) => central.has(path))
+    .flatMap(({ path, comments = [] }) => comments.map(({ line, text }) => ({ path, line, text })))
+    .slice(0, COMMENTS_SHOWN);
+}
 
 /** What changed in the code since the SSOT was compiled. */
 export interface CompileDelta {
@@ -33,6 +54,12 @@ export interface CompileInput {
   delta: CompileDelta | null;
   /** Root-relative document paths, with `--docs`. */
   docs: string[];
+  /** Commits most worth reading for the reasons behind the design. */
+  commits: CommitSummary[];
+  /** Comments in the central files, which often say why. */
+  comments: { path: string; line: number; text: string }[];
+  /** Instruction files for agents, such as AGENTS.md, that exist. */
+  instructions: string[];
 }
 
 /** Narrows a compile. */
@@ -76,6 +103,13 @@ async function deltaOf(
     exists: existsIn(config.root),
     added: new Set(added),
   });
+  const changed = new Set([...(await changedSince(config.root, base)), ...added]);
+  const lookup = {
+    modules: current.modules,
+    exists: existsIn(config.root),
+    lineCount: lineCountIn(config.root),
+  };
+  items.push(...documentDrift(ssot, lookup, changed));
   return { base, added, removed: before.filter((path) => !now.has(path)), items };
 }
 
@@ -100,5 +134,41 @@ export async function prepareCompile(
     loadError,
     delta,
     docs,
+    commits: await significantCommits(config.root, COMMITS_SCANNED, COMMITS_SHOWN),
+    comments: centralComments(collected.facts),
+    instructions: INSTRUCTION_FILES.filter((path) => existsIn(config.root)(path)),
   };
+}
+
+/** What `list` and the compile repair loop report: why the SSOT does not load, or its problems. */
+export interface SsotValidation {
+  ssot: ArchitectureSsot | null;
+  /** Why it does not load, when it does not. */
+  error?: string;
+  /** Problems with a loaded SSOT: the size budget, and views and chapters that do not fit the code. */
+  problems: string[];
+}
+
+/** Loads the SSOT and checks its views and chapters against the code. */
+export async function validateSsot(
+  config: Config,
+  options: { noCache?: boolean } = {},
+): Promise<SsotValidation> {
+  const { ssot, loadError } = await loadExisting(config);
+  if (!ssot) return { ssot: null, ...(loadError ? { error: loadError } : {}), problems: [] };
+  const needsCode = ssot.views.length > 0 || ssot.chapters.length > 0;
+  const modules = needsCode
+    ? (await collect(config, { skipHistory: true, noCache: options.noCache })).modules
+    : [];
+  const problems = [
+    ...budgetWarnings(ssot),
+    ...(needsCode
+      ? documentProblems(ssot, {
+          modules,
+          exists: existsIn(config.root),
+          lineCount: lineCountIn(config.root),
+        })
+      : []),
+  ];
+  return { ssot, problems };
 }

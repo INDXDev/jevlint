@@ -547,7 +547,8 @@ describe('choosing presets', () => {
     expect(groups[0]).toMatch(/^For audits/);
     expect(groups[0]).toContain('documentation');
     expect(groups[0]).not.toContain('architecture-class');
-    expect(groups[1]).toMatch(/^For jevlint architecture:\n {2}architecture-class/);
+    expect(groups[1]).toMatch(/^For jevlint architecture:\n {2}architecture-chapter/);
+    expect(groups[1]).toContain('architecture-class');
   });
 
   it('lists the same presets in a pipe when run with no subcommand', () => {

@@ -194,3 +194,51 @@ describe('entryKind', () => {
     expect(entryKind('a.ts', 'typescript', 'const x = 1', new Map())).toBeNull();
   });
 });
+
+describe('dataTypes', () => {
+  const typed = (path: string, types: FactModule['types']): FactModule => ({ ...mod(path), types });
+
+  it('links data types through their fields and ranks the most referred to first', () => {
+    const result = facts([
+      typed('src/report.ts', [
+        {
+          name: 'Report',
+          line: 1,
+          fields: [
+            { name: 'files', type: 'FileReport[]' },
+            { name: 'n', type: 'number' },
+          ],
+        },
+        { name: 'FileReport', line: 5, fields: [{ name: 'ast', type: 'AstResult | null' }] },
+        { name: 'AstResult', line: 9, fields: [{ name: 'score', type: 'number' }] },
+        { name: 'Lonely', line: 12, fields: [{ name: 'x', type: 'string' }] },
+      ]),
+      mod('src/other.ts'),
+    ]).dataTypes;
+    expect(result.map(({ name }) => name)).toEqual(['FileReport', 'AstResult', 'Report']);
+    expect(result.find(({ name }) => name === 'Report')).toMatchObject({
+      path: 'src/report.ts',
+      refs: ['FileReport'],
+      usedBy: 0,
+    });
+    expect(result.find(({ name }) => name === 'FileReport')).toMatchObject({
+      refs: ['AstResult'],
+      usedBy: 1,
+    });
+    expect(result[0]?.component).not.toBeNull();
+  });
+
+  it('keeps at most 40, and leaves test files out', () => {
+    const many = Array.from({ length: 50 }, (_, i) => ({
+      name: `T${i}`,
+      line: i + 1,
+      fields: [{ name: 'next', type: `T${(i + 1) % 50}` }],
+    }));
+    expect(facts([typed('src/a.ts', many)]).dataTypes).toHaveLength(40);
+    const tests = [
+      { name: 'A', line: 1, fields: [{ name: 'b', type: 'B' }] },
+      { name: 'B', line: 2, fields: [{ name: 'a', type: 'A' }] },
+    ];
+    expect(facts([typed('test/a.test.ts', tests), mod('src/b.ts')]).dataTypes).toEqual([]);
+  });
+});

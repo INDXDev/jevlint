@@ -1,17 +1,27 @@
 /** Loads and validates the architecture SSOT. See docs/architecture-reference.md. */
 import { readdir } from 'node:fs/promises';
 import { join, posix, relative, resolve, sep } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
-import { type Config, ifExists, parseWith, UserError } from '../config.ts';
+import {
+  type Config,
+  ifExists,
+  isTable,
+  parseWith,
+  readRegularFile,
+  UserError,
+} from '../config.ts';
 import { isOutsideRoot } from '../files.ts';
 import { assertInRepo } from '../presets.ts';
 import { checklistSchema, idSchema, readYaml } from '../spec/load.ts';
 import type {
+  ArchitectureChapter,
   ArchitectureComponent,
   ArchitectureFlow,
   ArchitectureIndex,
   ArchitectureRule,
   ArchitectureSsot,
+  ArchitectureView,
 } from '../types.ts';
 
 /** The most components or flows one SSOT may have. */
@@ -23,6 +33,9 @@ export const BUDGET = {
   summarySentences: 3,
   keyFiles: 5,
   tokens: 6000,
+  /** Words in one chapter, and in all of them. */
+  chapterWords: 1500,
+  documentWords: 9000,
 } as const;
 
 const LANGUAGES = ['javascript', 'typescript', 'tsx', 'python', 'go', 'rust'] as const;
@@ -134,8 +147,212 @@ const flowSchema = (fileId: string) =>
     ),
     title: text,
     trigger: text.optional(),
-    steps: z.array(z.strictObject({ from: idSchema, to: idSchema, verb: text })).min(1),
+    steps: z
+      .array(
+        z.strictObject({
+          from: idSchema,
+          to: idSchema,
+          verb: text,
+          returns: text.optional(),
+          optional: z.boolean().optional(),
+        }),
+      )
+      .min(1),
   });
+
+/** The most nodes and edges a view may have, as GitDiagram allows, so a diagram stays readable. */
+export const VIEW_LIMITS = { nodes: 34, edges: 48, groups: 8, entities: 20, fields: 12 } as const;
+const MAX_CHAPTERS = 30;
+const MAX_CHAPTER_BYTES = 60_000;
+
+const nodeId = z
+  .string()
+  .regex(/^[a-z][a-z0-9_-]*$/, 'Use lowercase letters, digits, - and _, starting with a letter');
+const shortText = (max: number) =>
+  prose.pipe(z.string().max(max, `Keep it under ${max} characters`));
+
+const viewNodeSchema = z
+  .strictObject({
+    id: nodeId,
+    label: shortText(60),
+    kind: z
+      .enum(['actor', 'component', 'store', 'queue', 'external', 'document'])
+      .default('component'),
+    path: glob.optional(),
+    component: idSchema.optional(),
+    packages: z.array(text).min(1).optional(),
+    group: nodeId.optional(),
+    description: prose.optional(),
+  })
+  .refine((node) => !(node.path && node.component), {
+    message: 'give a node a path or a component, not both',
+  });
+
+const graphViewSchema = (fileId: string) =>
+  z.strictObject({
+    id: nodeId.refine((id) => id === fileId, `must equal the file name without .yaml (${fileId})`),
+    kind: z.literal('graph'),
+    title: shortText(80),
+    description: prose.optional(),
+    groups: uniqueIds(
+      z.array(z.strictObject({ id: nodeId, label: shortText(60) })).max(VIEW_LIMITS.groups),
+    ).default([]),
+    nodes: uniqueIds(z.array(viewNodeSchema).min(1).max(VIEW_LIMITS.nodes)),
+    edges: z
+      .array(
+        z.strictObject({
+          from: nodeId,
+          to: nodeId,
+          verb: shortText(40),
+          style: z.enum(['solid', 'dashed']).default('solid'),
+        }),
+      )
+      .max(VIEW_LIMITS.edges)
+      .default([]),
+  });
+
+const dataViewSchema = (fileId: string) =>
+  z.strictObject({
+    id: nodeId.refine((id) => id === fileId, `must equal the file name without .yaml (${fileId})`),
+    kind: z.literal('data'),
+    title: shortText(80),
+    description: prose.optional(),
+    entities: uniqueIds(
+      z
+        .array(
+          z.strictObject({
+            id: nodeId,
+            name: text,
+            path: glob,
+            description: prose.optional(),
+            fields: z
+              .array(z.strictObject({ name: text, type: text, note: prose.optional() }))
+              .max(VIEW_LIMITS.fields)
+              .default([]),
+          }),
+        )
+        .min(1)
+        .max(VIEW_LIMITS.entities),
+    ),
+    relations: z
+      .array(
+        z.strictObject({
+          from: nodeId,
+          to: nodeId,
+          cardinality: z.enum(['one-to-one', 'one-to-many', 'many-to-one', 'many-to-many']),
+          label: shortText(40),
+        }),
+      )
+      .default([]),
+  });
+
+/** A view is a graph unless it says `kind: data`, and its id is its file name unless it says. */
+const viewSchema = (fileId: string) =>
+  z.preprocess(
+    (value) => (isTable(value) ? { id: fileId, ...value, kind: value.kind ?? 'graph' } : value),
+    z.discriminatedUnion('kind', [graphViewSchema(fileId), dataViewSchema(fileId)]),
+  );
+
+const chapterSchema = z.strictObject({
+  title: shortText(100),
+  evidence: z.array(z.string().min(1)).default([]),
+});
+
+/** Where a chapter places a diagram: `<!-- jevlint:diagram overview -->`. */
+export const DIAGRAM_DIRECTIVE = /<!--\s*jevlint:diagram\s+([a-z0-9_:-]+)\s*-->/g;
+/** Diagram names every SSOT has, besides its views and `flow:<id>`. */
+export const BUILT_IN_DIAGRAMS = ['map', 'layers', 'components'];
+
+/** Splits a chapter into its YAML frontmatter and its Markdown body. */
+function parseChapter(raw: string, file: string, id: string): ArchitectureChapter {
+  const match = raw.replace(/^﻿/, '').match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match) throw new UserError(`${file}: must start with --- frontmatter holding a title`);
+  let front: unknown;
+  try {
+    front = parseYaml(match[1] as string, { maxAliasCount: 10 });
+  } catch {
+    throw new UserError(`${file}: invalid YAML in the frontmatter`);
+  }
+  const { title, evidence } = parseWith(chapterSchema, front ?? {}, file);
+  return { id, title, evidence, body: (match[2] as string).trim() };
+}
+
+async function readChapters(root: string, dir: string): Promise<ArchitectureChapter[]> {
+  const chaptersDir = join(root, dir, 'chapters');
+  const names = ((await ifExists(readdir(chaptersDir))) ?? []).filter((name) =>
+    name.endsWith('.md'),
+  );
+  if (names.length === 0) return [];
+  if (names.length > MAX_CHAPTERS) {
+    throw new UserError(`${dir}/chapters: ${names.length} chapters, more than ${MAX_CHAPTERS}`);
+  }
+  await assertInRepo(chaptersDir, root);
+  const chapters: ArchitectureChapter[] = [];
+  for (const name of names.sort()) {
+    const file = posix.join(dir, 'chapters', name);
+    const id = name.slice(0, -'.md'.length);
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) {
+      throw new UserError(`${file}: name chapters with lowercase letters, digits and -`);
+    }
+    await assertInRepo(join(chaptersDir, name), root);
+    const raw = await readRegularFile(join(chaptersDir, name));
+    if (Buffer.byteLength(raw) > MAX_CHAPTER_BYTES) {
+      throw new UserError(`${file}: larger than ${MAX_CHAPTER_BYTES} bytes`);
+    }
+    chapters.push(parseChapter(raw, file, id));
+  }
+  return chapters;
+}
+
+function checkViews(ssot: ArchitectureSsot, need: Need): void {
+  const componentIds = new Set(ssot.components.map(({ id }) => id));
+  for (const view of ssot.views) {
+    const where = posix.join(ssot.dir, 'views', `${view.id}.yaml`);
+    if (view.kind === 'data') {
+      const entities = new Set(view.entities.map(({ id }) => id));
+      need(
+        where,
+        'entity',
+        entities,
+        view.relations.flatMap(({ from, to }) => [from, to]),
+      );
+      continue;
+    }
+    const nodes = new Set(view.nodes.map(({ id }) => id));
+    const groups = new Set(view.groups.map(({ id }) => id));
+    need(
+      where,
+      'group',
+      groups,
+      view.nodes.flatMap(({ group }) => group ?? []),
+    );
+    need(
+      where,
+      'component',
+      componentIds,
+      view.nodes.flatMap(({ component }) => component ?? []),
+    );
+    need(
+      where,
+      'node',
+      nodes,
+      view.edges.flatMap(({ from, to }) => [from, to]),
+    );
+  }
+}
+
+function checkChapters(ssot: ArchitectureSsot, need: Need): void {
+  const diagrams = new Set([
+    ...BUILT_IN_DIAGRAMS,
+    ...ssot.views.map(({ id }) => id),
+    ...ssot.flows.map(({ id }) => `flow:${id}`),
+    ...ssot.components.map(({ id }) => `component:${id}`),
+  ]);
+  for (const chapter of ssot.chapters) {
+    const named = [...chapter.body.matchAll(DIAGRAM_DIRECTIVE)].map((match) => match[1] as string);
+    need(posix.join(ssot.dir, 'chapters', `${chapter.id}.md`), 'diagram', diagrams, named);
+  }
+}
 
 async function yamlFiles(root: string, dir: string): Promise<string[]> {
   const names = ((await ifExists(readdir(dir))) ?? []).filter((name) => name.endsWith('.yaml'));
@@ -157,13 +374,15 @@ export function ssotDir(config: Config): string {
 }
 
 /** Every component, layer, external and flow id that a rule, step or field names must exist. */
+type Need = (where: string, kind: string, known: Set<string>, names?: string[]) => void;
+
 function crossCheck(ssot: ArchitectureSsot): string[] {
   const { index, components, flows } = ssot;
   const componentIds = new Set(components.map(({ id }) => id));
   const externalIds = new Set(index.externals.map(({ id }) => id));
   const layers = new Set(index.layers);
   const problems: string[] = [];
-  const need = (where: string, kind: string, known: Set<string>, names: string[] = []) => {
+  const need: Need = (where, kind, known, names = []) => {
     for (const name of names) {
       if (!known.has(name)) problems.push(`${where}: no ${kind} ${name}`);
     }
@@ -194,6 +413,8 @@ function crossCheck(ssot: ArchitectureSsot): string[] {
     need(where, 'external', externalIds, component.uses);
     for (const rule of component.rules) checkRule(`${where} rule ${rule.id}`, rule);
   }
+  checkViews(ssot, need);
+  checkChapters(ssot, need);
   for (const flow of flows) {
     const where = posix.join(ssot.dir, 'flows', `${flow.id}.yaml`);
     need(
@@ -231,7 +452,16 @@ export async function loadArchitecture(config: Config): Promise<ArchitectureSsot
     const file = posix.join(dir, 'flows', name);
     flows.push(parseWith(flowSchema(name.slice(0, -'.yaml'.length)), raw, file));
   }
-  const ssot = { dir, index, components, flows };
+  const views: ArchitectureView[] = [];
+  for (const name of await yamlFiles(root, join(absolute, 'views'))) {
+    const raw = await readYaml(root, join(absolute, 'views', name));
+    const file = posix.join(dir, 'views', name);
+    views.push(
+      parseWith(viewSchema(name.slice(0, -'.yaml'.length)), raw, file) as ArchitectureView,
+    );
+  }
+  const chapters = await readChapters(root, dir);
+  const ssot = { dir, index, components, flows, views, chapters };
   const problems = crossCheck(ssot);
   if (problems.length > 0) throw new UserError(problems.join('\n'));
   return ssot;
@@ -243,6 +473,8 @@ export function architectureFiles(ssot: ArchitectureSsot): string[] {
     posix.join(ssot.dir, 'index.yaml'),
     ...ssot.components.map(({ id }) => posix.join(ssot.dir, 'components', `${id}.yaml`)),
     ...ssot.flows.map(({ id }) => posix.join(ssot.dir, 'flows', `${id}.yaml`)),
+    ...ssot.views.map(({ id }) => posix.join(ssot.dir, 'views', `${id}.yaml`)),
+    ...ssot.chapters.map(({ id }) => posix.join(ssot.dir, 'chapters', `${id}.md`)),
   ];
 }
 
@@ -271,7 +503,19 @@ export function budgetWarnings(ssot: ArchitectureSsot): string[] {
       warnings.push(`${id}: ${key_files.length} key files, more than ${BUDGET.keyFiles}.`);
     }
   }
-  const tokens = tokensOf({ ...ssot, dir: undefined });
+  const words = (text: string) => text.split(/\s+/).filter(Boolean).length;
+  for (const { id, body } of ssot.chapters) {
+    if (words(body) > BUDGET.chapterWords) {
+      warnings.push(
+        `chapter ${id}: ${words(body)} words, more than ${BUDGET.chapterWords}. Split it or cut it.`,
+      );
+    }
+  }
+  const total = ssot.chapters.reduce((sum, { body }) => sum + words(body), 0);
+  if (total > BUDGET.documentWords) {
+    warnings.push(`The chapters have ${total} words, more than ${BUDGET.documentWords}.`);
+  }
+  const tokens = tokensOf({ ...ssot, dir: undefined, chapters: undefined, views: undefined });
   if (tokens > BUDGET.tokens) {
     warnings.push(`About ${tokens} tokens in all, more than ${BUDGET.tokens}. Shorten summaries.`);
   }

@@ -72,5 +72,7 @@ export function draftSsot(facts: ArchitectureFacts, name: string, dir: string): 
       trigger: entry,
       steps: chain.slice(1).map((to, step) => ({ from: chain[step] as string, to, verb: 'uses' })),
     })),
+    views: [],
+    chapters: [],
   };
 }

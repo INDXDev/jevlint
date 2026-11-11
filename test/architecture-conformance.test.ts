@@ -51,6 +51,8 @@ const ssotOf = (
   },
   components,
   flows,
+  views: [],
+  chapters: [],
 });
 
 const mod = (

@@ -15,10 +15,10 @@
 | `spec check` | File contents, up to `max_file_chars`, the project description, feature summaries and checklist items | Your configured provider |
 | `spec drift` | Document contents, the checklist they are compared with and every other checklist item, up to `max_file_chars` | Your configured provider |
 | `spec compile`, `spec list` | Nothing | |
-| `architecture`, `architecture review` | Paths, line counts, top-level names and internal dependencies, but no file contents. With an SSOT, also each component's summary and dependencies, and the SSOT's YAML for `design` | Your configured provider |
+| `architecture`, `architecture review` | Paths, line counts, top-level names and internal dependencies, but no file contents. With an SSOT, also each component's summary and dependencies, the SSOT's YAML for `design`, and each chapter's text for `chapter` | Your configured provider |
 | `architecture check` | File contents, up to `max_file_chars`, and the SSOT's checklist items with the component's title and summary, for files that have items to judge | Your configured provider |
 | `architecture drift` | Each changed component's outline and summary. With `--docs`, document contents and the SSOT's summaries and checklist items, as `spec drift` sends | Your configured provider |
-| `architecture compile --agent`, `plan --agent` | The prompt, with paths, line numbers and names but no file contents, plus whatever the agent reads | The agent's provider |
+| `architecture compile --agent`, `plan --agent` | The prompt, with paths, line numbers, names, data type fields, comments from central files and commit subjects and messages, but no other file contents, plus whatever the agent reads | The agent's provider |
 | `fix`, `quickfix` | The prompt, plus whatever the agent reads | The agent's provider |
 | Any model run, `--dry-run`, with `cache.remote` set | Entry keys, numeric answers and token counts, but no source code | Your cache bucket |
 
@@ -126,6 +126,9 @@ jevlint also guards against what a repository contains:
   as `spec` is, with links outside the repository refused and aliases capped. `tsconfig.json`,
   `package.json` and `pnpm-workspace.yaml` are parsed for import resolution only, and a workspace
   manifest linked from outside the repository is skipped.
+- `list` and `drift` check the lines chapters cite by reading those files, but only a regular file
+  inside the root, under 5 MB, so a citation of a planted link to a device or outside the repository
+  counts as missing.
 - Outlines of files are cached by content hash in your cache directory, never in the repository.
   jevlint writes into the repository only `.jevlint/baseline.json` and the `--html` file you name;
   `show --markdown` and every prompt go to stdout.

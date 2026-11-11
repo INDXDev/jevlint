@@ -20,12 +20,14 @@ import type {
   ArchitectureReport,
   ArchitectureSsot,
   ArchitectureUnit,
+  ArchitectureView,
   ArchitectureViolation,
   FactModule,
   MapEdge,
   Perspective,
 } from '../types.ts';
 import type { ShowModel, View } from './show.ts';
+import { checkEdges, type EdgeSupport } from './views.ts';
 
 const BAR_WIDTH = 10;
 const SEPARATOR = '  ·  ';
@@ -87,6 +89,7 @@ const PERSPECTIVE_LABELS: Record<Perspective, string> = {
   class: 'Classes',
   component: 'Components',
   design: 'Design',
+  chapter: 'Chapters',
 };
 
 function formatSummary({ score, scale, perspectives, modules, edges }: ArchitectureReport): string {
@@ -153,6 +156,20 @@ export function formatSsotList(untrusted: ArchitectureSsot, warnings: string[]):
     ` ${[plural(components.length, 'component'), plural(index.layers.length, 'layer'), plural(flows.length, 'flow'), plural(index.rules.length + components.reduce((n, c) => n + c.rules.length, 0), 'rule'), plural(index.checklist.length + components.reduce((n, c) => n + c.checklist.length, 0), 'checklist item')].join(SEPARATOR)}`,
     '',
     ...lines,
+    ...formatSection(
+      'Views',
+      ssot.views.map(
+        ({ id, kind, title }) =>
+          `  ${id.padEnd(width)}  ${pc.dim(kind.padEnd(layerWidth))}  ${title}`,
+      ),
+    ),
+    ...formatSection(
+      'Chapters',
+      ssot.chapters.map(
+        ({ id, title, evidence }) =>
+          `  ${id.padEnd(width)}  ${title}  ${pc.dim(plural(evidence.length, 'citation'))}`,
+      ),
+    ),
     ...formatSection(
       'Over the size budget',
       withoutControlCharacters(warnings).map((w) => `  ${w}`),
@@ -232,6 +249,51 @@ function formatComponentView(
   ];
 }
 
+const SUPPORT_MARKS: Record<EdgeSupport, string> = {
+  supported: '',
+  unchecked: '',
+  reversed: ' ✗ the import runs the other way',
+  unsupported: ' ✗ no import in the code',
+};
+
+function formatViewBody(view: ArchitectureView, model: ShowModel): string[] {
+  if (view.kind === 'data') {
+    return [
+      ...view.entities.map(
+        ({ name, path, fields }) =>
+          `  ${pc.bold(name)} ${pc.dim(path)}  ${pc.dim(fields.map((f) => f.name).join(', '))}`,
+      ),
+      ...view.relations.map(
+        ({ from, to, cardinality, label }) => `  ${from} ${pc.dim(cardinality)} ${to}  ${label}`,
+      ),
+    ];
+  }
+  const checks = checkEdges(view, model.ssot, model.facts.modules);
+  const labelOf = new Map(view.nodes.map(({ id, label }) => [id, label]));
+  const groups = [...view.groups, { id: '', label: 'Ungrouped' }];
+  const nodes = groups.flatMap(({ id, label }) => {
+    const members = view.nodes.filter((node) => (node.group ?? '') === id);
+    return members.length > 0
+      ? [
+          ` ${pc.cyan(label)}`,
+          ...members.map(
+            (node) =>
+              `  ${node.label} ${pc.dim(`${node.kind}${node.path ? ` ${node.path}` : ''}`)}`,
+          ),
+        ]
+      : [];
+  });
+  const edges = view.edges.map(({ from, to, verb, style }, index) => {
+    const check = checks[index] ?? { support: 'unchecked' as const };
+    const evidence = check.evidence ? pc.dim(` ${check.evidence.path}:${check.evidence.line}`) : '';
+    const line = `  ${labelOf.get(from)} ${style === 'dashed' ? '⇢' : '→'} ${labelOf.get(to)}  ${verb}${evidence}`;
+    return style === 'solid' && SUPPORT_MARKS[check.support]
+      ? pc.red(line + SUPPORT_MARKS[check.support])
+      : line;
+  });
+  return [...nodes, ...formatSection('Arrows', edges)];
+}
+
 /** Draws one view of the SSOT, or of the draft, for the terminal. */
 export function formatShow(untrusted: ShowModel, view: View, modules: FactModule[] = []): string {
   const model = withoutControlCharacters(untrusted);
@@ -241,7 +303,10 @@ export function formatShow(untrusted: ShowModel, view: View, modules: FactModule
     ' Arrows point to what a component depends on. ✗ breaks the SSOT; (unused) is declared but not imported.',
   );
   let body: string[];
-  if (view.kind === 'flow')
+  if (view.kind === 'view') {
+    const found = ssot.views.find(({ id }) => id === view.id) as ArchitectureView;
+    body = [` ${pc.bold(found.title)}`, ...formatViewBody(found, model)];
+  } else if (view.kind === 'flow')
     body = formatFlow(ssot.flows.find(({ id }) => id === view.id) as ArchitectureFlow, model.edges);
   else if (view.kind === 'component') {
     const component = ssot.components.find(({ id }) => id === view.id) as ArchitectureComponent;

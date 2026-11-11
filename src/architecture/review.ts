@@ -20,7 +20,7 @@ import { collect } from './collect.ts';
 import { assign, mapEdges } from './conformance.ts';
 import { loadArchitecture } from './load.ts';
 import { type Subject, subjectsOf } from './outline.ts';
-import { componentOutline, designState } from './questions.ts';
+import { chapterState, componentOutline, designState } from './questions.ts';
 import { buildStructure } from './structure.ts';
 
 /** The preset whose questions are asked of each kind of unit. */
@@ -30,13 +30,14 @@ const PRESETS: Record<Perspective, string> = {
   class: 'architecture-class',
   component: 'architecture-component',
   design: 'architecture-design',
+  chapter: 'architecture-chapter',
 };
 
 /** Every perspective, broadest first. */
 export const PERSPECTIVES = Object.keys(PRESETS) as Perspective[];
 
 /** The perspectives that review the SSOT, which need one. */
-export const SSOT_PERSPECTIVES: Perspective[] = ['component', 'design'];
+export const SSOT_PERSPECTIVES: Perspective[] = ['component', 'design', 'chapter'];
 
 /** Narrows and observes a review. */
 export interface ReviewOptions {
@@ -144,7 +145,18 @@ function ssotSubjects(ssot: ArchitectureSsot, modules: FactModule[]): Subject[] 
     findings: [],
     outline: designState(ssot),
   };
-  return [...components, design];
+  const chapters = ssot.chapters.map(
+    (chapter): Subject => ({
+      perspective: 'chapter',
+      name: chapter.id,
+      path: posix.join(ssot.dir, 'chapters', `${chapter.id}.md`),
+      line: 1,
+      lines: chapter.body.split('\n').length,
+      findings: [],
+      outline: chapterState(chapter),
+    }),
+  );
+  return [...components, design, ...chapters];
 }
 
 async function loadQuestions(config: Config, perspectives: Perspective[]) {

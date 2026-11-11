@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { UserError } from './config.ts';
-import type { Change } from './types.ts';
+import type { Change, CommitSummary } from './types.ts';
 
 const MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
 const SHORT_SHA_LENGTH = 7;
@@ -399,4 +399,40 @@ export async function recentCommitFiles(root: string, count: number): Promise<st
         .filter(Boolean),
     )
     .filter((files) => files.length > 0);
+}
+
+const TRAILER = /^[A-Z][\w-]+: .+$/;
+
+/**
+ * The commits most worth reading for why the code is shaped as it is: those that touch many files
+ * or explain themselves at length, out of the last `scan` non-merge commits. Empty outside git.
+ */
+export async function significantCommits(
+  root: string,
+  scan: number,
+  count: number,
+): Promise<CommitSummary[]> {
+  const log = await git(root, [
+    'log',
+    '--no-show-signature',
+    '--no-merges',
+    '--no-renames',
+    `--max-count=${scan}`,
+    '--format=%x01%h%x02%s%x02%b%x03',
+    '--name-only',
+    '--relative',
+    '-z',
+  ]).catch(() => '');
+  const commits = log
+    .split('\x01')
+    .filter(Boolean)
+    .map((chunk) => {
+      const [header = '', names = ''] = chunk.split('\x03');
+      const [hash = '', subject = '', body = ''] = header.split('\x02');
+      const lines = body.split('\n').filter((line) => line.trim() && !TRAILER.test(line.trim()));
+      const files = names.split('\0').filter((name) => name.trim()).length;
+      return { hash, subject, body: lines.join(' ').slice(0, 400), files };
+    });
+  const weight = ({ body, files }: CommitSummary) => Math.min(files, 40) + body.length / 40;
+  return commits.toSorted((a, b) => weight(b) - weight(a)).slice(0, count);
 }

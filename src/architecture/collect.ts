@@ -3,9 +3,9 @@
  * Shared by every `jevlint architecture` verb. Outlines are cached by content hash.
  */
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { join, posix } from 'node:path';
+import { join, posix, relative } from 'node:path';
 import { parse, type SgNode } from '@ast-grep/napi';
 import pLimit from 'p-limit';
 import { LANGUAGES, languageOf } from '../ast/languages.ts';
@@ -146,7 +146,8 @@ async function resolveContext(root: string, files: string[]): Promise<ResolveCon
 
 /** Resolves each import to a repository file, or names its package, keeping its line. */
 export function resolveModules(outlines: ModuleOutline[], context: ResolveContext) {
-  const modules: FactModule[] = outlines.map(({ path, language, lines, imports, symbols }) => {
+  const modules: FactModule[] = outlines.map((outline) => {
+    const { path, language, lines, imports, symbols, types = [], comments = [] } = outline;
     const resolvedImports: FactModule['imports'] = [];
     const externals: FactModule['externals'] = [];
     const seen = new Set<string>();
@@ -163,7 +164,7 @@ export function resolveModules(outlines: ModuleOutline[], context: ResolveContex
         externals.push({ package: name, line });
       }
     }
-    return { path, language, lines, imports: resolvedImports, externals, symbols };
+    return { path, language, lines, imports: resolvedImports, externals, symbols, types, comments };
   });
   const resolved: ResolvedOutline[] = outlines.map((outline, index) => ({
     ...outline,
@@ -234,3 +235,29 @@ export function matchCalls(searches: CallSearch[], sources: Map<string, string>)
 
 /** Whether a root-relative path exists, for `key_files`. */
 export const existsIn = (root: string) => (path: string) => existsSync(join(root, path));
+
+const MAX_COUNTED_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Counts a root-relative file's lines, for checking cited line numbers. Only a regular file inside
+ * the root is read, so a planted link to a device or outside the repository gives undefined.
+ */
+export function lineCountIn(root: string): (path: string) => number | undefined {
+  const counts = new Map<string, number | undefined>();
+  return (path) => {
+    if (counts.has(path)) return counts.get(path);
+    let count: number | undefined;
+    try {
+      const real = realpathSync(join(root, path));
+      const inside = !relative(realpathSync(root), real).startsWith('..');
+      const stats = statSync(real);
+      if (inside && stats.isFile() && stats.size <= MAX_COUNTED_BYTES) {
+        count = readFileSync(real, 'utf8').split('\n').length;
+      }
+    } catch {
+      count = undefined;
+    }
+    counts.set(path, count);
+    return count;
+  };
+}

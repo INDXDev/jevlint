@@ -13,9 +13,19 @@ The guide is [Architecture-driven development](architecture-driven-development.m
 ├── components/
 │   ├── decision.yaml       one component each, named after its id
 │   └── scoring.yaml
-└── flows/
-    └── audit.yaml          one main workflow each (optional)
+├── flows/
+│   └── audit.yaml          one main workflow each (optional)
+├── views/
+│   ├── context.yaml        curated diagrams for people (optional)
+│   ├── overview.yaml
+│   └── data-model.yaml
+└── chapters/
+    ├── 10-overview.md      the prose of the document, in file name order (optional)
+    └── 20-principles.md
 ```
+
+The YAML structure is what jevlint checks the code against. Views and chapters are the document
+people and coding agents read: `show --markdown` builds an ARCHITECTURE.md from all of it.
 
 Set [`architecture.dir`](configuration.md#architecture-limits) to move it. It must stay inside the
 root. Commit the directory.
@@ -107,8 +117,103 @@ steps:
   - { from: audit, to: decision, verb: "asks each file's questions" }
 ```
 
-Each step names two components. `check` reports a step with no import behind it, and `show` draws it
-dashed.
+Each step names two components. `returns` adds a return arrow, and `optional: true` draws the step
+dashed. `check` reports a step with no import behind it, and `show` draws it dashed.
+
+## `views/<id>.yaml`
+
+A view is a curated diagram: what a reader should see, not every import. jevlint compiles it to
+Mermaid with one colour per group and a shape per kind, so the look is consistent whoever writes it.
+
+```yaml
+title: Building blocks
+description: From the CLI through the pipelines to the model provider.
+groups:
+  - { id: interface, label: Command line }
+  - { id: engines, label: Analysis engines }
+nodes:
+  - { id: developer, label: Developer, kind: actor }
+  - { id: cli, label: CLI commands, kind: component, component: cli, group: interface }
+  - { id: decide, label: Decision models, kind: component, path: src/decision, group: engines }
+  - { id: provider, label: Model provider, kind: external, packages: ["ai", "@ai-sdk/*"] }
+  - { id: cache, label: Answer cache, kind: store, path: src/cache.ts }
+edges:
+  - { from: developer, to: cli, verb: runs }
+  - { from: cli, to: decide, verb: asks questions }
+  - { from: decide, to: provider, verb: sends request }
+  - { from: decide, to: cache, verb: reads and writes }
+```
+
+| Key | Meaning |
+| --- | --- |
+| `title`, `description` | Shown above the diagram |
+| `groups` | At most 8 subsystems, each drawn as a box with its own colour |
+| `nodes` | At most 34. `kind` is `actor` (circle), `component` (box), `store` (cylinder), `queue`, `external` (hexagon) or `document`. A node points at code with `path` (a file, directory or glob) or `component`, not both. An `external` node may list `packages` |
+| `edges` | At most 48. `verb` is a short phrase, and `style` is `solid` (default) or `dashed` for an optional or indirect relationship |
+
+Every solid arrow is checked against the import graph: some file of the caller must import some file
+of the callee, or, for an external node with `packages`, one of those packages. An arrow with no
+import behind it is drawn dashed, and `list` warns, saying when the import runs the other way. A node
+with neither a path nor a component, such as an actor, is not checked.
+
+A view with `kind: data` is a data model, drawn as an ER diagram:
+
+```yaml
+kind: data
+title: Reports
+entities:
+  - id: audit
+    name: AuditReport
+    path: src/types.ts
+    description: What audit returns and --json prints.
+    fields:
+      - { name: files, type: "FileReport[]" }
+  - { id: file, name: FileReport, path: src/types.ts, fields: [{ name: score, type: number }] }
+relations:
+  - { from: audit, to: file, cardinality: one-to-many, label: ranks }
+```
+
+At most 20 entities with 12 fields each. `cardinality` is `one-to-one`, `one-to-many`,
+`many-to-one` or `many-to-many`. `list` warns when an entity's file does not declare a data type of
+that name.
+
+## `chapters/<name>.md`
+
+The prose of the document, one Markdown file per chapter, ordered by file name. Each starts with
+frontmatter:
+
+```markdown
+---
+title: Design principles
+evidence: [AGENTS.md, src/config.ts:17-40, commit:5f1db8a]
+---
+
+### Only the decision layer talks to models
+
+…
+
+<!-- jevlint:diagram overview -->
+```
+
+| Part | Meaning |
+| --- | --- |
+| `title` | The chapter's heading. jevlint adds it as `##`, so use `###` and lower inside |
+| `evidence` | What the chapter is based on: `path`, `path:line`, `path:start-end` or `commit:<hash>` |
+| `<!-- jevlint:diagram NAME -->` | Places a diagram: a view id, `flow:<id>`, `component:<id>`, `map`, `layers`, or `components` for every component's reference section |
+
+`list` warns when a chapter cites nothing, when a cited path or line does not exist, and when a
+backticked `path:line` in the text does not. `drift` reports a chapter as `stale-chapter` when a file
+it cites changed since `compiled_at`, so that an update rewrites only that chapter. A chapter has at
+most 60 KB, and `list` warns above 1,500 words for one chapter or 9,000 for all.
+
+### The document
+
+`show --markdown` builds the ARCHITECTURE.md. With chapters, it is the system's description, each
+chapter in order with its diagrams in place, then the views and flows no chapter placed, then a
+reference: every component, the externals, the rules and the checklist. Without chapters, it is the
+structure in a fixed order: layers, each view, the map, the components, the flows and the reference.
+`show --view <id>` draws one view, and `show --html` puts the chapters, the views and the map on one
+page with no scripts.
 
 ## Rules
 
@@ -142,7 +247,8 @@ URL or a path outside the root, so a hostile repository cannot make jevlint run 
 
 ## Validation
 
-`jevlint architecture list` loads the SSOT with the same checks every command applies, and exits 2
+`jevlint architecture list` loads the SSOT with the same checks every command applies, then checks
+its views and chapters against the code and warns on stderr about what does not fit. It exits 2
 with every error when it does not load: unknown keys, ids that break the rules above, a glob with
 `..` or a leading `/`, a `forbid` with nothing to forbid, and any `layer`, `depends_on`, `uses`, rule
 or flow step that names something that does not exist.
@@ -173,23 +279,43 @@ grammar, with no network:
 | Entry points | `package.json` `bin` and `main` (`dist/` read as `src/`), Next.js routes and pages, Express and FastAPI handlers, `main.go`, `src/main.rs`, `__main__.py`, from a [table](../src/architecture/entrypoints.ts) |
 | Flows | The longest dependency chain from each entry point's candidate |
 | Churn and co-change | Commits per file over `priority.churn_days`, and candidates whose files change together in at least 3 of the last 300 commits with no import between them |
-| Tests | Files under `test/`, `tests/`, `__tests__/`, `fixtures/`, a top-level `spec/`, and `*.test.*`, `*.spec.*`, `*_test.go`, `test_*.py`, left out of candidates and listed as globs for `ignore` |
+| Tests | Files under `test/`, `tests/`, `*-tests/`, `__tests__/`, `fixtures/`, `e2e/`, a top-level `spec/`, and `*.test.*`, `*.spec.*`, `*_test.go`, `test_*.py`, left out of candidates and listed as globs for `ignore` |
+| Data types | Interfaces, object types and classes with fields (TypeScript), classes with annotated fields (Python), structs (Go and Rust), with the other data types their fields name. The 40 most referred to are kept |
+| Comments | Comments that are not doc comments or tool directives, which in a codebase that comments why are the reasons behind the code. The compile prompt shows those in central files |
 
 Each file's outline is cached by content hash in your [cache directory](caching.md), so a second run
 reads only what changed. `--no-cache` skips it. `show --json` prints the facts.
 
 ## Compile
 
-`jevlint architecture compile` builds a draft SSOT from the facts, with `TODO` where only a person or
-an agent can name and explain, and prints a prompt with the format, guidance, the facts (paths, line
-numbers and names, never file contents) and the draft. The agent reads the key files, writes the
-SSOT, runs `jevlint architecture list` and `jevlint architecture check --static`, fixes only mistakes
-in the SSOT, and ends with questions for a person.
+`jevlint architecture compile` prints a prompt that asks a coding agent to write the whole document:
+the structure, the views and the chapters. It holds no file contents, only:
+
+- the facts: candidates, dependencies with file and line, externals, entry points, flows, cycles,
+  co-changes and tests;
+- material for the reasons: the instruction files and design documents that exist (`AGENTS.md`,
+  `CLAUDE.md`, `CONTRIBUTING.md`, `docs/architecture.md`), the data types, the comments in central
+  files, and the 25 commits most worth reading, chosen from the last 400 by files touched and
+  message length;
+- a draft of the structure, with `TODO` where only a person or an agent can name and explain.
+
+The prompt sets out how to work, in order: research the material and the central files; write notes
+of every claim with its evidence before writing anything; write the structure; draw the views by
+rules taken from [GitDiagram](https://github.com/ahmedkhaleel2004/gitdiagram)'s generator (the
+caller owns each arrow, no invented pipelines, solid only with an import behind it, short verbs and
+labels, start from the actor); write the chapters by a fixed outline (overview, principles, building
+blocks, runtime, data, cross-cutting concerns, decisions, risks, change guide, glossary) and writing
+rules (every principle with its reason and cost, every decision with its alternatives, every claim
+with evidence, nothing generic); review the result as a newcomer; and run `list` and `check
+--static` until they are clean. The agent ends with questions for a person.
+
+With `--agent`, jevlint runs `list`'s checks after the agent finishes and, while they report
+anything, gives the agent the problems to fix, at most twice.
 
 When an SSOT exists, the prompt asks for an update instead: the drift since `compiled_at` (or
-`--since`), the files added and removed, and the instruction to keep ids and set `compiled_at` to the
-current commit. When the SSOT does not load, the prompt holds the errors. `--docs` adds documents as
-context, and the agent lists where they disagree with the code instead of deciding.
+`--since`), including chapters whose evidence changed and views that no longer fit, the files added
+and removed, and the instruction to rewrite only those parts and keep ids. When the SSOT does not
+load, the prompt holds the errors. `--docs` adds more documents as context.
 
 ## Check
 
@@ -217,6 +343,8 @@ only in files changed since `base`, untracked ones included. `pr --architecture`
 | `undocumented-external` | A component imports a declared external its `uses` does not list, or a known system no `externals` entry names | AST |
 | `stale-reference` | A `paths` glob, `key_files` entry or `interface` name that matches nothing, a component with no files, or a `depends_on` or `uses` entry the code never imports | AST |
 | `stale-summary` | A component, among those whose files changed since `compiled_at`, whose summary the model thinks no longer fits its outline | `architecture-drift.summary-current`, a boolean |
+| `stale-chapter` | A chapter that cites a file changed since `compiled_at` | git |
+| `stale-view` | A view node whose path matches nothing, a solid arrow with no import behind it, or a data entity whose type is gone | AST |
 | `document` | With `--docs`: a document that contradicts a summary or checklist item, or states a structural fact the SSOT leaves out | Two requests per document, as `spec drift` |
 
 A drift item is not a violation: it says the SSOT needs an update. `--copy` and `--prompt` give the
@@ -248,7 +376,8 @@ ln(1 + churn)) × (1 + fan-in) of the component they weigh on. Severity runs fro
 | `drift` | Changed component | Outline and summary | `architecture-drift.summary-current` | One per changed component |
 | `drift --docs` | Document | Document, then its statements | Route to a component, then `agrees`, `contradicts` or `absent` per statement, and `uncovered` | Two per document |
 | `review`, `component` | Component | Outline and summary, no code | `architecture-component`: `summary-fit`, `dependencies`, `naming` | One per component |
-| `review`, `design` | SSOT | The SSOT's YAML, without `compiled_at` | `architecture-design`: `responsibilities`, `layering`, `direction` | One |
+| `review`, `design` | SSOT | The SSOT's YAML, without `compiled_at`, views and chapters | `architecture-design`: `responsibilities`, `layering`, `direction` | One |
+| `review`, `chapter` | Chapter | Its title, evidence list and text | `architecture-chapter`: `explains-why`, `specific`, `evidence` | One per chapter |
 
 Every request goes through the decision cache, whose key covers the question text, so editing a
 summary or an item asks again and nothing else does. The preset questions can be
