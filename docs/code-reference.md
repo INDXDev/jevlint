@@ -195,7 +195,8 @@ All of these are pure and implement [Scoring](scoring.md).
 | `auditIssues`, `reviewIssues`, `formatSarif`, `formatGithub`, `formatIssues` | `formats.ts` | Render `--format sarif` and `github` |
 | `renderPrompt(files, report)` | `prompt.ts` | Builds the Markdown fix prompt |
 | `resolveAgent`, `runAgent`, `fixFile` | `agent.ts` | Find, run and verify a coding agent |
-| `quickfixFile`, `quickfixWithFixers`, `collectChanges`, `runFixers`, `retryQuickfix` | `agent.ts` | Run a quick fix, the project's fixers and the one retry, and collect what changed and who changed it |
+| `quickfixFile`, `quickfixWithFixers`, `collectChanges`, `retryQuickfix` | `agent.ts` | Run a quick fix, the project's fixers and the one retry, and collect what changed and who changed it |
+| `runFixers`, `fixerPaths` | `fixers.ts` | Run the `quickfix.after` commands on the files they match, with a timeout |
 | `renderRetryPrompt(paths, failures)` | `prompt.ts` | Builds the retry prompt from a failing check's output |
 | `auditProject`, `selectFiles`, `resolvePaths`, `parseFormat` | `commands/shared.ts` | Flow shared by commands |
 

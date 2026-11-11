@@ -1,14 +1,9 @@
 /** `jevlint quickfix`: has a coding agent only edit the worst files, then shows and scores the diff. */
 import { defineCommand } from 'citty';
-import {
-  agentFailure,
-  type FixerRun,
-  type QuickfixEvents,
-  quickfixWithFixers,
-  rescoreFiles,
-} from '../agent.ts';
+import { agentFailure, type QuickfixEvents, quickfixWithFixers, rescoreFiles } from '../agent.ts';
 import { diffFiles } from '../diff.ts';
 import { type DiffView, formatDiffStat, formatDiffs, SPLIT_MIN_WIDTH } from '../diff-view.ts';
+import type { FixerRun } from '../fixers.ts';
 import { commitPaths, isWorkTree } from '../git.ts';
 import {
   commandLine,
@@ -238,7 +233,7 @@ async function fixFile(
   const agent = run.launch.name;
   const shownPath = withoutControlCharacters(file.path);
   console.error(`${step}Running ${agent} on ${shownPath} (score ${formatScore(file.score)})`);
-  const fixed = await quickfixWithFixers(file, run.report, run.config, run.launch, {
+  const fixed = await quickfixWithFixers(file, run, {
     fixers: context.fixers.fixers,
     fixersAllowed: context.fixers.stillApproved,
     events: quickfixEvents(agent),
