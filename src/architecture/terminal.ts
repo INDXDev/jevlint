@@ -295,8 +295,13 @@ function formatViewBody(view: ArchitectureView, model: ShowModel): string[] {
 }
 
 /** Draws one view of the SSOT, or of the draft, for the terminal. */
-export function formatShow(untrusted: ShowModel, view: View, modules: FactModule[] = []): string {
+export function formatShow(
+  untrusted: ShowModel,
+  view: View,
+  untrustedModules: FactModule[] = [],
+): string {
   const model = withoutControlCharacters(untrusted);
+  const modules = withoutControlCharacters(untrustedModules);
   const { ssot } = model;
   const header = ` ${pc.bold('jevlint architecture show')}  ${[model.root, model.draft ? 'draft from the facts' : ssot.dir].join(SEPARATOR)}`;
   const legend = pc.dim(

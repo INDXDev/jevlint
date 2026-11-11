@@ -5,7 +5,7 @@ import { collect } from '../architecture/collect.ts';
 import { loadArchitecture } from '../architecture/load.ts';
 import { architectureBaseline, BASELINE_PATH, toBaseline, writeBaseline } from '../baseline.ts';
 import { type Config, UserError } from '../config.ts';
-import { plural } from '../report.ts';
+import { plural, withoutControlCharacters } from '../report.ts';
 import {
   auditProject,
   everyProviderCallFailed,
@@ -16,12 +16,23 @@ import {
   splitPositionals,
 } from './shared.ts';
 
-/** The SSOT's structural violations, when there is an SSOT, for `architecture check --new`. */
+/**
+ * The SSOT's structural violations, when there is an SSOT, for `architecture check --new`. An SSOT
+ * that does not load leaves them out with a warning: the audit baseline does not depend on it.
+ */
 async function architectureEntries(config: Config) {
-  const ssot = await loadArchitecture(config);
-  if (!ssot) return undefined;
-  const collected = await collect(config, { keepSources: true, skipHistory: true });
-  return architectureBaseline(violationsOf(ssot, collected, config.root));
+  try {
+    const ssot = await loadArchitecture(config);
+    if (!ssot) return undefined;
+    const collected = await collect(config, { keepSources: true, skipHistory: true });
+    return architectureBaseline(violationsOf(ssot, collected));
+  } catch (error) {
+    if (!(error instanceof UserError)) throw error;
+    console.error(
+      `Warning: no architecture violations recorded: ${withoutControlCharacters(error.message)}`,
+    );
+    return undefined;
+  }
 }
 
 /** The `baseline` command. */

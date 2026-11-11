@@ -13,10 +13,57 @@ import type { PathAlias, WorkspacePackage } from '../types.ts';
 const MAX_WORKSPACE_PACKAGES = 500;
 const MAX_ALIASES = 10;
 
-/** A missing file is undefined. A device or FIFO planted at the path is an error, never a hang. */
-function readText(root: string, path: string): Promise<string | undefined> {
-  return ifExists(readRegularFile(join(root, path)));
+/** Where manifests are read from: the working tree, or one commit. */
+export interface ManifestSource {
+  /** A root-relative file's text, or undefined if there is none. */
+  read: (path: string) => Promise<string | undefined>;
+  /** Root-relative files that match any of the globs, outside `node_modules`, never through a link. */
+  glob: (patterns: string[]) => Promise<string[]>;
 }
+
+/** Manifests in the working tree. A device or FIFO planted at a path is an error, never a hang. */
+export function workingTree(root: string): ManifestSource {
+  return {
+    read: (path) => ifExists(readRegularFile(join(root, path))),
+    glob: async (patterns) => {
+      const found = await glob(patterns, {
+        cwd: root,
+        followSymbolicLinks: false,
+        ignore: ['**/node_modules/**'],
+        onlyFiles: true,
+      });
+      const inside = await Promise.all(
+        // A manifest linked from outside the repository is not the repository's to describe.
+        found.map((path) =>
+          assertInRepo(join(root, path), root).then(
+            () => true,
+            () => false,
+          ),
+        ),
+      );
+      return found.filter((_, index) => inside[index]);
+    },
+  };
+}
+
+/** Manifests as one commit has them, read through `read` from the commit's `files`. */
+export function atCommit(
+  files: string[],
+  read: (path: string) => Promise<string | undefined>,
+): ManifestSource {
+  return {
+    read,
+    glob: async (patterns) =>
+      files.filter(
+        (path) =>
+          !path.split('/').includes('node_modules') &&
+          patterns.some((pattern) => posix.matchesGlob(path, pattern)),
+      ),
+  };
+}
+
+const sourceOf = (from: string | ManifestSource) =>
+  typeof from === 'string' ? workingTree(from) : from;
 
 /**
  * Removes comments and trailing commas, which tsconfig allows, while leaving strings alone.
@@ -66,13 +113,13 @@ const isInside = (path: string) =>
   !path.startsWith('../') && path !== '..' && !posix.isAbsolute(path);
 
 /** The Go module path from `go.mod`. */
-export async function goModuleOf(root: string): Promise<string | undefined> {
-  return (await readText(root, 'go.mod'))?.match(/^module\s+(\S+)/m)?.[1];
+export async function goModuleOf(from: string | ManifestSource): Promise<string | undefined> {
+  return (await sourceOf(from).read('go.mod'))?.match(/^module\s+(\S+)/m)?.[1];
 }
 
 /** The root `tsconfig.json`'s `paths`, made root-relative, most specific pattern first. */
-export async function tsconfigAliases(root: string): Promise<PathAlias[]> {
-  const tsconfig = parseJson(await readText(root, 'tsconfig.json'));
+export async function tsconfigAliases(from: string | ManifestSource): Promise<PathAlias[]> {
+  const tsconfig = parseJson(await sourceOf(from).read('tsconfig.json'));
   const options = isTable(tsconfig?.compilerOptions) ? tsconfig.compilerOptions : {};
   const baseUrl = typeof options.baseUrl === 'string' ? options.baseUrl : '.';
   const paths = isTable(options.paths) ? options.paths : {};
@@ -90,13 +137,13 @@ export async function tsconfigAliases(root: string): Promise<PathAlias[]> {
     .sort((a, b) => b.pattern.length - a.pattern.length);
 }
 
-async function workspaceGlobs(root: string): Promise<string[]> {
-  const manifest = parseJson(await readText(root, 'package.json'));
+async function workspaceGlobs(source: ManifestSource): Promise<string[]> {
+  const manifest = parseJson(await source.read('package.json'));
   const workspaces = manifest?.workspaces;
   const fromPackage = isTable(workspaces) ? strings(workspaces.packages) : strings(workspaces);
   let fromPnpm: string[] = [];
   try {
-    const pnpm: unknown = parseYaml((await readText(root, 'pnpm-workspace.yaml')) ?? '', {
+    const pnpm: unknown = parseYaml((await source.read('pnpm-workspace.yaml')) ?? '', {
       maxAliasCount: 10,
     });
     fromPnpm = isTable(pnpm) ? strings(pnpm.packages) : [];
@@ -132,22 +179,18 @@ function entriesOf(dir: string, manifest: Record<string, unknown>): string[] {
 }
 
 /** Every workspace package with a name, from `package.json` and `pnpm-workspace.yaml`. */
-export async function workspacePackages(root: string): Promise<WorkspacePackage[]> {
-  const patterns = await workspaceGlobs(root);
+export async function workspacePackages(
+  from: string | ManifestSource,
+): Promise<WorkspacePackage[]> {
+  const source = sourceOf(from);
+  const patterns = await workspaceGlobs(source);
   if (patterns.length === 0) return [];
-  const manifests = await glob(
+  const manifests = await source.glob(
     patterns.map((pattern) => posix.join(pattern, 'package.json')),
-    { cwd: root, followSymbolicLinks: false, ignore: ['**/node_modules/**'], onlyFiles: true },
   );
   const packages: WorkspacePackage[] = [];
   for (const path of manifests.filter(isInside).sort().slice(0, MAX_WORKSPACE_PACKAGES)) {
-    // A manifest linked from outside the repository is not the repository's to describe.
-    const inside = await assertInRepo(join(root, path), root).then(
-      () => true,
-      () => false,
-    );
-    if (!inside) continue;
-    const manifest = parseJson(await readText(root, path));
+    const manifest = parseJson(await source.read(path));
     if (typeof manifest?.name !== 'string' || manifest.name === '') continue;
     const dir = posix.dirname(path);
     packages.push({ name: manifest.name, dir, entries: entriesOf(dir, manifest) });
@@ -156,8 +199,8 @@ export async function workspacePackages(root: string): Promise<WorkspacePackage[
 }
 
 /** Files `package.json` names as `bin` or `main`, each with its kind. */
-export async function manifestEntries(root: string): Promise<Map<string, string>> {
-  const manifest = parseJson(await readText(root, 'package.json'));
+export async function manifestEntries(from: string | ManifestSource): Promise<Map<string, string>> {
+  const manifest = parseJson(await sourceOf(from).read('package.json'));
   const entries = new Map<string, string>();
   if (!manifest) return entries;
   const bins =

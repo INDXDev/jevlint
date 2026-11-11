@@ -121,7 +121,12 @@ export async function prepareCompile(
   const dir = ssotDir(config);
   const collected = await collect(config, { paths: options.paths, noCache: options.noCache });
   const { ssot, loadError } = await loadExisting(config);
-  const delta = ssot ? await deltaOf(config, ssot, collected, options.since) : null;
+  // The delta describes the whole SSOT, so a narrowed compile measures it against every file.
+  const whole =
+    ssot && options.paths
+      ? await collect(config, { noCache: options.noCache, skipHistory: true })
+      : collected;
+  const delta = ssot ? await deltaOf(config, ssot, whole, options.since) : null;
   const docs = options.docs
     ? await discoverDocs(config, options.docs.length > 0 ? options.docs : undefined)
     : [];

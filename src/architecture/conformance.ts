@@ -406,17 +406,23 @@ export function conformance(
   ].sort(byLocation);
 }
 
+/** The fields that identify a violation, as a check reports it or a baseline records it. */
+export interface ViolationIdentity {
+  rule: string;
+  ruleId: string;
+  path: string;
+  target?: string;
+}
+
 /** What makes two violations the same across commits: not the line, which edits move. */
-export const violationKey = ({
-  rule,
-  ruleId,
-  path,
-  target,
-}: Pick<ArchitectureViolation, 'rule' | 'ruleId' | 'path' | 'target'>) =>
+export const violationKey = ({ rule, ruleId, path, target }: ViolationIdentity) =>
   JSON.stringify([rule, ruleId, path, target ?? null]);
 
 /** The violations in `after` that `before` does not have. */
-export function addedViolations(before: ArchitectureViolation[], after: ArchitectureViolation[]) {
+export function addedViolations<T extends ViolationIdentity>(
+  before: ViolationIdentity[],
+  after: T[],
+): T[] {
   const known = new Map<string, number>();
   for (const item of before)
     known.set(violationKey(item), (known.get(violationKey(item)) ?? 0) + 1);

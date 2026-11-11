@@ -285,8 +285,9 @@ function componentNodes({ ssot, edges }: ShowModel): DiagramNode[] {
   }));
 }
 
-function componentTable({ ssot, edges }: ShowModel): string {
-  const rows = ssot.components.map((component) => {
+function componentTable({ ssot, edges }: ShowModel, only?: string): string {
+  const shown = ssot.components.filter(({ id }) => only === undefined || id === only);
+  const rows = shown.map((component) => {
     const out = edges
       .filter(({ from, status }) => from === component.id && status !== 'unused')
       .map(({ to, status }) =>
@@ -377,6 +378,10 @@ function diagramHtml(name: string, model: ShowModel): string {
     return renderDiagram(componentNodes(model), mapEdgesAsEdges(model.edges));
   }
   if (name === 'components') return componentTable(model);
+  if (name.startsWith('component:')) {
+    const id = name.slice('component:'.length);
+    return model.ssot.components.some((c) => c.id === id) ? componentTable(model, id) : '';
+  }
   if (name.startsWith('flow:')) {
     return flowTables({
       ...model,

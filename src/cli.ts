@@ -73,8 +73,11 @@ function withArchitectureDefault([group, ...rest]: string[]): string[] {
   const onlyHelp = rest.length > 0 && rest.every((arg) => HELP_FLAGS.includes(arg));
   const named =
     subCommand !== undefined && Object.hasOwn(architectureCommand.subCommands ?? {}, subCommand);
-  // A bare string flag would take the next argument as its value, so `--docs` alone means none named.
-  const args = rest.map((arg) => (arg === '--docs' ? '--docs=' : arg));
+  // `--docs` with no value means `spec.docs`, but a following argument is its value, as for any flag.
+  const args = rest.map((arg, index) => {
+    const next = rest[index + 1];
+    return arg === '--docs' && (next === undefined || next.startsWith('-')) ? '--docs=' : arg;
+  });
   return named || onlyHelp ? [group as string, ...args] : [group as string, 'review', ...args];
 }
 

@@ -12,16 +12,7 @@ key_files:
   - { path: src/baseline.ts, role: ".jevlint/baseline.json and what is new" }
   - { path: src/hook.ts, role: "the edited path and the pre-commit hook" }
 interface:
-  [
-    reviewChange,
-    reviewFile,
-    madeWorse,
-    judgeIntent,
-    readBaseline,
-    writeBaseline,
-    newViolations,
-    editedPath,
-  ]
+  [reviewChange, reviewFile, madeWorse, judgeIntent, readBaseline, writeBaseline, editedPath]
 depends_on: [audit, configuration, decision, presets, repository-access, scoring, contracts]
 uses: [zod]
 rules: []

@@ -2,7 +2,7 @@
 import { posix } from 'node:path';
 import pLimit from 'p-limit';
 import { type Config, UserError } from '../config.ts';
-import { decideFile } from '../decision/decide.ts';
+import { decideFile, PROVIDER_ERROR } from '../decision/decide.ts';
 import { estimateCostUsd } from '../decision/pricing.ts';
 import { createDecisionModel, type ResolvedModel } from '../decision/providers.ts';
 import { activeQuestions, loadPresets } from '../presets.ts';
@@ -78,7 +78,7 @@ async function askModel(
     return { model: modelResult(asked, decision), warnings };
   } catch (error) {
     if (error instanceof UserError) throw error;
-    return { model: null, warnings: [`Provider error: ${(error as Error).message}`] };
+    return { model: null, warnings: [`${PROVIDER_ERROR} ${(error as Error).message}`] };
   }
 }
 
@@ -167,13 +167,40 @@ async function loadQuestions(config: Config, perspectives: Perspective[]) {
   return new Map(await Promise.all(entries));
 }
 
+/**
+ * The SSOT a review reads. Perspectives that never read it skip loading it, and the default
+ * perspectives review without it, with a warning, when it does not load.
+ */
+export async function reviewSsot(
+  config: Config,
+  perspectives?: Perspective[],
+): Promise<{ ssot: ArchitectureSsot | null; warnings: string[] }> {
+  if (perspectives && !perspectives.some((p) => SSOT_PERSPECTIVES.includes(p))) {
+    return { ssot: null, warnings: [] };
+  }
+  if (perspectives) return { ssot: await loadArchitecture(config), warnings: [] };
+  try {
+    return { ssot: await loadArchitecture(config), warnings: [] };
+  } catch (error) {
+    if (!(error instanceof UserError)) throw error;
+    return {
+      ssot: null,
+      warnings: [`The SSOT does not load, so the review skips it: ${error.message}`],
+    };
+  }
+}
+
 /** Maps the repository, or only `options.paths`, and ranks its units from worst to best. */
 export async function reviewArchitecture(
   config: Config,
   options: ReviewOptions = {},
 ): Promise<ArchitectureReport> {
   const { noCache, onProgress } = options;
-  const ssot = options.ssot === undefined ? await loadArchitecture(config) : options.ssot;
+  const loaded =
+    options.ssot === undefined
+      ? await reviewSsot(config, options.perspectives)
+      : { ssot: options.ssot, warnings: [] };
+  const { ssot } = loaded;
   const perspectives =
     options.perspectives ?? PERSPECTIVES.filter((p) => ssot || !SSOT_PERSPECTIVES.includes(p));
   const needsSsot = perspectives.find((perspective) => SSOT_PERSPECTIVES.includes(perspective));
@@ -187,7 +214,7 @@ export async function reviewArchitecture(
     options.astOnly ? null : createDecisionModel(config),
     loadQuestions(config, perspectives),
   ]);
-  const { warnings } = collected;
+  const warnings = [...loaded.warnings, ...collected.warnings];
   const structure = buildStructure(collected.resolved, config.architecture);
   const subjects = [
     ...subjectsOf(structure),

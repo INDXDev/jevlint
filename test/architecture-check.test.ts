@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { Experimental_DecisionMockModelV4 as MockModel } from 'ai/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { changeViolations, checkArchitecture } from '../src/architecture/check.ts';
-import { validateSsot } from '../src/architecture/compile.ts';
+import { prepareCompile, validateSsot } from '../src/architecture/compile.ts';
 import { driftArchitecture } from '../src/architecture/drift.ts';
 import { loadArchitecture } from '../src/architecture/load.ts';
 import { reviewArchitecture } from '../src/architecture/review.ts';
@@ -222,6 +222,43 @@ describe('with git history', () => {
     expect(await changeViolations(config, await ssot(), head, head)).toEqual([]);
   });
 
+  it('reads key files and tsconfig aliases from the commits it compares', async () => {
+    await write({
+      [`${DIR}/components/web.yaml`]: `${SSOT[`${DIR}/components/web.yaml`]}key_files:\n  - { path: src/web/page.ts, role: pages }\n`,
+      'tsconfig.json': '{ "compilerOptions": { "paths": { "@app/*": ["src/web/*"] } } }',
+    });
+    const base = commit('base');
+    await rm(join(root, 'src/web/page.ts'));
+    await write({
+      'src/web/other.ts': 'export const other = 1;\n',
+      'src/db/client.ts':
+        "import { other } from '@app/other.ts';\nexport function query() { return other; }\n",
+    });
+    const head = commit('remove the key file, import web from db');
+    // The checkout is back at base, so only the commits can show what the change did.
+    git('checkout', '-q', base);
+    const added = await changeViolations(config, await ssot(), base, head);
+    expect(added.map(({ rule, target }) => [rule, target])).toEqual(
+      expect.arrayContaining([
+        ['stale-reference', 'src/web/page.ts'],
+        ['layer-violation', 'src/web/other.ts'],
+      ]),
+    );
+  });
+
+  it('measures a narrowed compile against the whole SSOT', async () => {
+    const base = commit('base');
+    await write({
+      [`${DIR}/index.yaml`]: SSOT[`${DIR}/index.yaml`].replace(
+        'name: shop',
+        `name: shop\ncompiled_at: ${base}`,
+      ),
+    });
+    const input = await prepareCompile(config, { paths: ['src/web'] });
+    expect(input.facts.modules.map(({ path }) => path)).toEqual(['src/web/page.ts']);
+    expect(input.delta).toEqual(expect.objectContaining({ removed: [], items: [] }));
+  });
+
   it('reports a directory added since compiled_at as new unmapped code', async () => {
     const base = commit('base');
     await write({
@@ -259,6 +296,22 @@ describe('driftArchitecture', () => {
     ]);
     expect(requests.join()).toContain('Summary: Stores orders.');
     expect(requests.join()).not.toContain('return 1');
+  });
+
+  it('reports a failed summary request as a provider error', async () => {
+    useModel(() => 'agrees');
+    const resolved = await createDecisionModel(config);
+    const failing = new MockModel({
+      doDecide: async () => {
+        throw new Error('429 rate limited');
+      },
+    });
+    vi.mocked(createDecisionModel).mockResolvedValue({ ...resolved, model: failing } as never);
+    const report = await driftArchitecture(config, await ssot(), {});
+    expect(report.items).toEqual([]);
+    expect(report.warnings).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^Provider error: .*429 rate limited/)]),
+    );
   });
 
   it('compares documents with the SSOT', async () => {
@@ -303,6 +356,21 @@ describe('reviewArchitecture with an SSOT', () => {
     await expect(
       reviewArchitecture(config, { astOnly: true, perspectives: ['design'] }),
     ).rejects.toThrow('The design perspective reviews the architecture SSOT');
+  });
+
+  it('reviews without an SSOT that does not load, unless a perspective needs it', async () => {
+    await write({ [`${DIR}/index.yaml`]: 'version: [' });
+    const codebase = await reviewArchitecture(config, {
+      astOnly: true,
+      perspectives: ['codebase'],
+    });
+    expect(codebase.warnings).toEqual([]);
+    const fallback = await reviewArchitecture(config, { astOnly: true });
+    expect(fallback.warnings[0]).toContain('The SSOT does not load');
+    expect(fallback.units.some(({ perspective }) => perspective === 'design')).toBe(false);
+    await expect(
+      reviewArchitecture(config, { astOnly: true, perspectives: ['design'] }),
+    ).rejects.toThrow(UserError);
   });
 
   it('sends the design as YAML, never code', async () => {
