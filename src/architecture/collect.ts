@@ -13,14 +13,22 @@ import { cacheKey, readCache, writeCache } from '../cache.ts';
 import { type Config, UserError } from '../config.ts';
 import { discoverFiles, excludedPaths } from '../files.ts';
 import { commitCounts, fileAt, filesAt, headCommit, recentCommitFiles } from '../git.ts';
-import type { ArchitectureFacts, FactModule } from '../types.ts';
+import type { ArchitectureFacts, FactModule, Language } from '../types.ts';
 import type { CallMatch, CallSearch } from './conformance.ts';
 import { entryKind } from './entrypoints.ts';
 import { extractModule, type ModuleOutline } from './extract.ts';
 import { buildFacts } from './facts.ts';
 import { packageOf, type ResolveContext, resolveImport } from './resolve.ts';
 import type { ResolvedOutline } from './structure.ts';
-import { goModuleOf, manifestEntries, tsconfigAliases, workspacePackages } from './workspace.ts';
+import {
+  atCommit,
+  goModuleOf,
+  type ManifestSource,
+  manifestEntries,
+  tsconfigAliases,
+  workingTree,
+  workspacePackages,
+} from './workspace.ts';
 
 /** Bumped whenever an outline's shape changes, so stale cache entries are never read. */
 const OUTLINE_VERSION = 2;
@@ -55,6 +63,8 @@ export interface Collected {
   facts: ArchitectureFacts;
   /** Sources by path, when `keepSources` was set. */
   sources: Map<string, string>;
+  /** Whether a root-relative file or directory exists in the tree collected, for `key_files`. */
+  exists: (path: string) => boolean;
   warnings: string[];
 }
 
@@ -111,10 +121,15 @@ function manifestTargets(manifest: Map<string, string>, files: Set<string>): Map
   return found;
 }
 
-async function readAll(config: Config, files: string[], options: CollectOptions) {
+async function readAll(
+  config: Config,
+  files: string[],
+  options: CollectOptions,
+  manifests: ManifestSource,
+) {
   const warnings: string[] = [];
   const limit = pLimit(config.concurrency);
-  const manifest = manifestTargets(await manifestEntries(config.root), new Set(files));
+  const manifest = manifestTargets(await manifestEntries(manifests), new Set(files));
   const read = await Promise.all(
     files.map((path) =>
       limit(async (): Promise<Read | null> => {
@@ -135,11 +150,11 @@ async function readAll(config: Config, files: string[], options: CollectOptions)
   return { read: read.filter((item): item is Read => item !== null), warnings };
 }
 
-async function resolveContext(root: string, files: string[]): Promise<ResolveContext> {
+async function resolveContext(files: string[], manifests: ManifestSource): Promise<ResolveContext> {
   const [goModule, aliases, packages] = await Promise.all([
-    goModuleOf(root),
-    tsconfigAliases(root),
-    workspacePackages(root),
+    goModuleOf(manifests),
+    tsconfigAliases(manifests),
+    workspacePackages(manifests),
   ]);
   return { files: new Set(files), goModule, aliases, packages };
 }
@@ -173,6 +188,23 @@ export function resolveModules(outlines: ModuleOutline[], context: ResolveContex
   return { modules, resolved };
 }
 
+/** One commit's manifests, and whether a file or directory exists in it. */
+async function treeAt(root: string, commit: string) {
+  const files = await filesAt(root, commit);
+  const known = new Set(files);
+  const dirs = new Set(
+    files.flatMap((path) => {
+      const parts = path.split('/');
+      return parts.slice(1).map((_, index) => parts.slice(0, index + 1).join('/'));
+    }),
+  );
+  const exists = (path: string) => {
+    const normal = posix.normalize(path).replace(/\/$/, '');
+    return known.has(normal) || dirs.has(normal);
+  };
+  return { manifests: atCommit(files, (path) => fileAt(root, commit, path)), exists };
+}
+
 /** Reads, outlines and resolves every file in scope, then builds the facts. */
 export async function collect(config: Config, options: CollectOptions = {}): Promise<Collected> {
   const { root } = config;
@@ -180,9 +212,12 @@ export async function collect(config: Config, options: CollectOptions = {}): Pro
     ? await filesOfCommit(config, options.commit, options.paths)
     : await discoverFiles(config, options.paths);
   const grammarFiles = files.filter((path) => languageOf(path) !== null);
+  // At a commit, manifests and `key_files` come from that commit too, or a change would cancel out.
+  const tree = options.commit ? await treeAt(root, options.commit) : null;
+  const manifests = tree ? tree.manifests : workingTree(root);
   const [{ read, warnings }, context, commit, churn, commits] = await Promise.all([
-    readAll(config, grammarFiles, options),
-    resolveContext(root, grammarFiles),
+    readAll(config, grammarFiles, options, manifests),
+    resolveContext(grammarFiles, manifests),
     options.commit ? Promise.resolve(options.commit) : headCommit(root),
     options.skipHistory
       ? new Map<string, number>()
@@ -207,30 +242,47 @@ export async function collect(config: Config, options: CollectOptions = {}): Pro
   const sources = new Map(
     read.flatMap(({ outline, source }) => (source === undefined ? [] : [[outline.path, source]])),
   );
-  return { paths: grammarFiles, resolved, modules, facts, sources, warnings };
+  const exists = tree ? tree.exists : existsIn(root);
+  return { paths: grammarFiles, resolved, modules, facts, sources, exists, warnings };
 }
 
-/** Runs each `forbid-call` search with ast-grep over the sources it covers. */
+/**
+ * Runs each `forbid-call` search with ast-grep over the sources it covers. A rule with no
+ * `language` skips the languages its pattern is not written in, and fails only if it fits none.
+ */
 export function matchCalls(searches: CallSearch[], sources: Map<string, string>): CallMatch[] {
-  return searches.flatMap(({ ruleId, pattern, files }) =>
-    files.flatMap((path) => {
+  return searches.flatMap(({ ruleId, pattern, language: named, files }) => {
+    const unreadable = new Set<Language>();
+    const read = new Set<Language>();
+    const matches = files.flatMap((path) => {
       const source = sources.get(path);
       const language = languageOf(path);
-      if (source === undefined || !language) return [];
+      if (source === undefined || !language || unreadable.has(language)) return [];
       let nodes: SgNode[];
       try {
         nodes = parse(LANGUAGES[language].parser, source).root().findAll(pattern);
       } catch {
-        throw new UserError(`Rule ${ruleId}: ast-grep cannot read the pattern for ${language}.`);
+        if (named) {
+          throw new UserError(`Rule ${ruleId}: ast-grep cannot read the pattern for ${language}.`);
+        }
+        unreadable.add(language);
+        return [];
       }
+      read.add(language);
       return nodes.map((node) => ({
         ruleId,
         path,
         line: node.range().start.line + 1,
         text: node.text().split('\n')[0]?.slice(0, 80) ?? '',
       }));
-    }),
-  );
+    });
+    if (read.size === 0 && unreadable.size > 0) {
+      throw new UserError(
+        `Rule ${ruleId}: ast-grep cannot read the pattern for ${[...unreadable].join(' or ')}.`,
+      );
+    }
+    return matches;
+  });
 }
 
 /** Whether a root-relative path exists, for `key_files`. */

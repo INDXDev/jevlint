@@ -196,6 +196,11 @@ describe('jevlint architecture compile and plan', () => {
     const withDocs = jevlint(cwd, 'architecture', 'compile', '--docs');
     expect(withDocs.status).toBe(0);
     expect(withDocs.stdout).toContain('- README.md');
+    // A value after --docs names the document, and narrows nothing.
+    const named = jevlint(cwd, 'architecture', 'compile', '--docs', 'README.md');
+    expect(named.status).toBe(0);
+    expect(named.stdout).toContain('- README.md');
+    expect(named.stdout).toContain('From static analysis of 2 files');
     mkdirSync(join(cwd, DIR), { recursive: true });
     writeFileSync(join(cwd, DIR, 'index.yaml'), 'version: 2\n');
     const broken = jevlint(cwd, 'architecture', 'compile');
@@ -248,6 +253,16 @@ describe('the SSOT in other commands', () => {
     const written = JSON.parse(readFileSync(join(cwd, '.jevlint/baseline.json'), 'utf8'));
     expect(written.architecture).toHaveLength(2);
     expect(jevlintAt(home, cwd, 'architecture', 'check', '--static', '--new').status).toBe(0);
+  });
+
+  it('baseline still writes the audit baseline when the SSOT does not load', () => {
+    const cwd = project({ ...CODE, [`${DIR}/index.yaml`]: 'version: [' });
+    const baseline = jevlint(cwd, 'baseline', '--ast-only');
+    expect(baseline.status).toBe(0);
+    expect(baseline.stderr).toContain('no architecture violations recorded');
+    expect(
+      JSON.parse(readFileSync(join(cwd, '.jevlint/baseline.json'), 'utf8')).architecture,
+    ).toBeUndefined();
   });
 
   it('baseline writes no architecture entries without an SSOT', () => {

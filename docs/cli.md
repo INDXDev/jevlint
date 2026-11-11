@@ -65,7 +65,8 @@ can gate on new problems today. Commit the file. It holds each file's AST findin
 `value`) and weak answers (`id`, `compliance`), sorted, with no timestamps, so it diffs well. Run it
 again to accept the current state. When an [architecture SSOT](architecture-reference.md) exists, it
 also records its structural violations (`rule`, `rule_id`, `path`, `target`, without lines), which
-`jevlint architecture check --new` leaves out.
+`jevlint architecture check --new` leaves out. An SSOT that does not load leaves them out with a
+warning on stderr, and the audit baseline is written anyway.
 
 | Flag | Description |
 | --- | --- |
@@ -100,7 +101,7 @@ files in `.jevlint/architecture/` that describes the system's components, layers
 | Command | What it does | Model |
 | --- | --- | --- |
 | `jevlint architecture [paths...]` | The same as `review` | As `review` |
-| `jevlint architecture review [paths...]` | Review the codebase, directories, classes and, with an SSOT, each component and the design. Rank them worst to best | Yes, unless `--ast-only` |
+| `jevlint architecture review [paths...]` | Review the codebase, directories, classes and, with an SSOT, each component and the design. Rank them worst to best. An SSOT that does not load is skipped with a warning, unless `--perspective` asks for it | Yes, unless `--ast-only` |
 | `jevlint architecture compile [paths...]` | Print a prompt that tells a coding agent to write the SSOT from the code, or to update it | No |
 | `jevlint architecture list` | Load and validate the SSOT, and print it. Exits 2 when it does not load, and warns on stderr when it is over the size budget or its views and chapters do not fit the code | No |
 | `jevlint architecture show` | Draw the SSOT, or a draft from the code when there is none, with the real dependencies laid over the declared ones | No |
@@ -142,7 +143,7 @@ problems back to the agent, at most twice.
 
 | Flag | Meaning |
 | --- | --- |
-| `--docs` | Add the documents `spec.docs` matches as context. `--docs=README.md,docs/design.md` names them instead |
+| `--docs` | Add the documents `spec.docs` matches as context. `--docs README.md` or `--docs=README.md,docs/design.md` names them instead |
 | `--since <commit>` | Base an update on this commit instead of `compiled_at` |
 | `--copy` | Copy the prompt to the clipboard instead of printing it |
 | `--agent <name>` | Run this [agent](configuration.md#agents) on the prompt, with its output on stderr |
@@ -184,7 +185,7 @@ distance from the target, and do not affect the exit code.
 | Flag | Meaning |
 | --- | --- |
 | `--static` | AST only: unmapped code, undocumented dependencies and externals, stale references |
-| `--docs` | Also compare documents with the SSOT. `--docs=a.md,b.md` names them. Cannot go with `--static` |
+| `--docs` | Also compare documents with the SSOT. `--docs a.md` or `--docs=a.md,b.md` names them. Cannot go with `--static` |
 | `--since <commit>` | Compare with this commit instead of `compiled_at` |
 | `--json`, `--copy`, `--prompt`, `--no-cache` | As for `check`. The prompt asks an agent to update the SSOT |
 

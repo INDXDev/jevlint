@@ -80,27 +80,6 @@ export function architectureBaseline(
   );
 }
 
-/** Leaves out the violations a baseline records, saying how many it left out. */
-export function newViolations(
-  violations: ArchitectureViolation[],
-  baseline: Baseline,
-): { fresh: ArchitectureViolation[]; known: number } {
-  const recorded = new Map<string, number>();
-  const keyOf = (rule: string, ruleId: string, path: string, target?: string) =>
-    JSON.stringify([rule, ruleId, path, target ?? null]);
-  for (const { rule, rule_id, path, target } of baseline.architecture ?? []) {
-    const key = keyOf(rule, rule_id, path, target);
-    recorded.set(key, (recorded.get(key) ?? 0) + 1);
-  }
-  const fresh = violations.filter(({ rule, ruleId, path, target }) => {
-    const key = keyOf(rule, ruleId, path, target);
-    const left = recorded.get(key) ?? 0;
-    if (left > 0) recorded.set(key, left - 1);
-    return left === 0;
-  });
-  return { fresh, known: violations.length - fresh.length };
-}
-
 /** Writes a baseline under `root`. */
 export async function writeBaseline(root: string, baseline: Baseline): Promise<void> {
   const dir = join(root, '.jevlint');

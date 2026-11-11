@@ -194,9 +194,7 @@ export async function planArchitecture(
 ): Promise<ArchitecturePlan> {
   const collected = await collect(config, { keepSources: true });
   const ssot = existing ?? draftSsot(collected.facts, basename(config.root), ssotDir(config));
-  const violations = violationsOf(ssot, collected, config.root).filter(
-    ({ status }) => status === 'current',
-  );
+  const violations = violationsOf(ssot, collected).filter(({ status }) => status === 'current');
   const { componentOf } = assign(ssot);
   const counts = await commitCounts(config.root, config.priority.churn_days);
   const churn = new Map<string, number>();

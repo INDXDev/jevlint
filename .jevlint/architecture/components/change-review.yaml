@@ -19,7 +19,6 @@ interface:
     judgeIntent,
     readBaseline,
     writeBaseline,
-    newViolations,
     editedPath,
   ]
 depends_on: [audit, configuration, decision, presets, repository-access, scoring, contracts]

@@ -183,6 +183,22 @@ describe('conformance', () => {
     ]);
   });
 
+  it('searches a rule with no language only where its pattern reads', () => {
+    const ssot = ssotOf([component('web')], {
+      rules: [{ id: 'axios', kind: 'forbid-call', pattern: "import $X from 'axios'" }],
+    });
+    const modules = [mod('src/web/a.ts'), { ...mod('src/web/b.py'), language: 'python' as const }];
+    const sources = new Map([
+      ['src/web/a.ts', "import x from 'axios';\n"],
+      ['src/web/b.py', 'import os\n'],
+    ]);
+    expect(matchCalls(callSearches(ssot, modules), sources)).toEqual([
+      expect.objectContaining({ ruleId: 'axios', path: 'src/web/a.ts', line: 1 }),
+    ]);
+    const onlyPython = callSearches(ssot, [modules[1] as FactModule]);
+    expect(() => matchCalls(onlyPython, sources)).toThrow('cannot read the pattern for python');
+  });
+
   it('finds cycles between components', () => {
     const ssot = ssotOf([component('a'), component('b')], {
       rules: [{ id: 'acyclic', kind: 'no-cycles' }],

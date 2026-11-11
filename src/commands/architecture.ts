@@ -22,7 +22,7 @@ import {
   renderRepairPrompt,
   renderReviewPrompt,
 } from '../architecture/prompt.ts';
-import { PERSPECTIVES, reviewArchitecture } from '../architecture/review.ts';
+import { PERSPECTIVES, reviewArchitecture, reviewSsot } from '../architecture/review.ts';
 import { showArchitecture, type View } from '../architecture/show.ts';
 import {
   formatArchitecture,
@@ -226,7 +226,7 @@ const reviewCommand = defineCommand({
     const astOnly = Boolean(args['ast-only']);
     const paths = resolvePaths(args._);
     await warnAboutScope(config, paths);
-    const ssot = await loadArchitecture(config);
+    const { ssot, warnings: ssotWarnings } = await reviewSsot(config, perspectives);
     const report = await withSpinner((onProgress) =>
       reviewArchitecture(config, {
         paths,
@@ -237,6 +237,7 @@ const reviewCommand = defineCommand({
         onProgress,
       }),
     );
+    report.warnings.unshift(...ssotWarnings);
     if (report.model === null && !astOnly) printNoKeyNotice(config);
     printFallbackNotice(config, report.provider);
     if (html) await writeHtml(html, renderArchitectureHtml(report));

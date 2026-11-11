@@ -4,12 +4,13 @@
  */
 import { join } from 'node:path';
 import { type Config, readRegularFile, UserError } from '../config.ts';
-import { decideFile } from '../decision/decide.ts';
+import { decisionRequest } from '../decision/decide.ts';
 import { discoverDocs } from '../files.ts';
 import { changedSince, resolveCommit } from '../git.ts';
 import { activeQuestions, loadPresets } from '../presets.ts';
 import { ask, eachPath, type SpecRun, startRun, usageOf, verdicts } from '../spec/run.ts';
 import type {
+  ArchitectureComponent,
   ArchitectureDriftReport,
   ArchitectureSsot,
   DriftItem,
@@ -83,38 +84,32 @@ async function staleSummaries(
   const edges = mapEdges(ssot, collected.modules);
   const { componentOf } = assign(ssot);
   const asked = ssot.components.filter(({ id }) => components.includes(id));
-  const results = await Promise.all(
-    asked.map(async (component): Promise<DriftItem[]> => {
-      const modules = collected.modules.filter(({ path }) => componentOf(path) === component.id);
-      try {
-        const decision = await decideFile({
-          resolved: run.resolved,
-          questions,
-          source: componentOutline(component, modules, edges),
-          config: run.config,
-          noCache: run.noCache,
-        });
-        if (decision.cached) run.cacheHits++;
-        else {
-          run.modelCalls++;
-          run.inputTokens += decision.inputTokens;
-        }
-        const fits = Object.values(decision.answers)[0]?.value ?? 1;
-        if (fits >= 0.5) return [];
-        return [
-          {
-            kind: 'stale-summary',
-            component: component.id,
-            path: `${ssot.dir}/components/${component.id}.yaml`,
-            message: `the summary may no longer fit the code (${fits.toFixed(2)})`,
-          },
-        ];
-      } catch (error) {
-        if (error instanceof UserError) throw error;
-        warnings.push(`${component.id}: Provider error: ${(error as Error).message}`);
-        return [];
+  const request = decisionRequest(questions);
+  const results = await eachPath(
+    run,
+    asked.map(({ id }) => id),
+    undefined,
+    async (id): Promise<DriftItem[]> => {
+      const component = asked.find((c) => c.id === id) as ArchitectureComponent;
+      const modules = collected.modules.filter(({ path }) => componentOf(path) === id);
+      const own: string[] = [];
+      const answers = await ask(run, request, componentOutline(component, modules, edges), own);
+      // A warning keeps its leading PROVIDER_ERROR, so the command still notices the failure.
+      for (const warning of own) {
+        const tagged = `${warning} (${id})`;
+        if (!warnings.includes(tagged)) warnings.push(tagged);
       }
-    }),
+      const fits = answers ? (Object.values(answers)[0]?.value ?? 1) : 1;
+      if (fits >= 0.5) return [];
+      return [
+        {
+          kind: 'stale-summary',
+          component: id,
+          path: `${ssot.dir}/components/${id}.yaml`,
+          message: `the summary may no longer fit the code (${fits.toFixed(2)})`,
+        },
+      ];
+    },
   );
   return results.flat();
 }

@@ -320,6 +320,7 @@ describe('terminal', () => {
     clean(formatShow(model, { kind: 'map' }));
     clean(formatShow(model, { kind: 'flow', id: 'buy' }));
     clean(formatShow(model, { kind: 'component', id: 'web' }, [modules[0] as FactModule]));
+    clean(formatShow(model, { kind: 'component', id: 'web' }, [mod(`src/web/${EVIL}.ts`)]));
     clean(formatArchitectureCheck(checkReport([violation])));
     clean(formatAddedViolations([violation]));
     clean(
@@ -531,6 +532,13 @@ describe('chapterHtml', () => {
     expect(html).toContain('<blockquote>quoted</blockquote>');
     expect(html).toContain('<pre><code>const a = &quot;&lt;b&gt;&quot;;</code></pre>');
     expect(html).toContain('<code>Order</code>');
+  });
+
+  it('draws a component directive, as the Markdown does', () => {
+    const html = chapterHtml('<!-- jevlint:diagram component:db -->', model);
+    expect(html).toContain('<code>db</code>');
+    expect(html).not.toContain('<code>web</code>');
+    expect(chapterHtml('<!-- jevlint:diagram component:none -->', model)).not.toContain('<table');
   });
 
   it('puts chapters and views on the show page, with no scripts', () => {

@@ -226,7 +226,7 @@ Every rule is decided from the AST and the import graph, with no model and no ne
 | `no-cycles` | | No cycle between components | `component-cycle` |
 | `only` | `externals`, `components` (in `index.yaml`) | Only these components may import these externals. In a component, the component itself | `restricted-external` |
 | `forbid` | `packages`, `components`, `from` (in `index.yaml`) | No import of these packages or components | `forbidden-dependency` |
-| `forbid-call` | `pattern`, `language`, `from`, `except` | No code matching this [ast-grep pattern](extending.md#ast-patterns) | `forbidden-call` |
+| `forbid-call` | `pattern`, `language`, `from`, `except` | No code matching this [ast-grep pattern](extending.md#ast-patterns). With no `language`, languages the pattern does not parse in are skipped | `forbidden-call` |
 
 And always, with no rule to write:
 

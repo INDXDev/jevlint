@@ -3,7 +3,7 @@
  * checklists with the decision model. See docs/architecture-reference.md#check.
  */
 import { join, relative, sep } from 'node:path';
-import { newViolations, readBaseline } from '../baseline.ts';
+import { readBaseline } from '../baseline.ts';
 import { type Config, readRegularFile } from '../config.ts';
 import { parseDirectives } from '../directives.ts';
 import { changedSince, resolveCommit } from '../git.ts';
@@ -17,7 +17,7 @@ import type {
   CheckVerdict,
   FactModule,
 } from '../types.ts';
-import { type Collected, collect, existsIn, matchCalls } from './collect.ts';
+import { type Collected, collect, matchCalls } from './collect.ts';
 import { addedViolations, assign, callSearches, conformance } from './conformance.ts';
 import { allChecklistRefs, checklistRefs, checkRequest } from './questions.ts';
 
@@ -42,9 +42,9 @@ const NO_USAGE: AuditReport['usage'] = {
 };
 
 /** The structural violations of one collected tree. */
-export function violationsOf(ssot: ArchitectureSsot, collected: Collected, root: string) {
+export function violationsOf(ssot: ArchitectureSsot, collected: Collected) {
   const calls = matchCalls(callSearches(ssot, collected.modules), collected.sources);
-  return conformance(ssot, { modules: collected.modules, exists: existsIn(root), calls });
+  return conformance(ssot, { modules: collected.modules, exists: collected.exists, calls });
 }
 
 /** The violations a change from `base` to `head` added. Both sides are read from git. */
@@ -55,17 +55,13 @@ export async function changeViolations(
   head: string,
 ): Promise<ArchitectureViolation[]> {
   const options = { keepSources: true, skipHistory: true } as const;
-  const after = violationsOf(
-    ssot,
-    await collect(config, { ...options, commit: head }),
-    config.root,
-  );
-  if (base === null) return after;
-  const before = violationsOf(
-    ssot,
-    await collect(config, { ...options, commit: base }),
-    config.root,
-  );
+  const [atHead, atBase] = await Promise.all([
+    collect(config, { ...options, commit: head }),
+    base === null ? null : collect(config, { ...options, commit: base }),
+  ]);
+  const after = violationsOf(ssot, atHead);
+  if (atBase === null) return after;
+  const before = violationsOf(ssot, atBase);
   return addedViolations(before, after);
 }
 
@@ -155,13 +151,13 @@ export async function checkArchitecture(
     skipHistory: true,
     noCache: options.noCache,
   });
-  let violations = violationsOf(ssot, collected, root);
+  let violations = violationsOf(ssot, collected);
   let changed: Set<string> | null = null;
   let base: string | undefined;
   if (options.diff !== undefined) {
     base = await resolveCommit(root, options.diff);
     const atBase = await collect(config, { keepSources: true, skipHistory: true, commit: base });
-    violations = addedViolations(violationsOf(ssot, atBase, root), violations);
+    violations = addedViolations(violationsOf(ssot, atBase), violations);
     // `git diff` lists no untracked file, so a new one is found by its absence at the base.
     const before = new Set(atBase.paths);
     const tracked = await changedSince(root, base);
@@ -170,9 +166,13 @@ export async function checkArchitecture(
   violations = violations.filter(({ path }) => underAny(path, targets));
   let baselined = 0;
   if (options.new) {
-    const { fresh, known } = newViolations(violations, await readBaseline(root));
+    const recorded = (await readBaseline(root)).architecture ?? [];
+    const fresh = addedViolations(
+      recorded.map(({ rule, rule_id, path, target }) => ({ rule, ruleId: rule_id, path, target })),
+      violations,
+    );
+    baselined = violations.length - fresh.length;
     violations = fresh;
-    baselined = known;
   }
   const keep = (path: string) => underAny(path, targets) && (!changed || changed.has(path));
   const judged = options.static
