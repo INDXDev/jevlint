@@ -35,8 +35,6 @@ import type {
 
 const CHARS_PER_TOKEN = 4;
 
-export { PROVIDER_ERROR };
-
 /** Narrows and observes a run. */
 export interface AuditOptions {
   paths?: string[];

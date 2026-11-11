@@ -1,6 +1,6 @@
 /** `jevlint preset`: lists, shows, picks, writes and installs principle presets. */
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { confirm, multiselect, select, text } from '@clack/prompts';
@@ -153,7 +153,7 @@ async function openInEditor(path: string): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), 'jevlint-preset-'));
   const draft = join(dir, basename(path));
   try {
-    await writeFile(draft, await readFile(path, 'utf8'));
+    await writeFileAtomic(draft, await readFile(path, 'utf8'));
     for (;;) {
       runEditor(draft);
       const toml = await readFile(draft, 'utf8');

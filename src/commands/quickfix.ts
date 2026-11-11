@@ -5,6 +5,7 @@ import { diffFiles } from '../diff.ts';
 import { type DiffView, formatDiffStat, formatDiffs, SPLIT_MIN_WIDTH } from '../diff-view.ts';
 import type { FixerRun } from '../fixers.ts';
 import { commitPaths, isWorkTree } from '../git.ts';
+import { renderQuickfixPrompt, renderRetryPrompt } from '../prompt.ts';
 import {
   commandLine,
   formatScore,
@@ -233,11 +234,16 @@ async function fixFile(
   const agent = run.launch.name;
   const shownPath = withoutControlCharacters(file.path);
   console.error(`${step}Running ${agent} on ${shownPath} (score ${formatScore(file.score)})`);
-  const fixed = await quickfixWithFixers(file, run, {
-    fixers: context.fixers.fixers,
-    fixersAllowed: context.fixers.stillApproved,
-    events: quickfixEvents(agent),
-  });
+  const prompts = { quickfix: renderQuickfixPrompt, retry: renderRetryPrompt };
+  const fixed = await quickfixWithFixers(
+    file,
+    { ...run, prompts },
+    {
+      fixers: context.fixers.fixers,
+      fixersAllowed: context.fixers.stillApproved,
+      events: quickfixEvents(agent),
+    },
+  );
   const { code } = fixed;
   const changed = diffFiles(fixed.changes);
   const after: AfterAgent = {

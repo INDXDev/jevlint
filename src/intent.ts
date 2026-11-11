@@ -1,7 +1,7 @@
 /** Judges a change against what it claims and against the repository's own instructions. */
-import { PROVIDER_ERROR } from './audit.ts';
+
 import { type Config, UserError } from './config.ts';
-import { decideFile } from './decision/decide.ts';
+import { decideFile, PROVIDER_ERROR } from './decision/decide.ts';
 import { estimateCostUsd } from './decision/pricing.ts';
 import { createDecisionModel } from './decision/providers.ts';
 import { excludedPaths } from './files.ts';

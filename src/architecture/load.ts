@@ -32,7 +32,7 @@ export const BUDGET = {
   components: 25,
   summarySentences: 3,
   keyFiles: 5,
-  tokens: 6000,
+  tokens: 8000,
   /** Words in one chapter, and in all of them. */
   chapterWords: 1500,
   documentWords: 9000,

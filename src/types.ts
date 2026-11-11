@@ -990,3 +990,9 @@ export interface ArchitectureChapter {
   evidence: string[];
   body: string;
 }
+
+/** A check that still failed after the fixers: its command and what it printed. */
+export interface FailedCheck {
+  command: string[];
+  output: string;
+}

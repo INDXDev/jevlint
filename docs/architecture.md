@@ -63,10 +63,10 @@ Dependencies point downward only. A module never imports from a layer above it.
 
 | Layer | Modules | May use |
 | --- | --- | --- |
-| Interface | `cli.ts`, `commands/`, `index.ts`, `report.ts`, `formats.ts`, `prompt.ts`, `agent.ts`, `diff.ts`, `diff-view.ts`, `architecture/terminal.ts`, `html.ts`, `markdown.ts`, `prompt.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
-| Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `fixtures.ts`, `architecture/collect.ts`, `review.ts`, `check.ts`, `drift.ts`, `compile.ts`, `plan.ts`, `show.ts`, `spec/check.ts`, `spec/drift.ts`, `spec/run.ts` | Everything below |
-| Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts`, `facts.ts`, `externals.ts`, `entrypoints.ts`, `conformance.ts`, `questions.ts`, `draft.ts`, `views.ts`, `spec/questions.ts` | Infrastructure, contracts |
-| Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `fixers.ts`, `trust.ts`, `node-version.ts`, `spec/load.ts`, `architecture/load.ts`, `workspace.ts` | Contracts |
+| Interface | `cli.ts`, `commands/`, `index.ts`, `report.ts`, `formats.ts`, `prompt.ts`, `diff-view.ts`, `architecture/terminal.ts`, `html.ts`, `markdown.ts`, `prompt.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
+| Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `fixtures.ts`, `agent.ts`, `diff.ts`, `architecture/collect.ts`, `review.ts`, `check.ts`, `drift.ts`, `compile.ts`, `plan.ts`, `show.ts`, `spec/check.ts`, `spec/drift.ts`, `spec/run.ts` | Everything below |
+| Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts`, `facts.ts`, `externals.ts`, `entrypoints.ts`, `conformance.ts`, `questions.ts`, `draft.ts`, `views.ts`, `workspace.ts`, `spec/questions.ts` | Infrastructure, contracts |
+| Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `fixers.ts`, `trust.ts`, `node-version.ts`, `spec/load.ts`, `architecture/load.ts` | Contracts |
 | Contracts | `types.ts` | Nothing |
 
 Modules in the same layer may import each other, as `ast/analyze.ts` does with `scoring.ts`.
@@ -149,7 +149,7 @@ Three rules keep these layers clean:
 | `src/report.ts` | Formats reports for the terminal |
 | `src/formats.ts` | Renders findings as SARIF and GitHub workflow commands |
 | `src/prompt.ts` | Renders fix prompts, and the quick fix's retry prompt with a failing check's output |
-| `src/agent.ts` | Resolves and runs an agent, then the project's `quickfix.after` commands and the one retry, collects what they changed, and re-scores the files |
+| `src/agent.ts` | Resolves and runs an agent with a prompt its command rendered, then the project's `quickfix.after` commands and the one retry, collects what they changed, and re-scores the files |
 | `src/diff.ts` | Turns contents before and after into git-style patches |
 | `src/diff-view.ts` | Draws patches for a terminal, unified or side by side, with changed words highlighted, and the summary with scores |
 | `src/types.ts` | Contracts shared between modules |

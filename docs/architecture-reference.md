@@ -201,8 +201,8 @@ evidence: [AGENTS.md, src/config.ts:17-40, commit:5f1db8a]
 | `evidence` | What the chapter is based on: `path`, `path:line`, `path:start-end` or `commit:<hash>` |
 | `<!-- jevlint:diagram NAME -->` | Places a diagram: a view id, `flow:<id>`, `component:<id>`, `map`, `layers`, or `components` for every component's reference section |
 
-`list` warns when a chapter cites nothing, when a cited path or line does not exist, and when a
-backticked `path:line` in the text does not. `drift` reports a chapter as `stale-chapter` when a file
+`list` warns when a chapter cites nothing, when a cited path, line or commit does not exist, and
+when a backticked `path:line` in the text does not. `drift` reports a chapter as `stale-chapter` when a file
 it cites changed since `compiled_at`, so that an update rewrites only that chapter. A chapter has at
 most 60 KB, and `list` warns above 1,500 words for one chapter or 9,000 for all.
 
@@ -262,7 +262,7 @@ The point of the SSOT is a low cognitive load, so `list` warns on stderr when it
 | Components | 25 |
 | Sentences in a summary | 3 |
 | Key files per component | 5 |
-| Tokens in all, at about four characters each | 6000 |
+| Tokens in all, at about four characters each, not counting views and chapters | 8000 |
 
 ## Facts
 

@@ -11,7 +11,7 @@ import { collect, existsIn, filesOfCommit, lineCountIn } from './collect.ts';
 import { staticDrift } from './conformance.ts';
 import { draftSsot } from './draft.ts';
 import { architectureFiles, budgetWarnings, loadArchitecture, ssotDir } from './load.ts';
-import { documentDrift, documentProblems } from './views.ts';
+import { documentDrift, documentProblems, parseCitation } from './views.ts';
 
 const COMMITS_SCANNED = 400;
 const COMMITS_SHOWN = 25;
@@ -149,6 +149,26 @@ export interface SsotValidation {
   problems: string[];
 }
 
+/** Chapters that cite a commit the repository does not have, as from a clone that was thrown away. */
+async function missingCommits(root: string, ssot: ArchitectureSsot): Promise<string[]> {
+  const problems: string[] = [];
+  for (const chapter of ssot.chapters) {
+    for (const text of chapter.evidence) {
+      const commit = parseCitation(text)?.commit;
+      if (!commit) continue;
+      const found = await resolveCommit(root, commit).then(
+        () => true,
+        () => false,
+      );
+      if (!found)
+        problems.push(
+          `${ssot.dir}/chapters/${chapter.id}.md: commit ${commit} is not in this repository`,
+        );
+    }
+  }
+  return problems;
+}
+
 /** Loads the SSOT and checks its views and chapters against the code. */
 export async function validateSsot(
   config: Config,
@@ -161,6 +181,7 @@ export async function validateSsot(
     ? (await collect(config, { skipHistory: true, noCache: options.noCache })).modules
     : [];
   const problems = [
+    ...(await missingCommits(config.root, ssot)),
     ...budgetWarnings(ssot),
     ...(needsCode
       ? documentProblems(ssot, {

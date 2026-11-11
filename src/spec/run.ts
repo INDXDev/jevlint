@@ -1,8 +1,7 @@
 /** What `spec check` and `spec drift` share: the model, the per-path loop, requests and usage. */
 import pLimit from 'p-limit';
-import { PROVIDER_ERROR } from '../audit.ts';
 import { type Config, UserError } from '../config.ts';
-import { type DecisionQuestion, decideState } from '../decision/decide.ts';
+import { type DecisionQuestion, decideState, PROVIDER_ERROR } from '../decision/decide.ts';
 import { estimateCostUsd } from '../decision/pricing.ts';
 import { createDecisionModel, type ResolvedModel } from '../decision/providers.ts';
 import type { AuditReport, RawAnswer, SpecItemRef, SpecItemResult } from '../types.ts';
