@@ -4,6 +4,8 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+## 0.2.6 - 2026-11-12
+
 - **An architecture SSOT compiled from the code.** `jevlint architecture` is now a command group,
   and with no subcommand it runs `review`, whose output does not change until an SSOT exists.
   Static analysis collects facts from every file with no network: imports with line numbers,
