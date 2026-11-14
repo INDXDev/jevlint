@@ -45,6 +45,7 @@ ${dir}/
 version: 1
 name: shop
 compiled_at: 1a2b3c4                 # the commit you compiled from (given below)
+compiled_on: 2026-01-31              # that commit's date
 description: >
   An online shop. The web layer stays thin; services hold the rules; only db/ talks to Postgres.
 layers: [interface, services, data, contracts]   # top to bottom
@@ -322,7 +323,7 @@ function updateSection(input: CompileInput): string {
     return `## Update the SSOT\n\nAn SSOT already exists in \`${dir}/\`, with no \`compiled_at\` to compare with. Read it, compare it with the facts below, and update it in place. Keep every component's id unless the component is gone.\n\nIts files:\n${ssotFiles.map((path) => `- ${path}`).join('\n')}`;
   }
   return [
-    `## Update the SSOT\n\nThe SSOT in \`${dir}/\` was compiled from ${delta.base}. Update it in place for what changed since then, and leave the rest alone. Keep every component's id unless the component is gone, and set \`compiled_at\` to ${input.facts.commit ?? 'the current commit'}. Rewrite only the chapters and views the drift names (\`stale-chapter\`, \`stale-view\`), keeping what people wrote elsewhere. If the SSOT has no views or chapters yet, write them as described below.`,
+    `## Update the SSOT\n\nThe SSOT in \`${dir}/\` was compiled from ${delta.base}. Update it in place for what changed since then, and leave the rest alone. Keep every component's id unless the component is gone, and set \`compiled_at\` to ${input.facts.commit ?? 'the current commit'} and \`compiled_on\` to its date. Rewrite only the chapters and views the drift names (\`stale-chapter\`, \`stale-view\`), keeping what people wrote elsewhere. If the SSOT has no views or chapters yet, write them as described below.`,
     `Its files:\n${ssotFiles.map((path) => `- ${path}`).join('\n')}`,
     `### Drift\n\n${listed(delta.items.map(driftLine)).join('\n') || 'None found by static analysis.'}`,
     `### Files added since ${delta.base}\n\n${listed(delta.added.map((path) => `- ${path}`)).join('\n') || 'None.'}`,
@@ -342,7 +343,7 @@ export function renderCompilePrompt(untrusted: CompileInput): string {
   const { dir, ssot, loadError, facts } = input;
   const task = ssot
     ? `Update it in \`${dir}/\`. Do not change any code.`
-    : `Write it in \`${dir}/\`: the structure, the views and the chapters. Do not change any code. Set \`compiled_at\` to ${facts.commit ?? 'the current commit hash'}.`;
+    : `Write it in \`${dir}/\`: the structure, the views and the chapters. Do not change any code. Set \`compiled_at\` to ${facts.commit ?? 'the current commit hash'} and \`compiled_on\` to its date.`;
   const broken = loadError
     ? `## The current SSOT does not load\n\n${loadError}\n\nFix these errors as part of your work.`
     : '';
@@ -385,7 +386,7 @@ export function renderDriftPrompt(untrusted: ArchitectureDriftReport, ssotFiles:
   const report = withoutControlCharacters(untrusted);
   return [
     '# Update the architecture SSOT',
-    `The SSOT in \`${report.dir}/\` no longer describes all of the code. Update it in place for the drift below, and leave the rest alone. Keep every component's id unless the component is gone, and set \`compiled_at\` to ${report.head ?? 'the current commit'}. Do not change any code.`,
+    `The SSOT in \`${report.dir}/\` no longer describes all of the code. Update it in place for the drift below, and leave the rest alone. Keep every component's id unless the component is gone, and set \`compiled_at\` to ${report.head ?? 'the current commit'} and \`compiled_on\` to its date. Do not change any code.`,
     `Its files:\n${ssotFiles.map((path) => `- ${path}`).join('\n')}`,
     `## Drift\n\n${listed(report.items.map(driftLine)).join('\n') || 'None.'}`,
     report.added.length > 0

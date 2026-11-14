@@ -5,7 +5,6 @@
  */
 import { posix } from 'node:path';
 import type {
-  ArchitectureChapter,
   ArchitectureSsot,
   DriftItem,
   Evidence,
@@ -146,27 +145,26 @@ function citationProblem(citation: Citation, input: DocumentInput): string | nul
     : null;
 }
 
-function chapterProblems(
-  chapter: ArchitectureChapter,
-  dir: string,
+/** Problems with the evidence and inline references of a chapter or a decision record. */
+function proseProblems(
+  { evidence, body }: { evidence: string[]; body: string },
+  where: string,
   input: DocumentInput,
+  what: string,
 ): string[] {
-  const where = posix.join(dir, 'chapters', `${chapter.id}.md`);
-  const cited = chapter.evidence.map((text) => {
+  const cited = evidence.map((text) => {
     const citation = parseCitation(text);
     if (!citation) return `${where}: evidence "${text}" is neither a path nor commit:<hash>`;
     const problem = citationProblem(citation, input);
     return problem ? `${where}: evidence ${problem}` : null;
   });
-  const inline = [...chapter.body.matchAll(INLINE_REFERENCE)].map((match) => {
+  const inline = [...body.matchAll(INLINE_REFERENCE)].map((match) => {
     const citation = parseCitation(match[1] as string);
     const problem = citation && citationProblem(citation, input);
     return problem ? `${where}: ${problem}` : null;
   });
   const missing =
-    chapter.evidence.length === 0
-      ? [`${where}: no evidence; cite the files the chapter is based on`]
-      : [];
+    evidence.length === 0 ? [`${where}: no evidence; cite the files the ${what} is based on`] : [];
   return [...missing, ...cited, ...inline].filter((problem): problem is string => problem !== null);
 }
 
@@ -208,11 +206,26 @@ function viewProblems(ssot: ArchitectureSsot, input: DocumentInput): string[] {
   });
 }
 
-/** Problems with the views and chapters, as warnings for `list` and the agent's repair. */
+/** Problems with the views, chapters and decisions, as warnings for `list` and the agent's repair. */
 export function documentProblems(ssot: ArchitectureSsot, input: DocumentInput): string[] {
   return [
     ...viewProblems(ssot, input),
-    ...ssot.chapters.flatMap((chapter) => chapterProblems(chapter, ssot.dir, input)),
+    ...ssot.chapters.flatMap((chapter) =>
+      proseProblems(
+        chapter,
+        posix.join(ssot.dir, 'chapters', `${chapter.id}.md`),
+        input,
+        'chapter',
+      ),
+    ),
+    ...(ssot.decisions ?? []).flatMap((decision) =>
+      proseProblems(
+        decision,
+        posix.join(ssot.dir, 'decisions', `${decision.file}.md`),
+        input,
+        'decision',
+      ),
+    ),
   ];
 }
 

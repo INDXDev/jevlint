@@ -233,7 +233,8 @@ or `actual` where `depends_on` is absent) and `facts`. `facts` holds `commit`, `
 
 `jevlint architecture list --json` prints the loaded SSOT: `dir`, `index`, `components`, `flows`,
 `views` and `chapters` (`id`, `title`, `evidence`, `body`), with the keys of the YAML files and their
-defaults filled in.
+defaults filled in. When `decisions/` holds records, it also prints `decisions`, in file order, each
+with the keys of its frontmatter, `file` (the file name without `.md`) and `body`.
 
 `jevlint architecture plan --json` prints `root`, `dir`, `warnings` and `steps`, each with `rank`,
 `priority` (from 0 to 1), `problem`, `move`, `component` and `evidence`.

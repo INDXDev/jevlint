@@ -123,7 +123,9 @@ jevlint also guards against what a repository contains:
 - The architecture SSOT in `.jevlint/architecture/` is the repository's. It can hold globs, package
   names, ast-grep patterns and prose only, never a command, URL or path outside the root: a glob with
   `..` or a leading `/` is refused, and `architecture.dir` must stay inside the root. Its YAML is read
-  as `spec` is, with links outside the repository refused and aliases capped. `tsconfig.json`,
+  as `spec` is, with links outside the repository refused and aliases capped. Chapters and decision
+  records are Markdown read the same way, at most 60 KB each, and their text is printed without
+  escape sequences. `tsconfig.json`,
   `package.json` and `pnpm-workspace.yaml` are parsed for import resolution only, and a workspace
   manifest linked from outside the repository is skipped.
 - `list` and `drift` check the lines chapters cite by reading those files, but only a regular file

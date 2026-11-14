@@ -682,6 +682,8 @@ export interface ArchitectureIndex {
   name: string;
   /** The commit the SSOT was compiled from: the base for `drift` and an update. */
   compiled_at?: string;
+  /** The date it was compiled, as `YYYY-MM-DD`, so a reader need not ask git. */
+  compiled_on?: string;
   description: string;
   /** Layer names, top to bottom. */
   layers: string[];
@@ -748,6 +750,8 @@ export interface ArchitectureSsot {
   views: ArchitectureView[];
   /** The document's chapters, in file name order. */
   chapters: ArchitectureChapter[];
+  /** Decision records in number order. Absent when `decisions/` holds none. */
+  decisions?: ArchitectureDecision[];
 }
 
 /** What a structural violation broke. */
@@ -1016,6 +1020,31 @@ export interface ArchitectureChapter {
   id: string;
   title: string;
   /** Where its claims come from: `path`, `path:line`, `path:10-20` or `commit:<hash>`. */
+  evidence: string[];
+  body: string;
+}
+
+/** Where a decision record stands. Only `status` and `superseded_by` change once it is accepted. */
+export type DecisionStatus = 'proposed' | 'accepted' | 'deprecated' | 'superseded';
+
+/** A dated, append-only decision record, in `decisions/<n>-<id>.md`. */
+export interface ArchitectureDecision {
+  id: string;
+  /** The file name without `.md`, which sets the order, such as `0001-ai-sdk-in-decision`. */
+  file: string;
+  title: string;
+  /** When it was accepted, as `YYYY-MM-DD`. */
+  date: string;
+  status: DecisionStatus;
+  /** Ids of the decisions this one replaces. */
+  supersedes: string[];
+  /** The id of the decision that replaced this one, on a superseded record. */
+  superseded_by: string | null;
+  /** The components it is about. */
+  components: string[];
+  /** The rule and checklist ids that enforce it, as `check` names them. */
+  enforced_by: string[];
+  /** Where it comes from: `path`, `path:line`, `path:10-20` or `commit:<hash>`. */
   evidence: string[];
   body: string;
 }

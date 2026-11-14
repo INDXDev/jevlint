@@ -6,6 +6,7 @@ import { posix } from 'node:path';
 import { withoutControlCharacters, withoutEscapes } from '../report.ts';
 import type {
   ArchitectureComponent,
+  ArchitectureDecision,
   ArchitectureFlow,
   ArchitectureView,
   DataView,
@@ -15,7 +16,7 @@ import type {
   ViewNode,
 } from '../types.ts';
 import { assign } from './conformance.ts';
-import { DIAGRAM_DIRECTIVE } from './load.ts';
+import { DIAGRAM_DIRECTIVE, orderDecisions } from './load.ts';
 import type { ShowModel, View } from './show.ts';
 import { checkEdges } from './views.ts';
 
@@ -308,6 +309,7 @@ function diagramFor(name: string, model: ShowModel): string {
   if (name === 'layers') return layersDiagram(model);
   if (name === 'components')
     return ssot.components.map((c) => componentSection(model, c, 4)).join('\n\n');
+  if (name === 'decisions') return decisionsSection(model);
   if (name.startsWith('flow:')) {
     const flow = ssot.flows.find(({ id }) => id === name.slice('flow:'.length));
     return flow ? flowDiagram(flow, model) : '';
@@ -338,19 +340,78 @@ export function renderView(untrusted: ShowModel, view: View): string {
 }
 
 /**
- * Repository text, made safe: every string loses control characters, except chapter bodies, which
- * keep their line breaks because they are Markdown.
+ * Repository text, made safe: every string loses control characters, except the bodies of chapters
+ * and decision records, which keep their line breaks because they are Markdown.
  */
 function sanitized(untrusted: ShowModel): ShowModel {
   const model = withoutControlCharacters({
     ...untrusted,
-    ssot: { ...untrusted.ssot, chapters: [] },
+    ssot: { ...untrusted.ssot, chapters: [], decisions: undefined },
   });
-  const chapters = untrusted.ssot.chapters.map((chapter) => ({
-    ...withoutControlCharacters(chapter),
-    body: withoutEscapes(chapter.body),
-  }));
-  return { ...model, ssot: { ...model.ssot, chapters } };
+  const keepLines = <T extends { body: string }>(item: T): T => ({
+    ...withoutControlCharacters(item),
+    body: withoutEscapes(item.body),
+  });
+  const chapters = untrusted.ssot.chapters.map(keepLines);
+  const decisions = untrusted.ssot.decisions?.map(keepLines);
+  return { ...model, ssot: { ...model.ssot, chapters, ...(decisions ? { decisions } : {}) } };
+}
+
+/** A record's body uses `###` as a chapter does, but sits one level lower, under its title. */
+function deeperHeadings(body: string): string {
+  let fenced = false;
+  return body
+    .split('\n')
+    .map((line) => {
+      if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+      return !fenced && /^#{1,5}\s/.test(line) ? `#${line}` : line;
+    })
+    .join('\n');
+}
+
+const STATUS_WORDS: Record<ArchitectureDecision['status'], string> = {
+  proposed: 'Proposed',
+  accepted: 'Accepted',
+  deprecated: 'Deprecated',
+  superseded: 'Superseded',
+};
+
+const codeList = (ids: string[]) => ids.map((id) => `\`${id}\``).join(', ');
+
+function decisionRecord(decision: ArchitectureDecision): string {
+  const { status, date, components, enforced_by, supersedes } = decision;
+  const facts = [
+    `${STATUS_WORDS[status]} ${date}`,
+    components.length > 0 ? `about ${codeList(components)}` : '',
+    enforced_by.length > 0 ? `enforced by ${codeList(enforced_by)}` : '',
+    supersedes.length > 0 ? `supersedes ${codeList(supersedes)}` : '',
+  ].filter(Boolean);
+  const body = decision.body ? `\n\n${deeperHeadings(decision.body)}` : '';
+  return `### ${prose(decision.title)}\n\n*${facts.join(' · ')}*${body}`;
+}
+
+/**
+ * The decisions chapter, built from the records: accepted and proposed ones in full, in file
+ * order, then a dated history of those superseded or deprecated.
+ */
+function decisionsSection({ ssot }: ShowModel): string {
+  const decisions = ssot.decisions ?? [];
+  const byId = new Map(decisions.map((decision) => [decision.id, decision]));
+  const { live, past } = orderDecisions(decisions);
+  const history = past.map(({ id, title, date, status, superseded_by }) => {
+    const successor = superseded_by ? byId.get(superseded_by) : undefined;
+    const fate =
+      status === 'deprecated'
+        ? 'deprecated'
+        : `superseded by ${successor ? `"${prose(successor.title)}" on ${successor.date}` : `\`${superseded_by}\``}`;
+    return `- ${date}: ${prose(title)} (\`${id}\`), ${fate}`;
+  });
+  return [
+    ...live.map(decisionRecord),
+    history.length > 0 ? `### History\n\nOlder decisions, by date.\n\n${history.join('\n')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 function sourceNote(model: ShowModel): string {
@@ -358,7 +419,8 @@ function sourceNote(model: ShowModel): string {
   if (model.draft) {
     return '> A draft from static analysis. Run `jevlint architecture compile` to turn it into an SSOT.';
   }
-  const at = ssot.index.compiled_at ? `, compiled at ${ssot.index.compiled_at}` : '';
+  const { compiled_at, compiled_on } = ssot.index;
+  const at = `${compiled_at ? `, compiled at ${compiled_at}` : ''}${compiled_on ? ` on ${compiled_on}` : ''}`;
   return `> Generated by \`jevlint architecture show --markdown\` from \`${ssot.dir}/\`${at}. Edit the SSOT, not this file.`;
 }
 
@@ -403,6 +465,7 @@ function structuralDocument(model: ShowModel): string[] {
     ssot.flows.length > 0
       ? `## Flows\n\n${ssot.flows.map((flow) => `### ${prose(flow.title)}\n\n${flow.trigger ? `Starts with ${prose(flow.trigger)}.\n\n` : ''}${flowDiagram(flow, model)}`).join('\n\n')}`
       : '',
+    ssot.decisions ? `## Decisions\n\n${decisionsSection(model)}` : '',
     ...referenceSections(model, 2),
   ];
 }
@@ -421,6 +484,9 @@ function chapteredDocument(model: ShowModel): string[] {
     });
     return `## ${prose(title)}\n\n${filled}`;
   });
+  if (ssot.decisions && !placed.has('decisions')) {
+    chapters.push(`## Decisions\n\n${decisionsSection(model)}`);
+  }
   const unplaced = [
     ...ssot.views
       .filter(({ id }) => !placed.has(id))

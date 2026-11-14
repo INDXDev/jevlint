@@ -4,6 +4,20 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- **Dated, append-only decision records in the architecture SSOT.** `.jevlint/architecture/decisions/`
+  can hold one Markdown file per decision, `<n>-<id>.md`, with an `id`, `title`, `date`, `status`
+  (`proposed`, `accepted`, `deprecated` or `superseded`), `supersedes`, `superseded_by`,
+  `components`, `enforced_by` and `evidence` in its frontmatter. A changed decision gets a new record
+  that supersedes the old one, so no decision is rewritten or dropped. `list` exits 2 when the
+  records do not fit together (duplicate ids, a successor that does not exist or does not agree, a
+  loop, an `enforced_by` id that is no rule or checklist item) and warns about their evidence as it
+  does for chapters. `show --markdown` and `--html` build the decisions chapter from them: accepted
+  records in full, then a dated history of superseded and deprecated ones. A chapter places it with
+  `<!-- jevlint:diagram decisions -->`. An SSOT without records loads and prints as before, and
+  records are not sent with `review --perspective design`. jevlint's own decisions moved there (#19).
+- **`compiled_on` in `index.yaml`.** The date of the `compiled_at` commit, shown beside it by `list`,
+  `show --markdown` and `show --html`. The compile and update prompts ask the agent to set it.
+
 ## 0.2.6 - 2026-11-12
 
 - **An architecture SSOT compiled from the code.** `jevlint architecture` is now a command group,

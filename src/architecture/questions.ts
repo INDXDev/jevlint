@@ -152,7 +152,8 @@ export function componentOutline(
 
 /** The SSOT as one YAML document for the `design` review, without what only tracks history. */
 export function designState(ssot: ArchitectureSsot): string {
-  const { compiled_at: _, ...index } = ssot.index;
+  // compiled_on changes on every compile, as compiled_at does, and would ask again for nothing.
+  const { compiled_at: _, compiled_on: __, ...index } = ssot.index;
   return stringify({ ...index, components: ssot.components, flows: ssot.flows }, { lineWidth: 0 });
 }
 

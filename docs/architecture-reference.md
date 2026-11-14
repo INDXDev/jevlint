@@ -19,13 +19,15 @@ The guide is [Architecture-driven development](architecture-driven-development.m
 │   ├── context.yaml        curated diagrams for people (optional)
 │   ├── overview.yaml
 │   └── data-model.yaml
-└── chapters/
-    ├── 10-overview.md      the prose of the document, in file name order (optional)
-    └── 20-principles.md
+├── chapters/
+│   ├── 10-overview.md      the prose of the document, in file name order (optional)
+│   └── 20-principles.md
+└── decisions/
+    └── 0001-ai-sdk-in-decision.md   one dated decision record each, in number order (optional)
 ```
 
-The YAML structure is what jevlint checks the code against. Views and chapters are the document
-people and coding agents read: `show --markdown` builds an ARCHITECTURE.md from all of it.
+The YAML structure is what jevlint checks the code against. Views, chapters and decisions are the
+document people and coding agents read: `show --markdown` builds an ARCHITECTURE.md from all of it.
 
 Set [`architecture.dir`](configuration.md#architecture-limits) to move it. It must stay inside the
 root. Commit the directory.
@@ -60,6 +62,7 @@ checklist:
 | `version` | `1` | Yes | The format version |
 | `name` | string | Yes | The system's name |
 | `compiled_at` | commit hash | No | The commit the SSOT was compiled from: the base of `drift` and of an update |
+| `compiled_on` | date, `YYYY-MM-DD` | No | The date of that commit, so a reader sees when it was compiled without running git |
 | `description` | string | Yes | What the system does and how it is shaped, in a paragraph |
 | `layers` | list of ids | No | Layer names, top to bottom |
 | `ignore` | list of globs | No | Files that belong to no component on purpose, such as tests and build config |
@@ -199,12 +202,59 @@ evidence: [AGENTS.md, src/config.ts:17-40, commit:5f1db8a]
 | --- | --- |
 | `title` | The chapter's heading. jevlint adds it as `##`, so use `###` and lower inside |
 | `evidence` | What the chapter is based on: `path`, `path:line`, `path:start-end` or `commit:<hash>` |
-| `<!-- jevlint:diagram NAME -->` | Places a diagram: a view id, `flow:<id>`, `component:<id>`, `map`, `layers`, or `components` for every component's reference section |
+| `<!-- jevlint:diagram NAME -->` | Places a diagram: a view id, `flow:<id>`, `component:<id>`, `map`, `layers`, `components` for every component's reference section, or `decisions` for the [decision records](#decisionsn-idmd) |
 
 `list` warns when a chapter cites nothing, when a cited path, line or commit does not exist, and
 when a backticked `path:line` in the text does not. `drift` reports a chapter as `stale-chapter` when a file
 it cites changed since `compiled_at`, so that an update rewrites only that chapter. A chapter has at
 most 60 KB, and `list` warns above 1,500 words for one chapter or 9,000 for all.
+
+## `decisions/<n>-<id>.md`
+
+A decision record, in the style of architecture decision records (ADRs): one file per decision,
+dated, and never rewritten once accepted. The number in the file name sets the order, so number
+records as you write them, such as `0001-`. The frontmatter holds the facts jevlint checks:
+
+```markdown
+---
+id: ai-sdk-in-decision
+title: The AI SDK is the provider layer, kept in one folder
+date: 2026-10-02
+status: accepted
+supersedes: []
+superseded_by: null
+components: [decision]
+enforced_by: [ai-sdk-only-in-decision]
+evidence: [src/decision/providers.ts:9, commit:cd3216c]
+---
+
+### Context
+### Decision
+### Consequences
+### Alternatives
+```
+
+| Key | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `id` | id | Yes | Equal to the file name without its number and `.md` |
+| `title` | string | Yes | The decision, as a heading |
+| `date` | date, `YYYY-MM-DD` | Yes | When it was accepted. When it is inferred from a commit, say so in the text |
+| `status` | `proposed`, `accepted`, `deprecated` or `superseded` | Yes | Where it stands |
+| `supersedes` | list of decision ids | No | The decisions this one replaces |
+| `superseded_by` | decision id | No | On a superseded record, the decision that replaced it |
+| `components` | list of component ids | No | What it is about |
+| `enforced_by` | list of ids | No | The rules and checklist items that keep it, as `check` names them: a rule of `index.yaml` by its id, `<component>.<id>` for a component's rule or item, `global.<id>` for an item of `index.yaml` |
+| `evidence` | list | No | As for a chapter: `path`, `path:line`, `path:start-end` or `commit:<hash>` |
+
+Once a record is accepted, its body stays as it is. To change a decision, write a new record that
+`supersedes` it, and on the old one set `status: superseded` and `superseded_by`. There is no cap on
+the number of records: the history is the point.
+
+`list` exits 2 when the records do not fit together: a duplicate id, a `supersedes` or
+`superseded_by` that names no record, the two sides disagreeing, a superseded record with no
+successor, a `superseded_by` on a record that is not superseded, records that supersede each other
+in a loop, or a component or `enforced_by` id that does not exist. It warns about evidence as it
+does for chapters. A record has at most 60 KB, and records do not count against the size budget.
 
 ### The document
 
@@ -212,6 +262,11 @@ most 60 KB, and `list` warns above 1,500 words for one chapter or 9,000 for all.
 chapter in order with its diagrams in place, then the views and flows no chapter placed, then a
 reference: every component, the externals, the rules and the checklist. Without chapters, it is the
 structure in a fixed order: layers, each view, the map, the components, the flows and the reference.
+
+With decision records, the document has a decisions chapter built from them: accepted records in
+full, then proposed ones, then a history of the superseded and deprecated ones by date, each with
+what replaced it. A chapter places it with `<!-- jevlint:diagram decisions -->`; otherwise it
+follows the chapters, or the flows in a document without chapters. `show --html` does the same.
 `show --view <id>` draws one view, and `show --html` puts the chapters, the views and the map on one
 page with no scripts.
 
@@ -262,7 +317,7 @@ The point of the SSOT is a low cognitive load, so `list` warns on stderr when it
 | Components | 25 |
 | Sentences in a summary | 3 |
 | Key files per component | 5 |
-| Tokens in all, at about four characters each, not counting views and chapters | 8000 |
+| Tokens in all, at about four characters each, not counting views, chapters and decisions | 8000 |
 
 ## Facts
 
@@ -376,7 +431,7 @@ ln(1 + churn)) × (1 + fan-in) of the component they weigh on. Severity runs fro
 | `drift` | Changed component | Outline and summary | `architecture-drift.summary-current` | One per changed component |
 | `drift --docs` | Document | Document, then its statements | Route to a component, then `agrees`, `contradicts` or `absent` per statement, and `uncovered` | Two per document |
 | `review`, `component` | Component | Outline and summary, no code | `architecture-component`: `summary-fit`, `dependencies`, `naming` | One per component |
-| `review`, `design` | SSOT | The SSOT's YAML, without `compiled_at`, views and chapters | `architecture-design`: `responsibilities`, `layering`, `direction` | One |
+| `review`, `design` | SSOT | The SSOT's YAML, without `compiled_at`, `compiled_on`, views, chapters and decisions | `architecture-design`: `responsibilities`, `layering`, `direction` | One |
 | `review`, `chapter` | Chapter | Its title, evidence list and text | `architecture-chapter`: `explains-why`, `specific`, `evidence` | One per chapter |
 
 Every request goes through the decision cache, whose key covers the question text, so editing a

@@ -10,6 +10,7 @@ import type {
   MapEdge,
 } from '../types.ts';
 import { layersOf, stronglyConnected } from './graph.ts';
+import { DIAGRAM_DIRECTIVE, orderDecisions } from './load.ts';
 import type { ShowModel } from './show.ts';
 import { findingLocation } from './terminal.ts';
 import { checkEdges } from './views.ts';
@@ -378,6 +379,7 @@ function diagramHtml(name: string, model: ShowModel): string {
     return renderDiagram(componentNodes(model), mapEdgesAsEdges(model.edges));
   }
   if (name === 'components') return componentTable(model);
+  if (name === 'decisions') return decisionsHtml(model);
   if (name.startsWith('component:')) {
     const id = name.slice('component:'.length);
     return model.ssot.components.some((c) => c.id === id) ? componentTable(model, id) : '';
@@ -452,12 +454,47 @@ export function chapterHtml(body: string, model: ShowModel): string {
   return out.join('\n');
 }
 
+/** The decision records: accepted and proposed ones in full, then the older ones by date. */
+function decisionsHtml(model: ShowModel): string {
+  const decisions = model.ssot.decisions ?? [];
+  const byId = new Map(decisions.map((decision) => [decision.id, decision]));
+  const { live, past } = orderDecisions(decisions);
+  const codes = (ids: string[]) => ids.map((id) => `<code>${escapeHtml(id)}</code>`).join(', ');
+  const records = live.map((decision) => {
+    const facts = [
+      `${decision.status === 'accepted' ? 'Accepted' : 'Proposed'} ${escapeHtml(decision.date)}`,
+      decision.components.length > 0 ? `about ${codes(decision.components)}` : '',
+      decision.enforced_by.length > 0 ? `enforced by ${codes(decision.enforced_by)}` : '',
+      decision.supersedes.length > 0 ? `supersedes ${codes(decision.supersedes)}` : '',
+    ].filter(Boolean);
+    return `<h3>${escapeHtml(decision.title)}</h3><p>${facts.join(' · ')}</p>${chapterHtml(decision.body, model)}`;
+  });
+  const history = past.map(({ id, title, date, status, superseded_by }) => {
+    const successor = superseded_by ? byId.get(superseded_by) : undefined;
+    const fate =
+      status === 'deprecated'
+        ? 'deprecated'
+        : `superseded by ${successor ? `${escapeHtml(successor.title)} on ${escapeHtml(successor.date)}` : `<code>${escapeHtml(superseded_by ?? '')}</code>`}`;
+    return `<li>${escapeHtml(date)}: ${escapeHtml(title)} (<code>${escapeHtml(id)}</code>), ${fate}</li>`;
+  });
+  return [
+    ...records,
+    history.length > 0 ? `<h3>History</h3><ul>${history.join('')}</ul>` : '',
+  ].join('\n');
+}
+
+/** True when a chapter places the named diagram, so the page need not add it again. */
+const placedByChapter = ({ ssot }: ShowModel, name: string) =>
+  ssot.chapters.some(({ body }) =>
+    [...body.matchAll(DIAGRAM_DIRECTIVE)].some((match) => match[1] === name),
+  );
+
 /** Renders `show` as one standalone page, with no scripts and no network requests. */
 export function renderShowHtml(model: ShowModel): string {
   const { ssot, root } = model;
   const intro = model.draft
     ? 'A draft from static analysis. Run jevlint architecture compile to turn it into an SSOT.'
-    : `From ${ssot.dir}${ssot.index.compiled_at ? `, compiled at ${ssot.index.compiled_at}` : ''}.`;
+    : `From ${ssot.dir}${ssot.index.compiled_at ? `, compiled at ${ssot.index.compiled_at}` : ''}${ssot.index.compiled_on ? ` on ${ssot.index.compiled_on}` : ''}.`;
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Architecture of ${escapeHtml(ssot.index.name)}</title><style>${STYLES}.bad{color:var(--critical)}blockquote{color:var(--muted);border-left:3px solid var(--hair);margin:8px 0;padding-left:12px}pre{background:var(--panel);padding:12px;overflow:auto}h3{font-size:15px;margin:24px 0 4px}</style></head><body>
@@ -465,6 +502,7 @@ export function renderShowHtml(model: ShowModel): string {
 <p>${escapeHtml(intro)}</p><p>${escapeHtml(ssot.index.description)}</p>
 ${SHOW_LEGEND}
 ${ssot.chapters.map(({ title, body }) => `<h2>${escapeHtml(title)}</h2>${chapterHtml(body, model)}`).join('\n')}
+${ssot.decisions && !placedByChapter(model, 'decisions') ? `<h2>Decisions</h2>${decisionsHtml(model)}` : ''}
 ${ssot.views.map((view) => section(escapeHtml(view.title), '', viewHtml(view, model))).join('\n')}
 ${section('Components', 'Hover a box to trace its links.', renderDiagram(componentNodes(model), mapEdgesAsEdges(model.edges)))}
 ${section('Each component', 'What it does, where to start reading, and what it depends on.', componentTable(model))}

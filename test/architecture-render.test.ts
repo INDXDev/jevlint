@@ -37,6 +37,7 @@ import {
 } from '../src/architecture/terminal.ts';
 import type {
   ArchitectureCheckReport,
+  ArchitectureDecision,
   ArchitectureSsot,
   ArchitectureViolation,
   DataView,
@@ -503,6 +504,127 @@ describe('the document', () => {
     expect(markdown).toContain('## Data\n\n```mermaid\nerDiagram');
     expect(markdown).toContain('## Map');
     expect(renderView(documented, { kind: 'view', id: 'data-model' })).toContain('erDiagram');
+  });
+});
+
+describe('decision records', () => {
+  const decision = (
+    id: string,
+    fields: Partial<ArchitectureDecision> = {},
+  ): ArchitectureDecision => ({
+    id,
+    file: `1-${id}`,
+    title: `${id} title`,
+    date: '2026-10-02',
+    status: 'accepted',
+    supersedes: [],
+    superseded_by: null,
+    components: [],
+    enforced_by: [],
+    evidence: [],
+    body: '### Context\n\nWhy.',
+    ...fields,
+  });
+  const decisions = [
+    decision('old', { date: '2026-01-05', status: 'superseded', superseded_by: 'pg' }),
+    decision('idea', { status: 'proposed', date: '2026-11-01' }),
+    decision('pg', {
+      title: `Use PostgreSQL ${EVIL}`,
+      supersedes: ['old'],
+      components: ['db'],
+      enforced_by: ['db.owns-pg'],
+      body: '### Context\n\nLine one.\nLine two \u001b[2J.\n\n```\n### not a heading\n```',
+    }),
+    decision('gone', { date: '2025-12-01', status: 'deprecated' }),
+  ];
+  const withRecords = (chapters = documented.ssot.chapters): ShowModel => ({
+    ...documented,
+    ssot: { ...documented.ssot, chapters, decisions },
+  });
+
+  it('renders accepted, then proposed records, then a dated history, after the chapters', () => {
+    const markdown = renderMarkdown(withRecords());
+    const at = (text: string) => markdown.indexOf(text);
+    expect(markdown).toContain(
+      '## Decisions\n\n### Use PostgreSQL ?[31m&lt;script&gt;alert(1)&lt;/script&gt;?\n\n*Accepted 2026-10-02 · about `db` · enforced by `db.owns-pg` · supersedes `old`*\n\n#### Context\n\nLine one.\nLine two ?[2J.\n\n```\n### not a heading\n```',
+    );
+    expect(markdown).not.toContain('\u001b');
+    expect(markdown).toContain('### idea title\n\n*Proposed 2026-11-01*');
+    expect(at('### Use PostgreSQL')).toBeLessThan(at('### idea title'));
+    expect(markdown).toContain(
+      '### History\n\nOlder decisions, by date.\n\n- 2025-12-01: gone title (`gone`), deprecated\n- 2026-01-05: old title (`old`), superseded by "Use PostgreSQL',
+    );
+    expect(markdown).not.toContain('### old title');
+    expect(at('## Overview')).toBeLessThan(at('## Decisions'));
+    expect(at('## Decisions')).toBeLessThan(at('## Reference'));
+  });
+
+  it('places the records where a chapter asks, and in the structural document', () => {
+    const placed = renderMarkdown(
+      withRecords([
+        {
+          id: '70-decisions',
+          title: 'Why',
+          evidence: [],
+          body: '<!-- jevlint:diagram decisions -->',
+        },
+      ]),
+    );
+    expect(placed).toContain('## Why\n\n### Use PostgreSQL');
+    expect(placed).not.toContain('## Decisions');
+    const structural = renderMarkdown(withRecords([]));
+    expect(structural).toContain('## Decisions\n\n### Use PostgreSQL');
+    expect(structural.indexOf('## Decisions')).toBeLessThan(structural.indexOf('## External'));
+  });
+
+  it('renders nothing new without records, and shows compiled_on beside compiled_at', () => {
+    expect(renderMarkdown(documented)).not.toContain('Decisions');
+    const dated = {
+      ...documented,
+      ssot: {
+        ...documented.ssot,
+        index: { ...documented.ssot.index, compiled_on: '2026-11-12' },
+      },
+    };
+    expect(renderMarkdown(dated)).toContain('compiled at abc1234 on 2026-11-12.');
+    expect(renderShowHtml(dated)).toContain('compiled at abc1234 on 2026-11-12.');
+    expect(formatSsotList(dated.ssot, [])).toContain('compiled at abc1234 on 2026-11-12');
+  });
+
+  it('puts the records on the show page, escaped, once', () => {
+    const html = renderShowHtml(withRecords());
+    expect(html).not.toMatch(/<script/i);
+    expect(html).toContain('<h2>Decisions</h2><h3>Use PostgreSQL');
+    expect(html).toContain('enforced by <code>db.owns-pg</code>');
+    expect(html).toContain('<h4>Context</h4>');
+    expect(html).toContain('<h3>History</h3><ul><li>2025-12-01: gone title');
+    const placed = renderShowHtml(
+      withRecords([
+        {
+          id: '70-decisions',
+          title: 'Why',
+          evidence: [],
+          body: '<!-- jevlint:diagram decisions -->',
+        },
+      ]),
+    );
+    expect(placed).toContain('<h2>Why</h2><h3>Use PostgreSQL');
+    expect(placed).not.toContain('<h2>Decisions</h2>');
+  });
+
+  it('lists the records in the terminal without control characters', () => {
+    const list = formatSsotList(withRecords().ssot, []);
+    expect(list).toContain('Decisions');
+    expect(list).toMatch(/2026-10-02 {2}.*accepted.*Use PostgreSQL/);
+    expect(list).not.toContain('\u001b[31m<script>');
+  });
+
+  it('leaves records and compiled_on out of the design review', () => {
+    const state = designState({
+      ...withRecords().ssot,
+      index: { ...documented.ssot.index, compiled_on: '2026-11-12' },
+    });
+    expect(state).toBe(designState(documented.ssot));
   });
 });
 

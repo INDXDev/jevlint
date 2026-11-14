@@ -154,21 +154,25 @@ export interface SsotValidation {
   problems: string[];
 }
 
-/** Chapters that cite a commit the repository does not have, as from a clone that was thrown away. */
+/** Chapters and decisions that cite a commit the repository does not have, as from a lost clone. */
 async function missingCommits(root: string, ssot: ArchitectureSsot): Promise<string[]> {
   const problems: string[] = [];
-  for (const chapter of ssot.chapters) {
-    for (const text of chapter.evidence) {
+  const documents = [
+    ...ssot.chapters.map(({ id, evidence }) => ({ file: `chapters/${id}.md`, evidence })),
+    ...(ssot.decisions ?? []).map(({ file, evidence }) => ({
+      file: `decisions/${file}.md`,
+      evidence,
+    })),
+  ];
+  for (const { file, evidence } of documents) {
+    for (const text of evidence) {
       const commit = parseCitation(text)?.commit;
       if (!commit) continue;
       const found = await resolveCommit(root, commit).then(
         () => true,
         () => false,
       );
-      if (!found)
-        problems.push(
-          `${ssot.dir}/chapters/${chapter.id}.md: commit ${commit} is not in this repository`,
-        );
+      if (!found) problems.push(`${ssot.dir}/${file}: commit ${commit} is not in this repository`);
     }
   }
   return problems;
@@ -181,7 +185,8 @@ export async function validateSsot(
 ): Promise<SsotValidation> {
   const { ssot, loadError } = await loadExisting(config);
   if (!ssot) return { ssot: null, ...(loadError ? { error: loadError } : {}), problems: [] };
-  const needsCode = ssot.views.length > 0 || ssot.chapters.length > 0;
+  const needsCode =
+    ssot.views.length > 0 || ssot.chapters.length > 0 || ssot.decisions !== undefined;
   const modules = needsCode
     ? (await collect(config, { skipHistory: true, noCache: options.noCache })).modules
     : [];
