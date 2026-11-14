@@ -64,7 +64,7 @@ Dependencies point downward only. A module never imports from a layer above it.
 | Layer | Modules | May use |
 | --- | --- | --- |
 | Interface | `cli.ts`, `commands/`, `index.ts`, `report.ts`, `formats.ts`, `prompt.ts`, `diff-view.ts`, `architecture/terminal.ts`, `html.ts`, `markdown.ts`, `prompt.ts`, `spec/prompt.ts`, `spec/terminal.ts` | Everything below |
-| Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `fixtures.ts`, `agent.ts`, `diff.ts`, `architecture/collect.ts`, `review.ts`, `check.ts`, `drift.ts`, `compile.ts`, `plan.ts`, `show.ts`, `spec/check.ts`, `spec/drift.ts`, `spec/run.ts` | Everything below |
+| Pipeline | `audit.ts`, `rules.ts`, `review.ts`, `baseline.ts`, `hook.ts`, `intent.ts`, `acceptance.ts`, `fixtures.ts`, `agent.ts`, `diff.ts`, `architecture/collect.ts`, `review.ts`, `check.ts`, `drift.ts`, `compile.ts`, `plan.ts`, `show.ts`, `spec/check.ts`, `spec/drift.ts`, `spec/run.ts` | Everything below |
 | Engines | `ast/`, `decision/`, `scoring.ts`, `architecture/extract.ts`, `resolve.ts`, `graph.ts`, `structure.ts`, `outline.ts`, `facts.ts`, `externals.ts`, `entrypoints.ts`, `conformance.ts`, `questions.ts`, `draft.ts`, `views.ts`, `workspace.ts`, `spec/questions.ts` | Infrastructure, contracts |
 | Infrastructure | `config.ts`, `credentials.ts`, `presets.ts`, `files.ts`, `directives.ts`, `cache.ts`, `remote-cache.ts`, `git.ts`, `fixers.ts`, `trust.ts`, `node-version.ts`, `spec/load.ts`, `architecture/load.ts` | Contracts |
 | Contracts | `types.ts` | Nothing |
@@ -133,6 +133,7 @@ Three rules keep these layers clean:
 | `src/baseline.ts` | Writes and reads `.jevlint/baseline.json`, and narrows a report to what is new |
 | `src/hook.ts` | Finds the file an edit touched and installs the pre-commit hook |
 | `src/intent.ts` | Builds one state from a change's message, base-commit instructions and diff, and asks `change-intent` |
+| `src/acceptance.ts` | Cuts a pull request's body and the issues it closes into chunks that may be acceptance criteria, line by line with no Markdown parser |
 | `src/fixtures.ts` | Reads `.jevlint/fixtures`, asks each fixture its question, and writes or compares `calibration.json` |
 | `src/git.ts` | Churn, working-tree status, and reading changes, diffs, commits and pull requests |
 | `src/fixers.ts` | Runs the `quickfix.after` commands on the files they match, without a shell and with a timeout |

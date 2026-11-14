@@ -221,6 +221,32 @@ export interface Change {
   head: string;
   /** The full commit message, or a pull request's title and body. Read only by `--intent`. */
   message?: string;
+  /** When asked for: the pull request's number. */
+  number?: number;
+  /** When asked for: the pull request's body alone, without its title. */
+  body?: string;
+  /** When asked for: the numbers of the same-repository issues it closes on merge. */
+  closes?: number[];
+  /** When asked for: issues it closes in other repositories, as `owner/repo#n`, which are not read. */
+  closesElsewhere?: string[];
+}
+
+/** An issue's title and body, as read from GitHub. Both are repository text. */
+export interface IssueText {
+  number: number;
+  title: string;
+  body: string;
+}
+
+/** One piece of a pull request's body or an issue that may be an acceptance criterion. */
+export interface CriterionChunk {
+  /** `PR`, or the issue it comes from as `#<n>`. */
+  source: string;
+  /** Its first line in the source, from 1. */
+  line: number;
+  /** The headings above it, outermost first, joined by ` > `. Empty under no heading. */
+  heading: string;
+  text: string;
 }
 
 /** How a change moved one file. */
@@ -236,7 +262,10 @@ export interface ChangedFile {
   warnings: string[];
 }
 
-export interface ChangeReview extends Omit<Change, 'message'> {
+/** What only judging a change reads, which a review leaves out so that `--json` keeps its shape. */
+type ChangeInput = 'message' | 'number' | 'body' | 'closes' | 'closesElsewhere';
+
+export interface ChangeReview extends Omit<Change, ChangeInput> {
   provider: string | null;
   model: string | null;
   scale: number;

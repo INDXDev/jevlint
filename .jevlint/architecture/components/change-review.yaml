@@ -5,7 +5,7 @@ summary: >
   with git plumbing, keeps what got worse, optionally asks change-intent about the message, and
   records or compares a baseline. Also serves the agent and pre-commit hooks.
 layer: pipeline
-paths: [src/review.ts, src/intent.ts, src/baseline.ts, src/hook.ts]
+paths: [src/review.ts, src/intent.ts, src/acceptance.ts, src/baseline.ts, src/hook.ts]
 key_files:
   - { path: src/review.ts, role: "reviewChange, auditAt snapshots and UNSAFE_PATH" }
   - { path: src/intent.ts, role: "judgeIntent: message, instructions and diff in one request" }

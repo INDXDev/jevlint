@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { UserError } from './config.ts';
-import type { Change, CommitSummary } from './types.ts';
+import type { Change, CommitSummary, IssueText } from './types.ts';
 
 const MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
 const SHORT_SHA_LENGTH = 7;
@@ -275,13 +275,12 @@ export async function commitsFrom(
 }
 
 function ghFailure(
-  number: number | undefined,
+  subject: string,
   error: NodeJS.ErrnoException & { stderr?: string; signal?: string },
 ): UserError {
   if (error.code === 'ENOENT') {
     return new UserError('jevlint pr needs the GitHub CLI: https://cli.github.com');
   }
-  const subject = number ? `pull request #${number}` : "this branch's pull request";
   // A killed process has nothing on stderr, and a stalled network is what kills it.
   if (error.signal) {
     return new UserError(`gh stopped reading ${subject}. It has ${GH_TIMEOUT_MS / 1000} seconds.`);
@@ -293,20 +292,73 @@ function ghFailure(
 export const pullRequestOfRef = (ref: string | undefined): string | undefined =>
   ref?.match(/^refs\/pull\/(\d+)\//)?.[1];
 
+/** The `owner/repo` a GitHub issue or pull request belongs to, from its URL or repository. */
+function repositoryOf(reference: {
+  url?: unknown;
+  repository?: { name?: unknown; owner?: { login?: unknown } };
+}): string | null {
+  const fromUrl =
+    typeof reference.url === 'string'
+      ? reference.url.match(/^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/(?:issues|pull)\/\d+\/?$/)?.[1]
+      : undefined;
+  if (fromUrl) return fromUrl;
+  const { name, owner } = reference.repository ?? {};
+  return typeof name === 'string' && typeof owner?.login === 'string'
+    ? `${owner.login}/${name}`
+    : null;
+}
+
+/**
+ * Splits the issues a pull request closes into those of its own repository, which may be read,
+ * and the rest, which are named but not read: reading them would let the author widen what
+ * jevlint reads.
+ */
+function closingIssues(
+  pullRequestUrl: unknown,
+  references: unknown,
+): Pick<Change, 'closes' | 'closesElsewhere'> {
+  const home = repositoryOf({ url: pullRequestUrl })?.toLowerCase();
+  const closes = new Set<number>();
+  const closesElsewhere: string[] = [];
+  for (const reference of Array.isArray(references) ? references : []) {
+    const { number } = reference ?? {};
+    if (!Number.isSafeInteger(number) || number < 1) continue;
+    const repository = repositoryOf(reference);
+    if (home !== undefined && repository?.toLowerCase() === home) closes.add(number);
+    else closesElsewhere.push(`${repository ?? 'an unknown repository'}#${number}`);
+  }
+  return { closes: [...closes].sort((a, b) => a - b), closesElsewhere };
+}
+
+/** What `pullRequestChange` reads besides the change itself. */
+export interface PullRequestOptions {
+  /** Also returns what `--acceptance` reads: the number, the body and the issues it closes. */
+  acceptance?: boolean;
+}
+
 /**
  * Finds what a pull request changes, as GitHub shows it: from the merge base to its head. With no
  * number, `gh` picks the pull request of the current branch.
  */
-export async function pullRequestChange(root: string, requested?: number): Promise<Change> {
-  const fields = 'number,title,body,baseRefName,baseRefOid,headRefOid';
+export async function pullRequestChange(
+  root: string,
+  requested?: number,
+  { acceptance = false }: PullRequestOptions = {},
+): Promise<Change> {
+  // Asked for only when needed, so `pr` keeps working with a gh too old to know these fields.
+  const fields = [
+    'number,title,body,baseRefName,baseRefOid,headRefOid',
+    ...(acceptance ? ['url,closingIssuesReferences'] : []),
+  ].join(',');
   const target = requested === undefined ? [] : [String(requested)];
   const { stdout } = await execFileAsync('gh', ['pr', 'view', ...target, '--json', fields], {
     cwd: root,
     timeout: GH_TIMEOUT_MS,
   }).catch((error) => {
-    throw ghFailure(requested, error);
+    throw ghFailure(requested ? `pull request #${requested}` : "this branch's pull request", error);
   });
-  const { number, title, body, baseRefName, baseRefOid, headRefOid } = JSON.parse(stdout);
+  const pullRequest = JSON.parse(stdout);
+  const { number, title, body, baseRefName, baseRefOid, headRefOid } = pullRequest;
   await git(
     root,
     [
@@ -327,12 +379,48 @@ export async function pullRequestChange(root: string, requested?: number): Promi
       `Could not find the commits of pull request #${number}. Run: git fetch <remote> pull/${number}/head ${baseRefName}, with full history.`,
     );
   });
-  return {
+  const change: Change = {
     title: `Pull request #${number}: ${title}`,
     base: base.trim(),
     head: headRefOid,
     message: [title, body].filter(Boolean).join('\n\n'),
   };
+  if (!acceptance) return change;
+  return {
+    ...change,
+    number,
+    body: typeof body === 'string' ? body : '',
+    ...closingIssues(pullRequest.url, pullRequest.closingIssuesReferences),
+  };
+}
+
+/**
+ * Reads an issue's title and body with `gh`. A missing or unreadable issue is a warning rather
+ * than an error, so that the rest of a review carries on.
+ */
+export async function issueText(
+  root: string,
+  number: number,
+): Promise<IssueText | { warning: string }> {
+  // The number comes from GitHub, but a negative one would reach gh as an option.
+  if (!Number.isSafeInteger(number) || number < 1) {
+    return { warning: `${number} is not an issue number.` };
+  }
+  try {
+    const { stdout } = await execFileAsync(
+      'gh',
+      ['issue', 'view', String(number), '--json', 'number,title,body'],
+      { cwd: root, timeout: GH_TIMEOUT_MS },
+    );
+    const { title, body } = JSON.parse(stdout) ?? {};
+    if (typeof title !== 'string') return { warning: `gh printed no title for issue #${number}.` };
+    return { number, title, body: typeof body === 'string' ? body : '' };
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return { warning: `gh printed something other than JSON for issue #${number}.` };
+    }
+    return { warning: ghFailure(`issue #${number}`, error as NodeJS.ErrnoException).message };
+  }
 }
 
 /** The full hash of HEAD, or null outside git or before the first commit. */
