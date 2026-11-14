@@ -1,6 +1,7 @@
 /** Loads and validates the architecture SSOT. See docs/architecture-reference.md. */
-import { readdir } from 'node:fs/promises';
-import { join, posix, relative, resolve, sep } from 'node:path';
+import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import {
@@ -10,8 +11,10 @@ import {
   parseWith,
   readRegularFile,
   UserError,
+  writeFileAtomic,
 } from '../config.ts';
 import { isOutsideRoot } from '../files.ts';
+import { fileAt, filesAt } from '../git.ts';
 import { assertInRepo } from '../presets.ts';
 import { checklistSchema, idSchema, readYaml } from '../spec/load.ts';
 import type {
@@ -652,6 +655,41 @@ export async function loadArchitecture(config: Config): Promise<ArchitectureSsot
   const problems = crossCheck(ssot);
   if (problems.length > 0) throw new UserError(problems.join('\n'));
   return ssot;
+}
+
+/** More files than every directory of the SSOT may hold together, so a commit is refused early. */
+const MAX_SNAPSHOT_FILES = 6 * MAX_FILES;
+
+/**
+ * Reads the SSOT as it was at a commit, with the same checks as `loadArchitecture`. Its files are
+ * copied from git into a private directory, which is deleted afterwards, so nothing is checked out
+ * and the working tree stays as it is. Null when the commit has no `index.yaml`.
+ */
+export async function loadArchitectureAt(
+  config: Config,
+  commit: string,
+): Promise<ArchitectureSsot | null> {
+  const dir = ssotDir(config);
+  const files = (await filesAt(config.root, commit)).filter((path) => path.startsWith(`${dir}/`));
+  if (files.length > MAX_SNAPSHOT_FILES) {
+    throw new UserError(`${dir}: ${files.length} files at ${commit}, more than an SSOT can have`);
+  }
+  const snapshot = await mkdtemp(join(tmpdir(), 'jevlint-ssot-'));
+  try {
+    for (const path of files) {
+      // A crafted tree can hold these names, which would write outside the directory.
+      if (path.split('/').some((part) => part === '..' || part.toLowerCase() === '.git')) continue;
+      const text = await fileAt(config.root, commit, path);
+      if (text === undefined) continue;
+      await mkdir(dirname(join(snapshot, path)), { recursive: true });
+      await writeFileAtomic(join(snapshot, path), text);
+    }
+    // Root-relative, as an absolute `architecture.dir` would point back into the working tree.
+    const architecture = { ...config.architecture, dir };
+    return await loadArchitecture({ ...config, root: snapshot, architecture });
+  } finally {
+    await rm(snapshot, { recursive: true, force: true });
+  }
 }
 
 /** Root-relative paths of the SSOT's files: `index.yaml`, then components, flows, views and so on. */

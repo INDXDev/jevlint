@@ -443,6 +443,25 @@ export async function resolveCommit(root: string, revision: string): Promise<str
   return hash.trim();
 }
 
+/**
+ * Resolves `--as-of`. A date, as `YYYY-MM-DD`, is the last commit on HEAD's first-parent line
+ * committed before that day ended in UTC: the branch as it stood then, not a commit of a branch
+ * merged later. Anything else is a revision.
+ */
+export async function resolveAsOf(root: string, value: string): Promise<string> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return resolveCommit(root, value);
+  const day = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(day.getTime()) || !day.toISOString().startsWith(value)) {
+    throw new UserError(`${value} is not a date.`);
+  }
+  const before = `--before=${value} 23:59:59 +0000`;
+  const hash = await git(root, ['rev-list', '-1', '--first-parent', before, 'HEAD']).catch(
+    () => '',
+  );
+  if (!hash.trim()) throw new UserError(`No commit on this branch is from ${value} or earlier.`);
+  return hash.trim();
+}
+
 /** Lists the root-relative files a commit holds under the root. */
 export async function filesAt(root: string, commit: string): Promise<string[]> {
   const names = await git(root, ['ls-tree', '-r', '-z', '--name-only', commit]);

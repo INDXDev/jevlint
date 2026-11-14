@@ -5,13 +5,19 @@
 import { basename } from 'node:path';
 import { type Config, UserError } from '../config.ts';
 import { discoverDocs } from '../files.ts';
-import { changedSince, resolveCommit, significantCommits } from '../git.ts';
+import { changedSince, fileAt, resolveCommit, significantCommits } from '../git.ts';
 import type { ArchitectureFacts, ArchitectureSsot, CommitSummary, DriftItem } from '../types.ts';
 import { collect, existsIn, filesOfCommit, lineCountIn } from './collect.ts';
 import { staticDrift } from './conformance.ts';
 import { draftSsot } from './draft.ts';
-import { architectureFiles, budgetWarnings, loadArchitecture, ssotDir } from './load.ts';
-import { documentDrift, documentProblems, parseCitation } from './views.ts';
+import {
+  architectureFiles,
+  budgetWarnings,
+  loadArchitecture,
+  loadArchitectureAt,
+  ssotDir,
+} from './load.ts';
+import { citedPaths, documentDrift, documentProblems, parseCitation } from './views.ts';
 
 const COMMITS_SCANNED = 400;
 const COMMITS_SHOWN = 25;
@@ -72,9 +78,9 @@ export interface CompileOptions {
   noCache?: boolean;
 }
 
-async function loadExisting(config: Config) {
+async function loadExisting(config: Config, asOf?: string) {
   try {
-    return { ssot: await loadArchitecture(config) };
+    return { ssot: await (asOf ? loadArchitectureAt(config, asOf) : loadArchitecture(config)) };
   } catch (error) {
     if (!(error instanceof UserError)) throw error;
     return { ssot: null, loadError: error.message };
@@ -178,28 +184,47 @@ async function missingCommits(root: string, ssot: ArchitectureSsot): Promise<str
   return problems;
 }
 
-/** Loads the SSOT and checks its views and chapters against the code. */
+const MAX_COUNTED_CHARS = 5 * 1024 * 1024;
+
+/** Counts the lines of cited files as a commit holds them, read ahead because checks are sync. */
+async function lineCountsAt(root: string, commit: string, paths: string[]) {
+  const counts = new Map<string, number | undefined>();
+  for (const path of paths) {
+    const text = await fileAt(root, commit, path);
+    counts.set(
+      path,
+      text && text.length <= MAX_COUNTED_CHARS ? text.split('\n').length : undefined,
+    );
+  }
+  return (path: string) => counts.get(path);
+}
+
+/**
+ * Loads the SSOT and checks its views and chapters against the code. With `asOf`, a full commit
+ * hash, both come from that commit, read from git with nothing checked out.
+ */
 export async function validateSsot(
   config: Config,
-  options: { noCache?: boolean } = {},
+  options: { noCache?: boolean; asOf?: string } = {},
 ): Promise<SsotValidation> {
-  const { ssot, loadError } = await loadExisting(config);
+  const { asOf, noCache } = options;
+  const { ssot, loadError } = await loadExisting(config, asOf);
   if (!ssot) return { ssot: null, ...(loadError ? { error: loadError } : {}), problems: [] };
   const needsCode =
     ssot.views.length > 0 || ssot.chapters.length > 0 || ssot.decisions !== undefined;
-  const modules = needsCode
-    ? (await collect(config, { skipHistory: true, noCache: options.noCache })).modules
-    : [];
-  const problems = [
-    ...(await missingCommits(config.root, ssot)),
-    ...budgetWarnings(ssot),
-    ...(needsCode
-      ? documentProblems(ssot, {
-          modules,
-          exists: existsIn(config.root),
-          lineCount: lineCountIn(config.root),
-        })
-      : []),
-  ];
+  const problems = [...(await missingCommits(config.root, ssot)), ...budgetWarnings(ssot)];
+  if (needsCode) {
+    const collected = await collect(config, { skipHistory: true, noCache, commit: asOf });
+    const lineCount = asOf
+      ? await lineCountsAt(config.root, asOf, citedPaths(ssot))
+      : lineCountIn(config.root);
+    problems.push(
+      ...documentProblems(ssot, {
+        modules: collected.modules,
+        exists: collected.exists,
+        lineCount,
+      }),
+    );
+  }
   return { ssot, problems };
 }

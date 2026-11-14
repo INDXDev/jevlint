@@ -103,7 +103,7 @@ files in `.jevlint/architecture/` that describes the system's components, layers
 | `jevlint architecture [paths...]` | The same as `review` | As `review` |
 | `jevlint architecture review [paths...]` | Review the codebase, directories, classes and, with an SSOT, each component and the design. Rank them worst to best. An SSOT that does not load is skipped with a warning, unless `--perspective` asks for it | Yes, unless `--ast-only` |
 | `jevlint architecture compile [paths...]` | Print a prompt that tells a coding agent to write the SSOT from the code, or to update it | No |
-| `jevlint architecture list` | Load and validate the SSOT, and print it. Exits 2 when it does not load, and warns on stderr when it is over the size budget or its views and chapters do not fit the code | No |
+| `jevlint architecture list` | Load and validate the SSOT, and print it. Exits 2 when it does not load, and warns on stderr when it is over the size budget or its views, chapters and decisions do not fit the code. `--json` prints it, and `--as-of <commit\|date>` reads it [as it was](#reading-the-ssot-as-it-was-with---as-of) | No |
 | `jevlint architecture show` | Draw the SSOT, or a draft from the code when there is none, with the real dependencies laid over the declared ones | No |
 | `jevlint architecture check [paths...]` | Check that the code follows the SSOT. Exits 1 on a violation or an unimplemented checklist item | Checklist items only |
 | `jevlint architecture drift` | Find where the SSOT no longer describes the code. Exits 1 when it finds any | Summaries and `--docs` only |
@@ -158,10 +158,30 @@ problems back to the agent, at most twice.
 | `--markdown` | Print the SSOT as an ARCHITECTURE.md with Mermaid diagrams, built around its chapters when it has them, or only the chosen `--view` |
 | `--html <file>` | Write one page with no scripts and no network requests |
 | `--json` | Print the SSOT, the map edges and the facts |
+| `--as-of <commit\|date>` | Show the SSOT and the code [as they were](#reading-the-ssot-as-it-was-with---as-of) at a commit or on a date |
 
 With no SSOT, `show` draws the component candidates from the facts and says on stderr that this is a
 draft. jevlint never writes into `docs/`: redirect `--markdown` yourself, as in
 `jevlint architecture show --markdown > docs/ARCHITECTURE.md`.
+
+### Reading the SSOT as it was with `--as-of`
+
+`list --as-of` and `show --as-of` read the SSOT and the code from git as they were at a revision, and
+render them with every check `list` and `show` apply today. Git is the store; decision records are
+the index into it. Nothing is checked out: the SSOT's files are copied from git into a private
+directory that is deleted afterwards, and the code is read with `ls-tree` and `cat-file`, so the
+working tree and the index stay as they are.
+
+The value is a revision, such as a commit or a tag, or a date as `YYYY-MM-DD`. A date means the last
+commit on the first-parent history of `HEAD` committed before that day ended in UTC: the branch as it
+stood then, not a commit of a branch that was merged later. Commit dates are when something was
+committed, not when it was decided, so read a date as approximate. With no SSOT at that revision,
+`list` exits 2 and `show` draws the draft from the code at that revision.
+
+```sh
+jevlint architecture show --as-of v0.2.0 --markdown
+jevlint architecture list --as-of 2026-11-01
+```
 
 ### `check`
 

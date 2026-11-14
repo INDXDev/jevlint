@@ -372,6 +372,16 @@ When an SSOT exists, the prompt asks for an update instead: the drift since `com
 and removed, and the instruction to rewrite only those parts and keep ids. When the SSOT does not
 load, the prompt holds the errors. `--docs` adds more documents as context.
 
+## The SSOT over time
+
+The SSOT describes the architecture as it is, and git keeps every earlier version of it, so no
+history is stored in the SSOT itself. `compiled_on` says when it was last compiled without running
+git. `list --as-of <commit|date>` and `show --as-of <commit|date>` read the SSOT and the code as they
+were at a revision, with the same checks as today; see
+[`--as-of`](cli.md#reading-the-ssot-as-it-was-with---as-of). Decision records are the curated index
+over that history: what was decided when, and what replaced it. A component, rule or external that is
+removed needs no status of its own: its removal is a decision, and gets a record.
+
 ## Check
 
 1. Each file is assigned to a component by `paths`.

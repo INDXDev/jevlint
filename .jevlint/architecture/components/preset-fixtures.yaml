@@ -8,6 +8,7 @@ paths: [src/fixtures.ts]
 key_files:
   - { path: src/fixtures.ts, role: "testFixtures and the calibration record" }
 interface: [testFixtures, FixtureReport, FixtureResult, DEFAULT_DRIFT_LIMIT]
-depends_on: [ssot-conformance, change-review, audit, configuration, decision, scoring, presets, contracts]
+depends_on:
+  [ssot-conformance, change-review, audit, configuration, decision, scoring, presets, contracts]
 uses: [p_limit, zod]
 status: current

@@ -494,7 +494,7 @@ export function renderShowHtml(model: ShowModel): string {
   const { ssot, root } = model;
   const intro = model.draft
     ? 'A draft from static analysis. Run jevlint architecture compile to turn it into an SSOT.'
-    : `From ${ssot.dir}${ssot.index.compiled_at ? `, compiled at ${ssot.index.compiled_at}` : ''}${ssot.index.compiled_on ? ` on ${ssot.index.compiled_on}` : ''}.`;
+    : `From ${ssot.dir}${model.asOf ? ` as it was at commit ${model.asOf.slice(0, 7)}` : ''}${ssot.index.compiled_at ? `, compiled at ${ssot.index.compiled_at}` : ''}${ssot.index.compiled_on ? ` on ${ssot.index.compiled_on}` : ''}.`;
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Architecture of ${escapeHtml(ssot.index.name)}</title><style>${STYLES}.bad{color:var(--critical)}blockquote{color:var(--muted);border-left:3px solid var(--hair);margin:8px 0;padding-left:12px}pre{background:var(--panel);padding:12px;overflow:auto}h3{font-size:15px;margin:24px 0 4px}</style></head><body>

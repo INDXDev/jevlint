@@ -23,6 +23,7 @@ import {
   isWorkTree,
   pullRequestChange,
   pullRequestOfRef,
+  resolveAsOf,
   significantCommits,
   touchedFiles,
   uncommittedFiles,
@@ -537,6 +538,59 @@ describe('changes to review', () => {
       expect(await issueText(dir, -1)).toEqual({ warning: '-1 is not an issue number.' });
       expect(existsSync(log)).toBe(false);
     });
+  });
+});
+
+describe('resolveAsOf', () => {
+  /** Commits with a fixed date, so that a date resolves to a known commit. */
+  const commitOn = (date: string, file: string) => {
+    writeFileSync(join(dir, file), date);
+    execFileSync('git', ['add', '.'], { cwd: dir });
+    execFileSync(
+      'git',
+      ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', date],
+      { cwd: dir, env: { ...process.env, GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date } },
+    );
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  };
+
+  beforeEach(() => git('init', '-q', '-b', 'main'));
+
+  it('takes the last first-parent commit of that day, not one of a branch merged later', () => {
+    const first = commitOn('2026-01-01T10:00:00Z', 'a.txt');
+    git('checkout', '-q', '-b', 'topic');
+    commitOn('2026-01-05T10:00:00Z', 'b.txt');
+    git('checkout', '-q', 'main');
+    const second = commitOn('2026-01-03T23:30:00Z', 'c.txt');
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@example.com',
+        'merge',
+        '-q',
+        '--no-ff',
+        '-m',
+        'm',
+        'topic',
+      ],
+      { cwd: dir, env: { ...process.env, GIT_COMMITTER_DATE: '2026-01-10T10:00:00Z' } },
+    );
+    return Promise.all([
+      expect(resolveAsOf(dir, '2026-01-02')).resolves.toBe(first),
+      expect(resolveAsOf(dir, '2026-01-03')).resolves.toBe(second),
+      expect(resolveAsOf(dir, '2026-01-06')).resolves.toBe(second),
+    ]);
+  });
+
+  it('resolves a revision, and refuses a date with no commit, a false date and an option', async () => {
+    const first = commitOn('2026-01-01T10:00:00Z', 'a.txt');
+    await expect(resolveAsOf(dir, 'HEAD')).resolves.toBe(first);
+    await expect(resolveAsOf(dir, '2025-12-31')).rejects.toThrow('No commit on this branch');
+    await expect(resolveAsOf(dir, '2026-02-30')).rejects.toThrow('is not a date');
+    await expect(resolveAsOf(dir, '--all')).rejects.toThrow(UserError);
   });
 });
 

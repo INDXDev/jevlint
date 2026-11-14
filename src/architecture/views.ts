@@ -134,6 +134,16 @@ export function parseCitation(text: string): Citation | null {
 /** Only references with a line are checked: a bare path may name a file made at run time. */
 const INLINE_REFERENCE = /`([\w.@+-]+(?:\/[\w.@+-]+)+\.\w+:\d+(?:-\d+)?)`/g;
 
+/** Every path that chapters and decision records cite, in their evidence or their text. */
+export function citedPaths(ssot: ArchitectureSsot): string[] {
+  const documents = [...ssot.chapters, ...(ssot.decisions ?? [])];
+  const cited = documents.flatMap(({ evidence, body }) => [
+    ...evidence,
+    ...[...body.matchAll(INLINE_REFERENCE)].map((match) => match[1] as string),
+  ]);
+  return [...new Set(cited.flatMap((text) => parseCitation(text)?.path ?? []))];
+}
+
 function citationProblem(citation: Citation, input: DocumentInput): string | null {
   if (!citation.path) return null;
   if (!input.exists(citation.path)) return `${citation.path} does not exist`;

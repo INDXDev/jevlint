@@ -145,6 +145,10 @@ jevlint also guards against what a repository contains:
 - `architecture check --diff`, `pr --architecture` and `commits --architecture` read both sides from
   git with `ls-tree` and `cat-file`, so nothing is checked out and no filter runs. A revision is
   resolved to a commit hash first, and one starting with `-` is refused.
+- `architecture list --as-of` and `show --as-of` read the code the same way, and copy the SSOT's
+  files at that revision into a new private directory, which they delete afterwards. A path with
+  `..` or `.git` in it is not written, and the copy is loaded with every check of the working tree's
+  SSOT, so a crafted commit cannot escape the directory or skip a check.
 
 Some risks remain:
 
