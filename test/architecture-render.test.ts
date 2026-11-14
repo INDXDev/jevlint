@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { mapEdges } from '../src/architecture/conformance.ts';
 import { draftSsot } from '../src/architecture/draft.ts';
@@ -591,7 +592,10 @@ describe('decision records', () => {
     };
     expect(renderMarkdown(dated)).toContain('compiled at abc1234 on 2026-11-12.');
     expect(renderShowHtml(dated)).toContain('compiled at abc1234 on 2026-11-12.');
-    expect(formatSsotList(dated.ssot, [])).toContain('compiled at abc1234 on 2026-11-12');
+    // CI turns colour on, which puts escapes between the parts of the line.
+    expect(stripVTControlCharacters(formatSsotList(dated.ssot, []))).toContain(
+      'compiled at abc1234 on 2026-11-12',
+    );
   });
 
   it('puts the records on the show page, escaped, once', () => {

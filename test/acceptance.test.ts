@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { stripVTControlCharacters as plain } from 'node:util';
 import { Experimental_DecisionMockModelV4 as MockModel } from 'ai/test';
 import { runCommand } from 'citty';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -345,7 +346,8 @@ describe('judgeAcceptance', () => {
       'other/repo#5 is in another repository, so it was not read.',
     ]);
     const text = formatReview({ ...review(), acceptance: run?.result });
-    expect(text).not.toContain('\u001b');
+    // CI turns colour on, so look for the hostile sequence rather than any escape at all.
+    expect(text).not.toContain('Ship \u001b');
     expect(text).toContain('Ship ?[31mit.');
   });
 
@@ -445,19 +447,21 @@ describe('formatReview with acceptance', () => {
         verdict,
         confidence: 0.9,
       }) as never;
-    const text = formatReview({
-      ...review(),
-      acceptance: {
-        score: 50,
-        criteria: [
-          criterion('met', 'One.'),
-          criterion('not-met', 'Two.'),
-          criterion(null, 'Three.'),
-        ],
-        rejected: [{ source: 'PR', line: 1, heading: '', text: 'Why.', probability: 0.1 }],
-        warnings: ['truncated: x'],
-      },
-    });
+    const text = plain(
+      formatReview({
+        ...review(),
+        acceptance: {
+          score: 50,
+          criteria: [
+            criterion('met', 'One.'),
+            criterion('not-met', 'Two.'),
+            criterion(null, 'Three.'),
+          ],
+          rejected: [{ source: 'PR', line: 1, heading: '', text: 'Why.', probability: 0.1 }],
+          warnings: ['truncated: x'],
+        },
+      }),
+    );
     expect(text).toContain('Acceptance: 1 of 3 criteria met (score 50)');
     expect(text).toMatch(/✓ met\s+#19 {2}One\./);
     expect(text).toMatch(/✗ not met\s+#19 {2}Two\./);
@@ -526,8 +530,8 @@ describe('jevlint pr --acceptance', () => {
     judge = (instructions) => (instructions.includes('Ship') ? 'not-met' : 'met');
     const { exitCode, stdout } = await run('7', '--acceptance');
     expect(exitCode).toBe(1);
-    expect(stdout).toContain('Acceptance: 2 of 3 criteria met');
-    expect(stdout).toMatch(/✗ not met\s+#19 {2}Ship it\./);
+    expect(plain(stdout)).toContain('Acceptance: 2 of 3 criteria met');
+    expect(plain(stdout)).toMatch(/✗ not met\s+#19 {2}Ship it\./);
   });
 
   it('warns on stderr before classifying more chunks than warn_file_count', async () => {
