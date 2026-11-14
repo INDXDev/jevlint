@@ -53,13 +53,13 @@ export interface AstRule extends AstPattern {
 }
 
 /** The command a preset's questions are written for. */
-export type PresetUse = 'audit' | 'architecture' | 'intent';
+export type PresetUse = 'audit' | 'architecture' | 'intent' | 'acceptance';
 
 export interface Preset {
   name: string;
   description: string;
   source: string;
-  /** `audit` unless the questions only make sense to `jevlint architecture` or `--intent`. */
+  /** `audit` unless the questions only make sense to `jevlint architecture`, `--intent` or `--acceptance`. */
   used_by: PresetUse;
   /** Other presets that run alongside this one, each keeping its own question ids. */
   includes: string[];
@@ -249,6 +249,32 @@ export interface CriterionChunk {
   text: string;
 }
 
+/** How far a change meets one acceptance criterion. `cannot-tell` is left out of the score. */
+export type AcceptanceVerdict = 'met' | 'partly' | 'not-met' | 'cannot-tell';
+
+/** A chunk with the model's probability that it is an acceptance criterion. */
+export interface ClassifiedChunk extends CriterionChunk {
+  probability: number;
+}
+
+/** An acceptance criterion and how the change meets it. */
+export interface AcceptanceCriterion extends ClassifiedChunk {
+  /** Null when the model could not be asked. */
+  verdict: AcceptanceVerdict | null;
+  /** The model's probability for the verdict, or null with no verdict. */
+  confidence: number | null;
+}
+
+/** `pr --acceptance`: the change judged against what it was asked to do. */
+export interface AcceptanceResult {
+  /** On the configured scale. Null when no criterion could be judged from the diff. */
+  score: number | null;
+  criteria: AcceptanceCriterion[];
+  /** The chunks the model did not take for criteria. */
+  rejected: ClassifiedChunk[];
+  warnings: string[];
+}
+
 /** How a change moved one file. */
 export interface ChangedFile {
   path: string;
@@ -279,6 +305,8 @@ export interface ChangeReview extends Omit<Change, ChangeInput> {
   warnings?: string[];
   /** With `--architecture`: the SSOT violations the change added. */
   architecture?: ArchitectureViolation[];
+  /** With `--acceptance` and a model: the change judged against its acceptance criteria. */
+  acceptance?: AcceptanceResult;
 }
 
 /** A structural problem, and the directories whose score it counts against. */

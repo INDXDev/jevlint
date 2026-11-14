@@ -2,6 +2,7 @@
 // jevlint-score 77 -- Reviewed; the remaining gap is within model noise
 import type { Config } from './config.ts';
 import type {
+  AcceptanceVerdict,
   AstFinding,
   FileReport,
   ModelAnswer,
@@ -142,6 +143,29 @@ export function repoScore(
 ): number {
   const scoredFiles = files.filter((file) => file.ast || file.model || file.pin);
   return weightedMean(scoredFiles.map((file) => ({ value: file.score, weight: file.lines })));
+}
+
+const VERDICT_POINTS: Record<Exclude<AcceptanceVerdict, 'cannot-tell'>, number> = {
+  met: 1,
+  partly: 0.5,
+  'not-met': 0,
+};
+
+/**
+ * A change's acceptance score: the points of its verdicts over the criteria a diff can show, on the
+ * configured scale. `cannot-tell` and unjudged criteria are left out. Null when none count.
+ */
+export function acceptanceScore(
+  verdicts: (AcceptanceVerdict | null)[],
+  scoring: Scoring,
+): number | null {
+  const counted = verdicts.filter(
+    (verdict): verdict is keyof typeof VERDICT_POINTS =>
+      verdict !== null && verdict !== 'cannot-tell',
+  );
+  if (counted.length === 0) return null;
+  const points = counted.reduce((sum, verdict) => sum + VERDICT_POINTS[verdict], 0);
+  return scaleScore(points / counted.length, scoring);
 }
 
 /** Converts a 0 to 1 score to the configured display scale. */

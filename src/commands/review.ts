@@ -49,12 +49,20 @@ const REVIEW_ARGS = {
   },
 } as const;
 
+/** Only `pr` has it: commits close no issues, so they have no criteria to read. */
+const ACCEPTANCE_ARG = {
+  type: 'boolean',
+  description:
+    'Judge the pull request against the acceptance criteria in it and in the issues it closes',
+} as const;
+
 interface ReviewFlags {
   'ast-only'?: boolean;
   cache?: boolean;
   'ignore-pins'?: boolean;
   intent?: boolean;
   architecture?: boolean;
+  acceptance?: boolean;
 }
 
 /** Runs before a pull request is fetched, so a bad combination costs nothing. */
@@ -65,6 +73,14 @@ function assertUsableFlags(flags: ReviewFlags, format: OutputFormat): void {
   // These formats report per file, so a paid judgement of the whole change would vanish.
   if (flags.intent && format !== 'text' && format !== 'json') {
     throw new UserError(`--intent judges a whole change, so --format ${format} cannot show it.`);
+  }
+  if (flags.acceptance && flags['ast-only']) {
+    throw new UserError('--acceptance asks a model, so it cannot run with --ast-only.');
+  }
+  if (flags.acceptance && format !== 'text' && format !== 'json') {
+    throw new UserError(
+      `--acceptance judges a whole pull request, so --format ${format} cannot show it.`,
+    );
   }
   if (flags.architecture && format !== 'text' && format !== 'json') {
     throw new UserError(
@@ -90,6 +106,24 @@ async function withArchitecture(config: Config, reviews: ChangeReview[]): Promis
   return checked;
 }
 
+/** A criterion the change does not meet makes the command exit 1, as an added violation does. */
+function failUnmetCriteria(reviews: ChangeReview[]): void {
+  const unmet = reviews.some(({ acceptance }) =>
+    acceptance?.criteria.some(({ verdict }) => verdict === 'not-met'),
+  );
+  if (unmet) process.exitCode = 1;
+}
+
+/** Each chunk is one small request, so a long issue costs many before any answer shows. */
+function warnAboutChunks(config: Config): (count: number) => void {
+  return (count) => {
+    if (count <= config.warn_file_count) return;
+    console.error(
+      `Warning: ${count} pieces of the pull request and its issues are each sent to ask whether they are acceptance criteria, which may be slow and costly. Press Ctrl-C to stop.`,
+    );
+  };
+}
+
 async function warnAboutSize(config: Config, changes: Change[]): Promise<void> {
   const files = await Promise.all(changes.map((change) => changedFiles(config.root, change)));
   const total = files.reduce((sum, { length }) => sum + length, 0);
@@ -113,6 +147,8 @@ async function printReviews(
     ignorePins: Boolean(flags['ignore-pins']),
     noCache: !flags.cache,
     intent: Boolean(flags.intent),
+    acceptance: Boolean(flags.acceptance),
+    onAcceptanceChunks: warnAboutChunks(config),
   };
   const reviewed = await withSpinner(async (onProgress) => {
     const done: ChangeReview[] = [];
@@ -122,6 +158,7 @@ async function printReviews(
     return done;
   });
   const reviews = flags.architecture ? await withArchitecture(config, reviewed) : reviewed;
+  failUnmetCriteria(reviews);
   const [first] = reviews;
   if (first?.model === null && !astOnly) printNoKeyNotice(config);
   if (first) printFallbackNotice(config, first.provider);
@@ -146,6 +183,7 @@ export const prCommand = defineCommand({
       description: "Pull request number. Default: the CI run's, or the current branch's",
     },
     ...REVIEW_ARGS,
+    acceptance: ACCEPTANCE_ARG,
   },
   async run({ args }) {
     const format = parseFormat(args);
@@ -155,7 +193,10 @@ export const prCommand = defineCommand({
       args.number ?? pullRequestOfRef(process.env.GITHUB_REF),
     );
     const config = await projectConfig(presetOverride(args.preset));
-    await printReviews(config, [await pullRequestChange(config.root, number)], args, format);
+    const change = await pullRequestChange(config.root, number, {
+      acceptance: Boolean(args.acceptance),
+    });
+    await printReviews(config, [change], args, format);
   },
 });
 

@@ -121,9 +121,32 @@ first. `pr` prints one.
 | `intent` | With `--intent` and a model: every [answer](#notes) about the change, in the shape of `model.answers`, weak or not. Empty if it could not be judged |
 | `warnings` | With `intent`: why it is empty, or that the diff was truncated |
 | `architecture` | With `--architecture`: the [violations](#architecture-ssot-reports) the change added |
+| `acceptance` | With `pr --acceptance` and a model: the pull request judged against its acceptance criteria, below |
 
 `findings` holds only what the change introduced or made worse, and `answers` only the weak answers
-it lowered. `usage` includes the `--intent` request.
+it lowered. `usage` includes the `--intent` and `--acceptance` requests.
+
+`acceptance` holds:
+
+| Key | Holds |
+| --- | --- |
+| `score` | The points of the verdicts over the criteria that count, on the configured scale. `null` when none count |
+| `criteria` | Each criterion: `source` (`PR` or `#<n>`), `line` in that text, `heading` (the headings above it, joined by ` > `), `text`, `probability` that it is a criterion, `verdict` (`met`, `partly`, `not-met` or `cannot-tell`) and `confidence` in it. `verdict` and `confidence` are `null` when it could not be judged |
+| `rejected` | The chunks that were not criteria, with `source`, `line`, `heading`, `text` and `probability` |
+| `warnings` | What went wrong on the way: issues not read, no criteria found, no diff, provider errors, truncation |
+
+```json
+"acceptance": {
+  "score": 80,
+  "criteria": [
+    { "source": "#19", "line": 214, "heading": "Acceptance criteria", "text": "...", "probability": 0.93, "verdict": "met", "confidence": 0.88 }
+  ],
+  "rejected": [
+    { "source": "PR", "line": 3, "heading": "Background", "text": "...", "probability": 0.08 }
+  ],
+  "warnings": []
+}
+```
 
 ## Fixture results
 

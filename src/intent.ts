@@ -39,8 +39,8 @@ function intentState(message: string, instructions: string, diff: string): strin
   return sections.map(([label, text]) => `===== ${label} =====\n${text}`).join('\n\n');
 }
 
-async function sendableDiff(config: Config, change: Change): Promise<string> {
-  // A change can touch a file audit would never send, such as a committed `.env`.
+/** The change's diff without the files `audit` would never send, such as a committed `.env`. */
+export async function sendableDiff(config: Config, change: Change): Promise<string> {
   const excluded = await excludedPaths(config, await touchedFiles(config.root, change));
   return changeDiff(config.root, change, excluded);
 }

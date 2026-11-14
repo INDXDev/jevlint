@@ -1,0 +1,8 @@
+===== Source =====
+Issue #20: pr: --acceptance judges the diff against acceptance criteria
+
+===== Heading =====
+Background / Why
+
+===== Chunk =====
+Today a reviewer checks those by hand, which is slow and the step most often skipped when a pull request looks fine.

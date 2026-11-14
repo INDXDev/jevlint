@@ -13,8 +13,9 @@ key_files:
   - { path: src/hook.ts, role: "the edited path and the pre-commit hook" }
 interface:
   [reviewChange, reviewFile, madeWorse, judgeIntent, readBaseline, writeBaseline, editedPath]
-depends_on: [audit, configuration, decision, presets, repository-access, scoring, contracts]
-uses: [zod]
+depends_on:
+  [audit, configuration, decision, presets, repository-access, scoring, spec-checks, contracts]
+uses: [p_limit, zod]
 rules: []
 checklist:
   - id: snapshot-safety

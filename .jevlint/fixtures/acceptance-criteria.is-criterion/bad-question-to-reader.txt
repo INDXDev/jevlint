@@ -1,0 +1,8 @@
+===== Source =====
+Issue #20: pr: --acceptance judges the diff against acceptance criteria
+
+===== Heading =====
+Open questions
+
+===== Chunk =====
+Should a heading such as P1 limit which criteria apply when the pull request title names the phase?

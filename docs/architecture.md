@@ -133,7 +133,7 @@ Three rules keep these layers clean:
 | `src/baseline.ts` | Writes and reads `.jevlint/baseline.json`, and narrows a report to what is new |
 | `src/hook.ts` | Finds the file an edit touched and installs the pre-commit hook |
 | `src/intent.ts` | Builds one state from a change's message, base-commit instructions and diff, and asks `change-intent` |
-| `src/acceptance.ts` | Cuts a pull request's body and the issues it closes into chunks that may be acceptance criteria, line by line with no Markdown parser |
+| `src/acceptance.ts` | Cuts a pull request's body and the issues it closes into chunks, asks `acceptance-criteria` of each, and judges the diff against the criteria |
 | `src/fixtures.ts` | Reads `.jevlint/fixtures`, asks each fixture its question, and writes or compares `calibration.json` |
 | `src/git.ts` | Churn, working-tree status, and reading changes, diffs, commits and pull requests |
 | `src/fixers.ts` | Runs the `quickfix.after` commands on the files they match, without a shell and with a timeout |
@@ -222,6 +222,12 @@ This keeps each request small and every question relevant. Both go through `deci
 general form of `decideFile` that also takes choice questions, so the cache and every provider work
 unchanged. jevlint never writes the spec: `spec compile` hands that judgement to a coding agent, and
 the YAML is the single source of truth that both other commands read.
+
+**`--acceptance` extracts, then judges.** A fixed boolean question about one short chunk of a pull
+request or issue, "is this a criterion?", is cheap, cached per chunk and testable with fixtures,
+which a question written per chunk would not be. Judging then runs only against criteria, so
+background, discussion and out-of-scope lists do not become failures. The chunker is line-based,
+with no Markdown parser, because the text is hostile and GitHub bodies are simple.
 
 ## Dependencies
 

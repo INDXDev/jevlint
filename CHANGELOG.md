@@ -4,6 +4,14 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- **`jevlint pr --acceptance`: does the pull request do what was asked?** It reads the pull
+  request's body and the issues it closes (`Fixes #12`, or linked in the sidebar; issues in other
+  repositories are named and not read), cuts them into checklist items, list items and sentences,
+  and asks of each, with the new `acceptance-criteria` preset, whether it is an acceptance
+  criterion. It then judges the diff against each criterion as `met`, `partly`, `not-met` or
+  `cannot-tell`, scores the pull request, and exits 1 when a criterion is not met. Each chunk is
+  cached on its own, so a second run costs nothing. `--json` adds an `acceptance` object, and
+  `jevlint test` knows the new question, with fixtures (#20).
 - **Dated, append-only decision records in the architecture SSOT.** `.jevlint/architecture/decisions/`
   can hold one Markdown file per decision, `<n>-<id>.md`, with an `id`, `title`, `date`, `status`
   (`proposed`, `accepted`, `deprecated` or `superseded`), `supersedes`, `superseded_by`,
