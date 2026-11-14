@@ -208,7 +208,7 @@ run. `fixerOnly` lists the paths in `diffs` that only those commands changed, no
 | `findings` | Each has the fields of an AST finding, plus `path` and `directories` |
 
 With an SSOT, `units` also holds `component` units, named by component id with `path` at its YAML
-file, one `design` unit, and a `chapter` unit per chapter, and `perspectives` has their means. Without one, nothing changes.
+file, one `design` unit, a `chapter` unit per chapter and a `decision` unit per accepted decision record, and `perspectives` has their means. Without one, nothing changes.
 
 ## Architecture SSOT reports
 
@@ -223,6 +223,7 @@ A violation, in `check`, `pr --architecture` and the baseline, has these keys:
 | `target` | The file, package, component, symbol or matched code it points at, when there is one |
 | `message` | One sentence |
 | `status` | `target` when the component has `status: target`, else `current` |
+| `decisions` | The ids of the accepted [decision records](architecture-reference.md#decisionsn-idmd) whose `enforced_by` names the rule. Absent when there are none |
 
 `jevlint architecture check --json` prints one object:
 
@@ -242,7 +243,8 @@ A violation, in `check`, `pr --architecture` and the baseline, has these keys:
 `jevlint architecture drift --json` prints `root`, `dir`, `provider`, `model`, `usage`, `warnings`,
 `compiledAt`, `head`, `added` and `removed` (files since `compiledAt`), `docs` (as in `spec drift`),
 and `items`, each with `kind` (`unmapped-code`, `undocumented-dependency`, `undocumented-external`,
-`stale-reference`, `stale-summary`, `stale-chapter`, `stale-view` or `document`), `component`, `path`, optional `line` and
+`stale-reference`, `stale-summary`, `stale-chapter`, `stale-view`, `unenforced-decision`,
+`edited-decision`, `stale-decision` or `document`), `component`, `path`, optional `line` and
 `target`, `message`, and `since`, true for code added after `compiledAt`.
 
 `jevlint architecture show --json` prints `root`, `draft` (true when there is no SSOT), `ssot` (the

@@ -4,6 +4,7 @@ title: A coding agent writes the SSOT; jevlint decides its rules statically
 date: 2026-11-12
 status: accepted
 components: [architecture-verbs, ssot-loading, ssot-conformance]
+unenforceable: "That jevlint never writes the SSOT is the absence of a write, which no rule over imports or calls can prove."
 evidence: [docs/architecture-driven-development.md:21-25, docs/architecture-driven-development.md:128, docs/security.md, src/decision/providers.ts:9, commit:5f1db8a, commit:aa2cc1a]
 ---
 

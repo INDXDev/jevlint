@@ -244,6 +244,7 @@ evidence: [src/decision/providers.ts:9, commit:cd3216c]
 | `superseded_by` | decision id | No | On a superseded record, the decision that replaced it |
 | `components` | list of component ids | No | What it is about |
 | `enforced_by` | list of ids | No | The rules and checklist items that keep it, as `check` names them: a rule of `index.yaml` by its id, `<component>.<id>` for a component's rule or item, `global.<id>` for an item of `index.yaml` |
+| `unenforceable` | string | No | Why no rule or checklist item can keep it, such as a choice of process. Silences `unenforced-decision`. Not with `enforced_by` |
 | `evidence` | list | No | As for a chapter: `path`, `path:line`, `path:start-end` or `commit:<hash>` |
 
 Once a record is accepted, its body stays as it is. To change a decision, write a new record that
@@ -367,9 +368,15 @@ with evidence, nothing generic); review the result as a newcomer; and run `list`
 With `--agent`, jevlint runs `list`'s checks after the agent finishes and, while they report
 anything, gives the agent the problems to fix, at most twice.
 
+The decisions chapter is the records in `decisions/`: the prompt asks for one record for every
+decision the agent can evidence, with no cap, each dated from the commit or document it is cited
+from and saying when that date is inferred.
+
 When an SSOT exists, the prompt asks for an update instead: the drift since `compiled_at` (or
-`--since`), including chapters whose evidence changed and views that no longer fit, the files added
-and removed, and the instruction to rewrite only those parts and keep ids. When the SSOT does not
+`--since`), including chapters whose evidence changed, views that no longer fit and the decision
+drift below, the files added and removed, and the instruction to rewrite only those parts and keep
+ids. It tells the agent never to edit the body of an accepted record: for each `stale-decision` it
+either confirms that the decision still holds, changing nothing, or writes a new superseding record. When the SSOT does not
 load, the prompt holds the errors. `--docs` adds more documents as context.
 
 ## The SSOT over time
@@ -396,6 +403,9 @@ rule, rule id, path and target, not by line, so code that moves stays matched. C
 only in files changed since `base`, untracked ones included. `pr --architecture` and
 `commits --architecture` compare each change's base and head the same way, both read from git.
 
+A violation of a rule that an accepted decision lists in `enforced_by` names that decision, in the
+text and in `--json`, so the reader sees why the rule exists.
+
 `--new` leaves out violations that `jevlint baseline` recorded. Violations in a component with
 `status: target` are listed apart and do not affect the exit code.
 
@@ -408,9 +418,12 @@ only in files changed since `base`, untracked ones included. `pr --architecture`
 | `undocumented-external` | A component imports a declared external its `uses` does not list, or a known system no `externals` entry names | AST |
 | `stale-reference` | A `paths` glob, `key_files` entry or `interface` name that matches nothing, a component with no files, or a `depends_on` or `uses` entry the code never imports | AST |
 | `stale-summary` | A component, among those whose files changed since `compiled_at`, whose summary the model thinks no longer fits its outline | `architecture-drift.summary-current`, a boolean |
-| `stale-chapter` | A chapter that cites a file changed since `compiled_at` | git |
+| `stale-chapter` | A chapter that cites a file changed since `compiled_at`. Decision records have their own kinds | git |
 | `stale-view` | A view node whose path matches nothing, a solid arrow with no import behind it, or a data entity whose type is gone | AST |
-| `document` | With `--docs`: a document that contradicts a summary or checklist item, or states a structural fact the SSOT leaves out | Two requests per document, as `spec drift` |
+| `unenforced-decision` | An accepted decision with no `enforced_by` and no `unenforceable` reason | Static |
+| `edited-decision` | An accepted record whose body changed since the commit that first held it as accepted, by more than typo fixes: a changed word count, or more than three words each one or two letters apart. A record accepted only in the working tree is not compared, and a shallow clone skips the check with a warning | git |
+| `stale-decision` | An accepted decision that cites a file changed since `compiled_at`. Unless `--static`, the model is asked whether the code still follows it, from the outlines of the components it names, and one that holds is dropped | git, then `architecture-decision.still-holds`, a boolean |
+| `document` | With `--docs`: a document that contradicts a summary, a checklist item or an accepted decision, or states a structural fact the SSOT leaves out | Two requests per document, as `spec drift` |
 
 A drift item is not a violation: it says the SSOT needs an update. `--copy` and `--prompt` give the
 update prompt.
@@ -439,10 +452,12 @@ ln(1 + churn)) × (1 + fan-in) of the component they weigh on. Severity runs fro
 | --- | --- | --- | --- | --- |
 | `check` | Code file | File contents, as `audit` does | One choice per checklist item | One per file with items |
 | `drift` | Changed component | Outline and summary | `architecture-drift.summary-current` | One per changed component |
-| `drift --docs` | Document | Document, then its statements | Route to a component, then `agrees`, `contradicts` or `absent` per statement, and `uncovered` | Two per document |
+| `drift`, decisions | Stale decision about components | Its record and the outlines of the components it names | `architecture-decision.still-holds` | One per stale decision |
+| `drift --docs` | Document | Document, then its statements: the summary, the checklist and each accepted decision's title as `decision_record.<id>` | Route to a component, then `agrees`, `contradicts` or `absent` per statement, and `uncovered` | Two per document |
 | `review`, `component` | Component | Outline and summary, no code | `architecture-component`: `summary-fit`, `dependencies`, `naming` | One per component |
 | `review`, `design` | SSOT | The SSOT's YAML, without `compiled_at`, `compiled_on`, views, chapters and decisions | `architecture-design`: `responsibilities`, `layering`, `direction` | One |
 | `review`, `chapter` | Chapter | Its title, evidence list and text | `architecture-chapter`: `explains-why`, `specific`, `evidence` | One per chapter |
+| `review`, `decision` | Accepted decision | Its title, date, status, enforcement, evidence list and text | `architecture-decision`: `context-stated`, `alternatives-named`, `consequences-named`, `evidence-supports` | One per accepted decision |
 
 Every request goes through the decision cache, whose key covers the question text, so editing a
 summary or an item asks again and nothing else does. The preset questions can be

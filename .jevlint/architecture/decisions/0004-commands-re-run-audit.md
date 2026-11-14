@@ -4,6 +4,7 @@ title: "`prompt`, `fix` and `explain` re-run `audit()`"
 date: 2026-11-05
 status: accepted
 components: [commands, audit]
+unenforceable: "Re-running audit() rather than reading a stored report is a choice of control flow, not a dependency or a call pattern a static rule can see."
 evidence: [docs/architecture.md:195-196, commit:e5d06f4]
 ---
 

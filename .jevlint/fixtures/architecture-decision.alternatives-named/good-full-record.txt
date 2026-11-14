@@ -1,0 +1,23 @@
+Decision: The AI SDK is the provider layer, kept in one folder
+Date: 2026-11-05
+Status: accepted
+Enforced by: ai-sdk-only-in-decision
+Evidence: docs/architecture.md:161-166, src/decision/providers.ts:32-40, src/decision/decide.ts:15, commit:e5d06f4, commit:cd3216c
+
+Dated from commit e5d06f4, the initial release, whose docs/architecture.md first records it.
+
+### Context
+
+jevlint asks typed questions (score, boolean, choice) of six providers: TypeSafe, OpenAI, the Vercel gateway, Cloudflare, Microsoft and generic endpoints. Each speaks a slightly different protocol, and the SDK API that unifies them is experimental, so it can break between minor versions.
+
+### Decision
+
+Use the AI SDK's experimental_decide, which already handles the protocol, retries and validation. Cloudflare, Microsoft and generic endpoints reuse the TypeSafe provider with another base URL, and Cloudflare's response envelope is unwrapped by a fetch shim (src/decision/providers.ts:32-40). All of it stays in src/decision/, and the ai-sdk-only-in-decision rule fails the build on an import anywhere else.
+
+### Consequences
+
+A breaking change in the experimental API touches one folder. Provider limits leak upwards only as data: Cloudflare's 64-question cap is handled by splitting requests (src/decision/decide.ts:15, commit cd3216c). The cost is that every caller must go through decideFile or decideState, even when a direct call would be shorter.
+
+### Alternatives
+
+A hand-written client per provider, rejected because it would duplicate the retries and validation the SDK already has, six times over. Calling the SDK from each command, rejected because a breaking change would then touch every command.

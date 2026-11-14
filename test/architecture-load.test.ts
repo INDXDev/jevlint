@@ -478,6 +478,11 @@ describe('decision records', () => {
     ],
     ['an unknown status', { '1-a.md': record('a').replace('accepted', 'done') }, '1-a.md: status'],
     ['an unknown key', { '1-a.md': record('a', 'owner: me\n') }, 'owner: unknown key'],
+    [
+      'both enforced_by and unenforceable',
+      { '1-a.md': record('a', 'enforced_by: [layers-point-down]\nunenforceable: Because.\n') },
+      'give enforced_by or unenforceable, not both',
+    ],
   ])('rejects %s', async (_, files, message) => {
     await withDecisions(files);
     await expect(loadArchitecture(config)).rejects.toThrow(message);

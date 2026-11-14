@@ -16,9 +16,9 @@
 | `spec check` | File contents, up to `max_file_chars`, the project description, feature summaries and checklist items | Your configured provider |
 | `spec drift` | Document contents, the checklist they are compared with and every other checklist item, up to `max_file_chars` | Your configured provider |
 | `spec compile`, `spec list` | Nothing | |
-| `architecture`, `architecture review` | Paths, line counts, top-level names and internal dependencies, but no file contents. With an SSOT, also each component's summary and dependencies, the SSOT's YAML for `design`, and each chapter's text for `chapter` | Your configured provider |
+| `architecture`, `architecture review` | Paths, line counts, top-level names and internal dependencies, but no file contents. With an SSOT, also each component's summary and dependencies, the SSOT's YAML for `design`, each chapter's text for `chapter`, and each accepted decision record's text for `decision` | Your configured provider |
 | `architecture check` | File contents, up to `max_file_chars`, and the SSOT's checklist items with the component's title and summary, for files that have items to judge | Your configured provider |
-| `architecture drift` | Each changed component's outline and summary. With `--docs`, document contents and the SSOT's summaries and checklist items, as `spec drift` sends | Your configured provider |
+| `architecture drift` | Each changed component's outline and summary, and each stale decision record's text with the outlines of the components it names. With `--docs`, document contents and the SSOT's summaries, checklist items and accepted decisions' titles, as `spec drift` sends | Your configured provider |
 | `architecture compile --agent`, `plan --agent` | The prompt, with paths, line numbers, names, data type fields, comments from central files and commit subjects and messages, but no other file contents, plus whatever the agent reads | The agent's provider |
 | `fix`, `quickfix` | The prompt, plus whatever the agent reads | The agent's provider |
 | Any model run, `--dry-run`, with `cache.remote` set | Entry keys, numeric answers and token counts, but no source code | Your cache bucket |

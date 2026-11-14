@@ -23,6 +23,21 @@ This project follows [Semantic Versioning](https://semver.org).
   records in full, then a dated history of superseded and deprecated ones. A chapter places it with
   `<!-- jevlint:diagram decisions -->`. An SSOT without records loads and prints as before, and
   records are not sent with `review --perspective design`. jevlint's own decisions moved there (#19).
+- **Decisions are audited, statically where there is an exact answer.** `check` names the
+  accepted decisions behind a violated rule (`decisions` in `--json`). `drift` reports
+  `unenforced-decision` (an accepted decision with no `enforced_by` and no new `unenforceable`
+  reason), `edited-decision` (an accepted record's body changed since the commit that accepted it,
+  beyond typo fixes; skipped with a warning in a shallow clone) and `stale-decision` (it cites a file
+  changed since `compiled_at`; with a model, one the code still follows is dropped).
+  `drift --docs` compares documents with accepted decisions too. `review --perspective decision`
+  scores each accepted record with the new `architecture-decision` preset, which has fixtures for
+  every question (#19).
+- **`list --as-of` and `show --as-of`.** Read the SSOT and the code as they were at a commit or on a
+  date, from git, with nothing checked out. A date is the last commit on `HEAD`'s first-parent history
+  committed before that day ended in UTC (#19).
+- **The compile and update prompts keep decision history.** They ask for one record per decision
+  with no cap, dated and saying when a date is inferred, and never to edit an accepted record: a
+  stale decision is confirmed or superseded (#19).
 - **`compiled_on` in `index.yaml`.** The date of the `compiled_at` commit, shown beside it by `list`,
   `show --markdown` and `show --html`. The compile and update prompts ask the agent to set it.
 

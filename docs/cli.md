@@ -117,7 +117,7 @@ there is no SSOT.
 
 | Flag | Meaning |
 | --- | --- |
-| `--perspective <names>` | Review only some of `codebase`, `directory`, `class`, `component`, `design` and `chapter`, comma-separated. The last three need an SSOT |
+| `--perspective <names>` | Review only some of `codebase`, `directory`, `class`, `component`, `design`, `chapter` and `decision`, comma-separated. The last four need an SSOT |
 | `--top <n>` | Rows to show (default 20) |
 | `--html <file>` | Write a visual report to this file. The file name is required |
 | `--json` | Print the [JSON report](json-output.md#architecture-report) |

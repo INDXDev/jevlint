@@ -462,6 +462,26 @@ export async function resolveAsOf(root: string, value: string): Promise<string> 
   return hash.trim();
 }
 
+/** The commits that touched a root-relative file, oldest first. Empty outside git. */
+export async function fileHistory(root: string, path: string): Promise<string[]> {
+  const log = await git(root, [
+    'log',
+    '--no-show-signature',
+    '--no-renames',
+    '--reverse',
+    '--format=%H',
+    '--',
+    path,
+  ]).catch(() => '');
+  return log.split('\n').filter(Boolean);
+}
+
+/** True in a shallow clone, whose history stops short. */
+export async function isShallow(root: string): Promise<boolean> {
+  const answer = await git(root, ['rev-parse', '--is-shallow-repository']).catch(() => 'false');
+  return answer.trim() === 'true';
+}
+
 /** Lists the root-relative files a commit holds under the root. */
 export async function filesAt(root: string, commit: string): Promise<string[]> {
   const names = await git(root, ['ls-tree', '-r', '-z', '--name-only', commit]);

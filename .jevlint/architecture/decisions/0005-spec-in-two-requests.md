@@ -4,6 +4,7 @@ title: A spec is judged in two requests per file
 date: 2026-11-08
 status: accepted
 components: [spec-checks]
+unenforceable: "How many requests a file takes is behaviour at run time, which no import or call pattern shows."
 evidence: [docs/architecture.md:219-224, commit:aa2cc1a]
 ---
 

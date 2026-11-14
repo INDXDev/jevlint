@@ -144,3 +144,22 @@ files and lines, and, through `drift`, which chapters cite code that has since c
   the target without failing the check.
 - Do not accept the candidates as they are. They follow directories and imports, and the agent is
   told to merge and split where the code says so; check that it did.
+
+## Decisions over time
+
+Decisions are the part of an architecture document worth most years later, and the part a rewrite
+loses first. So each one is a dated [record](architecture-reference.md#decisionsn-idmd) in
+`decisions/`, and records are only ever added: a changed decision is a new record that supersedes
+the old one, never an edit. jevlint keeps that honest without a model where it can:
+
+| Audit | How |
+| --- | --- |
+| The records fit together | `list` refuses duplicate ids, successors that do not exist or disagree, and loops |
+| Something keeps each decision | `check` names the decisions behind a violated rule, and `drift` reports an accepted decision with no `enforced_by` and no `unenforceable` reason |
+| Nobody rewrote one | `drift` reports an accepted record whose body changed since the commit that accepted it, beyond typo fixes |
+| It still fits the code | `drift` reports a decision citing a file that changed, and with a model asks whether the code still follows it |
+| The documents agree | `drift --docs` compares each document with the accepted decisions too |
+| It is well written | `review --perspective decision` scores context, alternatives, consequences and evidence |
+
+`show --as-of <commit|date>` reads the whole SSOT as it was, from git, so the history needs no
+store of its own: git keeps the versions, and the records say what changed and why.

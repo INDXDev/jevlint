@@ -90,6 +90,7 @@ const PERSPECTIVE_LABELS: Record<Perspective, string> = {
   component: 'Components',
   design: 'Design',
   chapter: 'Chapters',
+  decision: 'Decisions',
 };
 
 function formatSummary({ score, scale, perspectives, modules, edges }: ArchitectureReport): string {
@@ -327,9 +328,10 @@ export function formatShow(
   return [header, legend, '', ...body].join('\n');
 }
 
-const violationRow = ({ path, line, rule, message, ruleId }: ArchitectureViolation) => [
+const violationRow = ({ path, line, rule, message, ruleId, decisions }: ArchitectureViolation) => [
   `  ${path}:${line}`,
   `    ${pc.red('✗')} ${rule.padEnd(22)} ${message} ${pc.dim(`(${ruleId})`)}`,
+  ...(decisions ? [`      ${pc.dim(`Why: decision ${decisions.join(', ')}`)}`] : []),
 ];
 
 /** The check report: structural violations, checklist violations and unimplemented items. */

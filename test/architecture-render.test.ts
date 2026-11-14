@@ -351,7 +351,10 @@ describe('terminal', () => {
   });
 
   it('lists the check report sections', () => {
+    const why = formatArchitectureCheck(checkReport([{ ...violation, decisions: ['layered'] }]));
+    expect(why).toContain('Why: decision layered');
     const text = formatArchitectureCheck(checkReport([violation]));
+    expect(text).not.toContain('Why:');
     expect(text).toContain('1 structural violation');
     expect(text).toContain('2 violations in the baseline left out');
     expect(text).toContain('Unimplemented');
@@ -708,7 +711,7 @@ describe('the compile prompt', () => {
     for (const heading of [
       '## How to work',
       '## The SSOT format',
-      '## The views and chapters format',
+      '## The views, chapters and decisions format',
       '## How to draw the views',
       '## The chapters to write',
       '## How to write the chapters',
@@ -725,6 +728,16 @@ describe('the compile prompt', () => {
     expect(prompt).toContain('- Order (src/db/c.ts:3, used by 2): id: string');
     expect(prompt).toContain('- src/db/c.ts:9: Kept because the pool is shared.');
     expect(prompt).toContain('- abc1234 (7 files) Cache outlines: Because parsing is slow.');
+  });
+
+  it('asks for every decision as an append-only record, with no cap', () => {
+    const prompt = renderCompilePrompt(input);
+    expect(prompt).not.toContain('4 to 8 decisions');
+    expect(prompt).toContain('decisions/<nnnn>-<id>.md');
+    expect(prompt).toContain('write one for every decision you can evidence, with no cap');
+    expect(prompt).toContain('say in the record when the date is inferred');
+    expect(prompt).toContain('never edit its body, except for a typo');
+    expect(prompt).toContain('compiled_on: 2026-01-31');
   });
 
   it('asks an update to rewrite only stale chapters and views', () => {
@@ -751,6 +764,27 @@ describe('the compile prompt', () => {
       '- stale-chapter: .jevlint/architecture/chapters/10-a.md: cites a changed file',
     );
     expect(update).not.toContain('## The draft');
+    expect(update).toContain(
+      'never edit the body of an accepted record. For each `stale-decision`',
+    );
+    const drift = renderDriftPrompt(
+      {
+        root: '/r',
+        dir: '.jevlint/architecture',
+        provider: null,
+        model: null,
+        compiledAt: 'def5678',
+        head: 'abc1234',
+        items: [],
+        added: [],
+        removed: [],
+        docs: [],
+        usage: { inputTokens: 0, estimatedCostUsd: null, cacheHits: 0, modelCalls: 0 },
+        warnings: [],
+      },
+      [],
+    );
+    expect(drift).toContain('write a new record that supersedes it');
   });
 
   it('lists the problems in the repair prompt, without control characters', () => {

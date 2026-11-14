@@ -298,6 +298,7 @@ const decisionSchema = (fileId: string) =>
     superseded_by: idSchema.nullable().default(null),
     components: ids.default([]),
     enforced_by: z.array(enforcerId).default([]),
+    unenforceable: prose.optional(),
     evidence: z.array(z.string().min(1)).default([]),
   });
 
@@ -317,6 +318,19 @@ function parseFrontmatter(raw: string, file: string): { front: unknown; body: st
     };
   } catch {
     throw new UserError(`${file}: invalid YAML in the frontmatter`);
+  }
+}
+
+/**
+ * The status and body of a decision record as some commit held it, or null when it does not
+ * parse. Lenient, as an old version need not fit today's schema.
+ */
+export function recordVersion(raw: string): { status: unknown; body: string } | null {
+  try {
+    const { front, body } = parseFrontmatter(raw, 'record');
+    return isTable(front) ? { status: front.status, body } : null;
+  } catch {
+    return null;
   }
 }
 
@@ -384,6 +398,17 @@ async function readDecisions(root: string, dir: string): Promise<ArchitectureDec
     decisions.push({ ...record, file: name.slice(0, -'.md'.length), body });
   }
   return decisions;
+}
+
+/** The accepted decisions each rule or checklist id enforces: `enforced_by`, reversed. */
+export function decisionsByEnforcer(ssot: ArchitectureSsot): Map<string, string[]> {
+  const byEnforcer = new Map<string, string[]>();
+  for (const { id, status, enforced_by } of ssot.decisions ?? []) {
+    if (status !== 'accepted') continue;
+    for (const enforcer of enforced_by)
+      byEnforcer.set(enforcer, [...(byEnforcer.get(enforcer) ?? []), id]);
+  }
+  return byEnforcer;
 }
 
 /**
@@ -461,6 +486,9 @@ function checkDecisions(ssot: ArchitectureSsot, need: Need): string[] {
     }
     if (status !== 'superseded' && superseded_by !== null) {
       problems.push(`${where}: superseded_by is set, so status must be superseded`);
+    }
+    if (decision.unenforceable !== undefined && decision.enforced_by.length > 0) {
+      problems.push(`${where}: give enforced_by or unenforceable, not both`);
     }
     for (const old of supersedes) {
       const replaced = byId.get(old);

@@ -239,6 +239,83 @@ export function documentProblems(ssot: ArchitectureSsot, input: DocumentInput): 
   ];
 }
 
+/** How many words an accepted record's body may change, and by how many letters, as typo fixes. */
+export const TYPO_LIMITS = { words: 3, letters: 2 } as const;
+
+function letterDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        (previous[j] as number) + 1,
+        (current[j - 1] as number) + 1,
+        (previous[j - 1] as number) + cost,
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length] as number;
+}
+
+/**
+ * True when a body differs from another by no more than typo fixes: the same words in the same
+ * order, rewrapped as you like, with at most three of them a letter or two apart. An added or
+ * removed word, such as a "not", is never a typo.
+ */
+export function isTypoLevel(before: string, after: string): boolean {
+  const a = before.split(/\s+/).filter(Boolean);
+  const b = after.split(/\s+/).filter(Boolean);
+  if (a.length !== b.length) return false;
+  let changed = 0;
+  for (const [index, word] of a.entries()) {
+    const other = b[index] as string;
+    if (word === other) continue;
+    changed += 1;
+    if (changed > TYPO_LIMITS.words || letterDistance(word, other) > TYPO_LIMITS.letters) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Drift in the decision records: accepted ones that nothing enforces and that do not say why, and
+ * accepted ones citing files that changed, whose fix is a confirmation or a new superseding record,
+ * never a rewrite.
+ */
+export function decisionDrift(ssot: ArchitectureSsot, changed: Set<string>): DriftItem[] {
+  return (ssot.decisions ?? []).flatMap((decision): DriftItem[] => {
+    if (decision.status !== 'accepted') return [];
+    const path = posix.join(ssot.dir, 'decisions', `${decision.file}.md`);
+    const items: DriftItem[] = [];
+    if (decision.enforced_by.length === 0 && decision.unenforceable === undefined) {
+      items.push({
+        kind: 'unenforced-decision',
+        component: decision.components[0] ?? null,
+        path,
+        target: decision.id,
+        message: `"${decision.title}" names no rule or checklist item in enforced_by, and no reason in unenforceable`,
+      });
+    }
+    const cited = decision.evidence.flatMap((text) => parseCitation(text)?.path ?? []);
+    const touched = [...new Set(cited)].filter((cite) =>
+      [...changed].some((file) => covers(cite, file)),
+    );
+    if (touched.length > 0) {
+      items.push({
+        kind: 'stale-decision',
+        component: decision.components[0] ?? null,
+        path,
+        target: decision.id,
+        message: `"${decision.title}" cites ${touched.join(', ')}, which changed; confirm it still holds, or supersede it`,
+      });
+    }
+    return items;
+  });
+}
+
 /** Drift in the document: chapters citing files that changed, and views that no longer fit. */
 export function documentDrift(
   ssot: ArchitectureSsot,
@@ -265,5 +342,5 @@ export function documentDrift(
     const [path = '', ...rest] = problem.split(': ');
     return { kind: 'stale-view', component: null, path, message: rest.join(': ') };
   });
-  return [...chapters, ...views];
+  return [...chapters, ...views, ...decisionDrift(ssot, changed)];
 }

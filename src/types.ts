@@ -363,7 +363,14 @@ export interface DirectoryNode {
  * A level of the design that the review looks at. `component`, `design` and `chapter` review the
  * architecture SSOT, so they run only when one exists.
  */
-export type Perspective = 'codebase' | 'directory' | 'class' | 'component' | 'design' | 'chapter';
+export type Perspective =
+  | 'codebase'
+  | 'directory'
+  | 'class'
+  | 'component'
+  | 'design'
+  | 'chapter'
+  | 'decision';
 
 /** One reviewed thing: the whole codebase, a directory or a class. */
 export interface ArchitectureUnit {
@@ -808,6 +815,8 @@ export interface ArchitectureViolation {
   message: string;
   /** `target` when the component has `status: target`, so it is known debt. */
   status: 'current' | 'target';
+  /** The accepted decisions whose `enforced_by` names the rule, so the reader sees why it exists. */
+  decisions?: string[];
 }
 
 /** How a component dependency compares with what the SSOT declares. */
@@ -863,6 +872,9 @@ export type DriftKind =
   | 'stale-summary'
   | 'stale-chapter'
   | 'stale-view'
+  | 'unenforced-decision'
+  | 'edited-decision'
+  | 'stale-decision'
   | 'document';
 
 /** One way the SSOT no longer describes the code. */
@@ -1072,6 +1084,8 @@ export interface ArchitectureDecision {
   components: string[];
   /** The rule and checklist ids that enforce it, as `check` names them. */
   enforced_by: string[];
+  /** Why no rule or checklist item can enforce it, which silences `unenforced-decision`. */
+  unenforceable?: string;
   /** Where it comes from: `path`, `path:line`, `path:10-20` or `commit:<hash>`. */
   evidence: string[];
   body: string;

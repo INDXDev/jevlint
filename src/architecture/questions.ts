@@ -7,6 +7,7 @@ import type { DecisionQuestion } from '../decision/decide.ts';
 import type {
   ArchitectureChapter,
   ArchitectureComponent,
+  ArchitectureDecision,
   ArchitectureSsot,
   FactModule,
   MapEdge,
@@ -21,6 +22,10 @@ export const ROUTE = 'route';
 export const UNCOVERED = 'uncovered';
 /** The preset of the stale-summary question. */
 export const DRIFT_PRESET = 'architecture-drift';
+/** The preset that reviews decision records, and asks whether a stale one still holds. */
+export const DECISION_PRESET = 'architecture-decision';
+/** The question `drift` asks of a stale decision, which `review` leaves out. */
+export const STILL_HOLDS = `${DECISION_PRESET}.still-holds`;
 /** Built-in presets only the architecture verbs ask, which `jevlint test` also knows. */
 export const ARCHITECTURE_PRESETS = [
   'architecture-codebase',
@@ -29,6 +34,7 @@ export const ARCHITECTURE_PRESETS = [
   'architecture-component',
   'architecture-design',
   'architecture-chapter',
+  DECISION_PRESET,
   DRIFT_PRESET,
 ];
 
@@ -93,14 +99,27 @@ export function routeQuestion({ index, components }: ArchitectureSsot): Decision
   };
 }
 
-/** What a document is compared with: the summary or description, then the checklist. */
+/** How `drift --docs` names a decision among its statements. `_` keeps it apart from any component. */
+export const DECISION_SCOPE = 'decision_record';
+
+/**
+ * What a document is compared with: the summary or description, then the checklist, then every
+ * accepted decision by its title, since a document about any part can contradict one.
+ */
 export function documentItems(
   ssot: ArchitectureSsot,
   component: ArchitectureComponent | null,
 ): SpecItemRef[] {
   const scope = component?.id ?? GLOBAL;
   const statement = component?.summary ?? ssot.index.description;
-  return [{ id: `${scope}.summary`, text: statement.trim() }, ...checklistRefs(ssot, component)];
+  const decisions = (ssot.decisions ?? [])
+    .filter(({ status }) => status === 'accepted')
+    .map(({ id, title }) => ({ id: `${DECISION_SCOPE}.${id}`, text: title }));
+  return [
+    { id: `${scope}.summary`, text: statement.trim() },
+    ...checklistRefs(ssot, component),
+    ...decisions,
+  ];
 }
 
 /** One drift question per item, then `uncovered`. */
@@ -155,6 +174,26 @@ export function designState(ssot: ArchitectureSsot): string {
   // compiled_on changes on every compile, as compiled_at does, and would ask again for nothing.
   const { compiled_at: _, compiled_on: __, ...index } = ssot.index;
   return stringify({ ...index, components: ssot.components, flows: ssot.flows }, { lineWidth: 0 });
+}
+
+/** What a model reads about one decision record: its facts, its evidence list and its text. */
+export function decisionState(decision: ArchitectureDecision): string {
+  const { title, date, status, enforced_by, unenforceable, evidence, body } = decision;
+  const enforcement = enforced_by.length > 0 ? enforced_by.join(', ') : 'nothing';
+  return [
+    `Decision: ${title}`,
+    `Date: ${date}`,
+    `Status: ${status}`,
+    `Enforced by: ${enforcement}${unenforceable ? ` (unenforceable: ${unenforceable})` : ''}`,
+    `Evidence: ${evidence.join(', ') || 'none'}`,
+    '',
+    body,
+  ].join('\n');
+}
+
+/** The record, then the outline of each component it names as the code has it now. */
+export function stillHoldsState(decision: ArchitectureDecision, outlines: string[]): string {
+  return `===== Decision record =====\n${decisionState(decision)}\n\n===== Components it is about, now =====\n${outlines.join('\n\n')}`;
 }
 
 /** What a model reads about one chapter: its title, its evidence list and its text. */
