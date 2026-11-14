@@ -12,7 +12,7 @@ Results go to stdout, and progress and notices go to stderr, so pipes stay clean
 | Code | Meaning |
 | --- | --- |
 | 0 | Success |
-| 1 | The repository score is below `fail_under`, `audit --new` found something new, `hook --staged` found the staged change made something worse, or [`jevlint test`](#jevlint-test-questions) found a fixture that failed or moved, `spec check` found a violated or unimplemented item, `spec drift` found drift, `architecture check` found a violation or an unimplemented item, `architecture drift` found drift, or `pr --architecture` or `commits --architecture` found a violation the change added |
+| 1 | The repository score is below `fail_under`, `audit --new` found something new, `hook --staged` found the staged change made something worse, or [`jevlint test`](#jevlint-test-questions) found a fixture that failed or moved, `spec check` found a violated or unimplemented item, `spec drift` found drift, `architecture check` found a violation or an unimplemented item, `architecture drift` found drift, `pr --architecture` or `commits --architecture` found a violation the change added, or `pr --acceptance` found a criterion the pull request does not meet |
 | 2 | Usage or config error, an architecture SSOT that does not load, a rejected API key, a refused [cache bucket](caching.md#share-the-cache-through-object-storage), or a Node.js without the required security fixes. With `fail_under` or `--new` set, also: no file was scored, every provider request failed, or a key in the environment was never allowed. `hook` also uses it as a gate: an edit made a file worse, which is the code Claude Code feeds back to the agent |
 
 ## `jevlint audit [paths...]`
@@ -103,7 +103,7 @@ files in `.jevlint/architecture/` that describes the system's components, layers
 | `jevlint architecture [paths...]` | The same as `review` | As `review` |
 | `jevlint architecture review [paths...]` | Review the codebase, directories, classes and, with an SSOT, each component and the design. Rank them worst to best. An SSOT that does not load is skipped with a warning, unless `--perspective` asks for it | Yes, unless `--ast-only` |
 | `jevlint architecture compile [paths...]` | Print a prompt that tells a coding agent to write the SSOT from the code, or to update it | No |
-| `jevlint architecture list` | Load and validate the SSOT, and print it. Exits 2 when it does not load, and warns on stderr when it is over the size budget or its views and chapters do not fit the code | No |
+| `jevlint architecture list` | Load and validate the SSOT, and print it. Exits 2 when it does not load, and warns on stderr when it is over the size budget or its views, chapters and decisions do not fit the code. `--json` prints it, and `--as-of <commit\|date>` reads it [as it was](#reading-the-ssot-as-it-was-with---as-of) | No |
 | `jevlint architecture show` | Draw the SSOT, or a draft from the code when there is none, with the real dependencies laid over the declared ones | No |
 | `jevlint architecture check [paths...]` | Check that the code follows the SSOT. Exits 1 on a violation or an unimplemented checklist item | Checklist items only |
 | `jevlint architecture drift` | Find where the SSOT no longer describes the code. Exits 1 when it finds any | Summaries and `--docs` only |
@@ -117,7 +117,7 @@ there is no SSOT.
 
 | Flag | Meaning |
 | --- | --- |
-| `--perspective <names>` | Review only some of `codebase`, `directory`, `class`, `component`, `design` and `chapter`, comma-separated. The last three need an SSOT |
+| `--perspective <names>` | Review only some of `codebase`, `directory`, `class`, `component`, `design`, `chapter` and `decision`, comma-separated. The last four need an SSOT |
 | `--top <n>` | Rows to show (default 20) |
 | `--html <file>` | Write a visual report to this file. The file name is required |
 | `--json` | Print the [JSON report](json-output.md#architecture-report) |
@@ -158,10 +158,30 @@ problems back to the agent, at most twice.
 | `--markdown` | Print the SSOT as an ARCHITECTURE.md with Mermaid diagrams, built around its chapters when it has them, or only the chosen `--view` |
 | `--html <file>` | Write one page with no scripts and no network requests |
 | `--json` | Print the SSOT, the map edges and the facts |
+| `--as-of <commit\|date>` | Show the SSOT and the code [as they were](#reading-the-ssot-as-it-was-with---as-of) at a commit or on a date |
 
 With no SSOT, `show` draws the component candidates from the facts and says on stderr that this is a
 draft. jevlint never writes into `docs/`: redirect `--markdown` yourself, as in
 `jevlint architecture show --markdown > docs/ARCHITECTURE.md`.
+
+### Reading the SSOT as it was with `--as-of`
+
+`list --as-of` and `show --as-of` read the SSOT and the code from git as they were at a revision, and
+render them with every check `list` and `show` apply today. Git is the store; decision records are
+the index into it. Nothing is checked out: the SSOT's files are copied from git into a private
+directory that is deleted afterwards, and the code is read with `ls-tree` and `cat-file`, so the
+working tree and the index stay as they are.
+
+The value is a revision, such as a commit or a tag, or a date as `YYYY-MM-DD`. A date means the last
+commit on the first-parent history of `HEAD` committed before that day ended in UTC: the branch as it
+stood then, not a commit of a branch that was merged later. Commit dates are when something was
+committed, not when it was decided, so read a date as approximate. With no SSOT at that revision,
+`list` exits 2 and `show` draws the draft from the code at that revision.
+
+```sh
+jevlint architecture show --as-of v0.2.0 --markdown
+jevlint architecture list --as-of 2026-11-01
+```
 
 ### `check`
 
@@ -242,6 +262,7 @@ the command prints how.
 | `--ignore-pins` | Score files as if no [`jevlint-score` comment](scoring.md#pinning-scores) existed |
 | `--intent` | Also [judge the change](#judging-a-change-with---intent) against its message and the repository's instructions. Cannot be used with `--ast-only`, or with `--format sarif` or `github`, which report per file |
 | `--architecture` | Also report the [architecture SSOT](architecture-reference.md) violations the change added, decided from the AST at both commits with no model. Needs an SSOT, and `--format text` or `json` |
+| `--acceptance` | `pr` only. Also [judge the pull request](#judging-a-pull-request-with---acceptance) against the acceptance criteria in its body and the issues it closes. Cannot be used with `--ast-only`, or with `--format sarif` or `github` |
 
 A model run audits each file twice, so it can cost twice what `audit` does for those files. Cached
 answers are free, and model scores vary a little between versions of a file, so read a small change
@@ -269,8 +290,9 @@ jevlint commits v1.2.0 --count 3
 ```
 
 A renamed file counts as new in both commands. Both only report: `fail_under` does not apply, so they
-exit 0 whatever the scores. The exception is `--architecture`, which exits 1 when a change added an
-SSOT violation, so it can gate a pull request.
+exit 0 whatever the scores. The exceptions are `--architecture`, which exits 1 when a change added an
+SSOT violation, and `--acceptance`, which exits 1 when the pull request does not meet a criterion, so
+either can gate a pull request.
 
 ### Judging a change with `--intent`
 
@@ -301,6 +323,49 @@ It is off by default, as it costs one more request per change and
 ```sh
 jevlint pr 42 --intent
 jevlint commits --count 5 --intent --json
+```
+
+### Judging a pull request with `--acceptance`
+
+`--acceptance` on `pr` asks the question a reviewer cares about most: does the pull request do what
+was asked? It answers in two stages, both with the decision model.
+
+1. **Extract.** It reads the pull request's body and the body of each issue in its closing
+   references: the issues GitHub closes on merge, written as `Fixes #12` or linked in the sidebar.
+   Issues in another repository are named in a warning and not read, nor are comments. Each text is
+   cut into chunks, line by line: each checklist item, each list item, and each sentence of a
+   paragraph, with the headings above it. Code blocks, tables, HTML comments and quoted text are left
+   out. Each chunk is asked one question of the built-in `acceptance-criteria` preset, in a request
+   of its own: is it a condition the finished change must meet, specific enough to check against
+   the code? A chunk is a criterion at a probability of 0.5 or more. Headings are context, not a
+   filter, so a checklist under "Out of scope" is asked about too, and rejected.
+2. **Judge.** It asks how far the diff meets each criterion, with one choice question per criterion
+   in one request, at most 64 to a request. The criteria come before the diff, so a long diff is cut
+   rather than them. The diff is the one `--intent` sends.
+
+| Verdict | Meaning | Points |
+| --- | --- | --- |
+| `met` | The diff does what the criterion asks | 1 |
+| `partly` | The diff does part of it | 0.5 |
+| `not-met` | The diff does not do it, or contradicts it | 0 |
+| `cannot-tell` | A diff cannot show it, as for "deployed" or "reviewed by a person" | Not counted |
+
+The score is the points over the criteria that count, on the configured scale. The output lists
+each criterion with its verdict and where it comes from (`PR` or `#<n>`), and says how many chunks
+were not criteria; `--json` lists those too. The command exits 1 when any criterion is `not-met`.
+Finding no criteria is a warning, not a failure, and so is an issue `gh` cannot read.
+
+Every chunk is a small request, cached on its own, so running the command again costs nothing until
+the text or the diff changes. A long issue still makes many requests the first time, so the command
+warns on stderr when there are more chunks than `warn_file_count`. With no key for any provider it
+warns and carries on without it. The criteria are read as they are now, not as they were when the
+pull request was opened, so whoever can edit the body or the issues can change them. See
+[Security](security.md#what-leaves-your-machine) for what is sent.
+
+```sh
+jevlint pr 42 --acceptance
+jevlint pr 42 --acceptance --json   # for CI
+jevlint pr --acceptance --intent    # with other questions
 ```
 
 ## `jevlint test [questions...]`

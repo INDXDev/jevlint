@@ -48,6 +48,7 @@ const GROUPS: Record<PresetUse, string> = {
   audit: 'For audits (* = default):',
   architecture: 'For jevlint architecture:',
   intent: 'For --intent on jevlint pr and jevlint commits:',
+  acceptance: 'For --acceptance on jevlint pr:',
 };
 
 async function presetTable(): Promise<{ root: string; defaults: string[]; presets: Listed[] }> {

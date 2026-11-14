@@ -1,6 +1,6 @@
 ---
 title: Building blocks
-evidence: [docs/architecture.md:27-155, src/commands/shared.ts:1-20, src/audit.ts:1-34, src/review.ts:1-27, src/spec/run.ts:1-8, src/architecture/collect.ts:1-23, src/architecture/conformance.ts:1-19, src/architecture/facts.ts:1-33, src/decision/decide.ts:1-18, src/config.ts:1-19, src/git.ts:1-27, src/fixers.ts:1-4, src/trust.ts:1-18]
+evidence: [docs/architecture.md:27-156, src/commands/shared.ts:1-20, src/audit.ts:1-34, src/review.ts:1-27, src/spec/run.ts:1-8, src/architecture/collect.ts:1-23, src/architecture/conformance.ts:1-19, src/architecture/facts.ts:1-33, src/decision/decide.ts:1-18, src/config.ts:1-19, src/git.ts:1-27, src/fixers.ts:1-4, src/trust.ts:1-18]
 ---
 
 jevlint has 24 components in five layers. The diagram shows how a run moves from the actor through

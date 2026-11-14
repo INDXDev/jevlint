@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -10,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { confirm, multiselect, select, spinner } from '@clack/prompts';
 import clipboard from 'clipboardy';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -267,6 +268,52 @@ describe('jevlint commits and pr', () => {
     expect(status).toBe(0);
     expect(stderr).toContain(NO_KEY_NOTICE);
     expect(JSON.parse(stdout)[0]).not.toHaveProperty('intent');
+  });
+
+  it.each([
+    [['pr', '7', '--acceptance', '--ast-only'], '--acceptance asks a model'],
+    [['pr', '7', '--acceptance', '--format', 'sarif'], '--acceptance judges a whole pull request'],
+    [['commits', '--acceptance'], 'Unknown flag --acceptance'],
+  ])('refuses %j before calling gh', (args, message) => {
+    const { status, stderr } = jevlint(repository(), ...args);
+    expect(status).toBe(2);
+    expect(stderr).toContain(message);
+  });
+
+  it('warns about --acceptance with no key, and carries on with the review', () => {
+    const dir = repository();
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' });
+    const base = spawnSync('git', ['rev-parse', 'HEAD~1'], { cwd: dir, encoding: 'utf8' });
+    const pr = {
+      number: 7,
+      title: 'T',
+      body: '- [ ] It works.',
+      baseRefName: 'main',
+      baseRefOid: base.stdout.trim(),
+      headRefOid: head.stdout.trim(),
+      url: 'https://github.com/a/b/pull/7',
+      closingIssuesReferences: [],
+    };
+    const bin = tempDir();
+    writeFileSync(join(bin, 'gh'), `#!/bin/sh\ncat <<'JSON'\n${JSON.stringify(pr)}\nJSON\n`);
+    chmodSync(join(bin, 'gh'), 0o755);
+    const home = tempDir();
+    const env = {
+      PATH: `${bin}${delimiter}${process.env.PATH}`,
+      HOME: home,
+      XDG_CONFIG_HOME: home,
+      XDG_CACHE_HOME: home,
+    };
+    const run = spawnSync(process.execPath, [CLI, 'pr', '7', '--acceptance', '--json'], {
+      cwd: dir,
+      env,
+      encoding: 'utf8',
+    });
+    expect(run.status).toBe(0);
+    expect(run.stderr).toContain(NO_KEY_NOTICE);
+    const [review] = JSON.parse(run.stdout);
+    expect(review.title).toBe('Pull request #7: T');
+    expect(review).not.toHaveProperty('acceptance');
   });
 
   it('exits 2 for a bad pull request number, before calling gh', () => {

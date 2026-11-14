@@ -1,6 +1,7 @@
 /** Loads and validates the architecture SSOT. See docs/architecture-reference.md. */
-import { readdir } from 'node:fs/promises';
-import { join, posix, relative, resolve, sep } from 'node:path';
+import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import {
@@ -10,13 +11,16 @@ import {
   parseWith,
   readRegularFile,
   UserError,
+  writeFileAtomic,
 } from '../config.ts';
 import { isOutsideRoot } from '../files.ts';
+import { fileAt, filesAt } from '../git.ts';
 import { assertInRepo } from '../presets.ts';
 import { checklistSchema, idSchema, readYaml } from '../spec/load.ts';
 import type {
   ArchitectureChapter,
   ArchitectureComponent,
+  ArchitectureDecision,
   ArchitectureFlow,
   ArchitectureIndex,
   ArchitectureRule,
@@ -58,6 +62,16 @@ const glob = z
     message: 'must be a root-relative path or glob, with no ..',
   });
 const commit = z.string().regex(/^[0-9a-f]{7,40}$/, 'must be a commit hash');
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a date as YYYY-MM-DD')
+  .refine(
+    (date) => {
+      const parsed = new Date(`${date}T00:00:00Z`);
+      return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(date);
+    },
+    { message: 'must be a real date' },
+  );
 
 const ruleSchema = z.discriminatedUnion('kind', [
   z.strictObject({ id: idSchema, kind: z.literal('layers') }),
@@ -104,6 +118,7 @@ const indexSchema = z.strictObject({
   version: z.literal(1),
   name: text,
   compiled_at: commit.optional(),
+  compiled_on: isoDate.optional(),
   description: prose,
   layers: z.array(idSchema).default([]),
   ignore: z.array(glob).default([]),
@@ -258,23 +273,72 @@ const chapterSchema = z.strictObject({
   evidence: z.array(z.string().min(1)).default([]),
 });
 
+/** The most decision records one SSOT may have. They are never deleted, so the cap is generous. */
+const MAX_DECISIONS = MAX_FILES;
+/** A decision record's file name: its number, which sets the order, then its id. */
+const DECISION_FILE = /^(\d+)-([a-z0-9][a-z0-9-]*)\.md$/;
+/**
+ * How `enforced_by` names a rule or checklist item, as `check` does: a rule of `index.yaml` by its
+ * id, `global.<id>` for an item of `index.yaml`, and `<component>.<id>` for a component's own.
+ */
+const enforcerId = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)?$/, 'must be a rule or checklist id');
+
+const decisionSchema = (fileId: string) =>
+  z.strictObject({
+    id: idSchema.refine(
+      (id) => id === fileId,
+      `must equal the file name without its number and .md (${fileId})`,
+    ),
+    title: shortText(100),
+    date: isoDate,
+    status: z.enum(['proposed', 'accepted', 'deprecated', 'superseded']),
+    supersedes: ids.default([]),
+    superseded_by: idSchema.nullable().default(null),
+    components: ids.default([]),
+    enforced_by: z.array(enforcerId).default([]),
+    unenforceable: prose.optional(),
+    evidence: z.array(z.string().min(1)).default([]),
+  });
+
 /** Where a chapter places a diagram: `<!-- jevlint:diagram overview -->`. */
 export const DIAGRAM_DIRECTIVE = /<!--\s*jevlint:diagram\s+([a-z0-9_:-]+)\s*-->/g;
 /** Diagram names every SSOT has, besides its views and `flow:<id>`. */
-export const BUILT_IN_DIAGRAMS = ['map', 'layers', 'components'];
+export const BUILT_IN_DIAGRAMS = ['map', 'layers', 'components', 'decisions'];
 
-/** Splits a chapter into its YAML frontmatter and its Markdown body. */
-function parseChapter(raw: string, file: string, id: string): ArchitectureChapter {
+/** Splits a Markdown file into its YAML frontmatter and its body. */
+function parseFrontmatter(raw: string, file: string): { front: unknown; body: string } {
   const match = raw.replace(/^﻿/, '').match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match) throw new UserError(`${file}: must start with --- frontmatter holding a title`);
-  let front: unknown;
   try {
-    front = parseYaml(match[1] as string, { maxAliasCount: 10 });
+    return {
+      front: parseYaml(match[1] as string, { maxAliasCount: 10 }) ?? {},
+      body: (match[2] as string).trim(),
+    };
   } catch {
     throw new UserError(`${file}: invalid YAML in the frontmatter`);
   }
-  const { title, evidence } = parseWith(chapterSchema, front ?? {}, file);
-  return { id, title, evidence, body: (match[2] as string).trim() };
+}
+
+/**
+ * The status and body of a decision record as some commit held it, or null when it does not
+ * parse. Lenient, as an old version need not fit today's schema.
+ */
+export function recordVersion(raw: string): { status: unknown; body: string } | null {
+  try {
+    const { front, body } = parseFrontmatter(raw, 'record');
+    return isTable(front) ? { status: front.status, body } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Splits a chapter into its YAML frontmatter and its Markdown body. */
+function parseChapter(raw: string, file: string, id: string): ArchitectureChapter {
+  const { front, body } = parseFrontmatter(raw, file);
+  const { title, evidence } = parseWith(chapterSchema, front, file);
+  return { id, title, evidence, body };
 }
 
 async function readChapters(root: string, dir: string): Promise<ArchitectureChapter[]> {
@@ -302,6 +366,149 @@ async function readChapters(root: string, dir: string): Promise<ArchitectureChap
     chapters.push(parseChapter(raw, file, id));
   }
   return chapters;
+}
+
+async function readDecisions(root: string, dir: string): Promise<ArchitectureDecision[]> {
+  const decisionsDir = join(root, dir, 'decisions');
+  const names = ((await ifExists(readdir(decisionsDir))) ?? []).filter((name) =>
+    name.endsWith('.md'),
+  );
+  if (names.length === 0) return [];
+  if (names.length > MAX_DECISIONS) {
+    throw new UserError(`${dir}/decisions: ${names.length} records, more than ${MAX_DECISIONS}`);
+  }
+  await assertInRepo(decisionsDir, root);
+  const decisions: ArchitectureDecision[] = [];
+  // By number, so that 10- follows 9- whether or not the numbers are padded.
+  const order = (name: string) => Number(name.match(DECISION_FILE)?.[1] ?? Number.NaN);
+  names.sort((a, b) => order(a) - order(b) || (a < b ? -1 : a > b ? 1 : 0));
+  for (const name of names) {
+    const file = posix.join(dir, 'decisions', name);
+    const fileId = name.match(DECISION_FILE)?.[2];
+    if (!fileId) {
+      throw new UserError(`${file}: name decision records <number>-<id>.md, such as 0001-${name}`);
+    }
+    await assertInRepo(join(decisionsDir, name), root);
+    const raw = await readRegularFile(join(decisionsDir, name));
+    if (Buffer.byteLength(raw) > MAX_CHAPTER_BYTES) {
+      throw new UserError(`${file}: larger than ${MAX_CHAPTER_BYTES} bytes`);
+    }
+    const { front, body } = parseFrontmatter(raw, file);
+    const record = parseWith(decisionSchema(fileId), front, file);
+    decisions.push({ ...record, file: name.slice(0, -'.md'.length), body });
+  }
+  return decisions;
+}
+
+/** The accepted decisions each rule or checklist id enforces: `enforced_by`, reversed. */
+export function decisionsByEnforcer(ssot: ArchitectureSsot): Map<string, string[]> {
+  const byEnforcer = new Map<string, string[]>();
+  for (const { id, status, enforced_by } of ssot.decisions ?? []) {
+    if (status !== 'accepted') continue;
+    for (const enforcer of enforced_by)
+      byEnforcer.set(enforcer, [...(byEnforcer.get(enforcer) ?? []), id]);
+  }
+  return byEnforcer;
+}
+
+/**
+ * The order a document shows decisions in: accepted then proposed ones in file order, and the
+ * superseded and deprecated ones apart, by date.
+ */
+export function orderDecisions(decisions: ArchitectureDecision[] = []): {
+  live: ArchitectureDecision[];
+  past: ArchitectureDecision[];
+} {
+  const byDate = (a: ArchitectureDecision, b: ArchitectureDecision) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+  return {
+    live: [
+      ...decisions.filter(({ status }) => status === 'accepted'),
+      ...decisions.filter(({ status }) => status === 'proposed'),
+    ],
+    past: decisions
+      .filter(({ status }) => status === 'superseded' || status === 'deprecated')
+      .sort(byDate),
+  };
+}
+
+/** Decisions that supersede each other in a loop, each loop once, as `a → b → a`. */
+function supersedeCycles(decisions: ArchitectureDecision[]): string[] {
+  const replaces = new Map(decisions.map(({ id, supersedes }) => [id, supersedes]));
+  const done = new Set<string>();
+  const cycles: string[] = [];
+  const visit = (id: string, path: string[]) => {
+    const start = path.indexOf(id);
+    if (start >= 0) return void cycles.push([...path.slice(start), id].join(' → '));
+    if (done.has(id)) return;
+    // A record that supersedes itself has its own message.
+    for (const next of replaces.get(id) ?? []) if (next !== id) visit(next, [...path, id]);
+    done.add(id);
+  };
+  for (const { id } of decisions) visit(id, []);
+  return cycles;
+}
+
+/**
+ * Checks the record graph: unique ids, components and enforcing ids that exist, and `supersedes`
+ * and `superseded_by` that name real records, agree with each other and form no loop.
+ */
+function checkDecisions(ssot: ArchitectureSsot, need: Need): string[] {
+  const decisions = ssot.decisions ?? [];
+  const problems: string[] = [];
+  const byId = new Map<string, ArchitectureDecision>();
+  for (const decision of decisions) {
+    const where = posix.join(ssot.dir, 'decisions', `${decision.file}.md`);
+    const other = byId.get(decision.id);
+    if (other) problems.push(`${where}: duplicate id ${decision.id}, also in ${other.file}.md`);
+    else byId.set(decision.id, decision);
+  }
+  const ids = new Set(byId.keys());
+  const componentIds = new Set(ssot.components.map(({ id }) => id));
+  const enforcers = new Set([
+    ...ssot.index.rules.map(({ id }) => id),
+    ...ssot.index.checklist.map(({ id }) => `global.${id}`),
+    ...ssot.components.flatMap(({ id, rules, checklist }) =>
+      [...rules, ...checklist].map((item) => `${id}.${item.id}`),
+    ),
+  ]);
+  for (const decision of decisions) {
+    const { id, status, supersedes, superseded_by } = decision;
+    const where = posix.join(ssot.dir, 'decisions', `${decision.file}.md`);
+    need(where, 'component', componentIds, decision.components);
+    need(where, 'rule or checklist item', enforcers, decision.enforced_by);
+    need(where, 'decision', ids, [...supersedes, ...(superseded_by ? [superseded_by] : [])]);
+    if (supersedes.includes(id) || superseded_by === id) {
+      problems.push(`${where}: a decision cannot supersede itself`);
+    }
+    if (status === 'superseded' && superseded_by === null) {
+      problems.push(`${where}: status is superseded, so superseded_by must name its successor`);
+    }
+    if (status !== 'superseded' && superseded_by !== null) {
+      problems.push(`${where}: superseded_by is set, so status must be superseded`);
+    }
+    if (decision.unenforceable !== undefined && decision.enforced_by.length > 0) {
+      problems.push(`${where}: give enforced_by or unenforceable, not both`);
+    }
+    for (const old of supersedes) {
+      const replaced = byId.get(old);
+      if (replaced && old !== id && replaced.superseded_by !== id) {
+        problems.push(
+          `${where}: supersedes ${old}, but ${old} has superseded_by: ${replaced.superseded_by ?? 'null'}`,
+        );
+      }
+    }
+    const successor = superseded_by ? byId.get(superseded_by) : undefined;
+    if (successor && superseded_by !== id && !successor.supersedes.includes(id)) {
+      problems.push(
+        `${where}: superseded_by ${superseded_by}, but ${superseded_by} does not list ${id} in supersedes`,
+      );
+    }
+  }
+  for (const cycle of supersedeCycles([...byId.values()])) {
+    problems.push(`${posix.join(ssot.dir, 'decisions')}: decisions supersede each other: ${cycle}`);
+  }
+  return problems;
 }
 
 function checkViews(ssot: ArchitectureSsot, need: Need): void {
@@ -415,6 +622,7 @@ function crossCheck(ssot: ArchitectureSsot): string[] {
   }
   checkViews(ssot, need);
   checkChapters(ssot, need);
+  problems.push(...checkDecisions(ssot, need));
   for (const flow of flows) {
     const where = posix.join(ssot.dir, 'flows', `${flow.id}.yaml`);
     need(
@@ -461,13 +669,58 @@ export async function loadArchitecture(config: Config): Promise<ArchitectureSsot
     );
   }
   const chapters = await readChapters(root, dir);
-  const ssot = { dir, index, components, flows, views, chapters };
+  const decisions = await readDecisions(root, dir);
+  const ssot: ArchitectureSsot = {
+    dir,
+    index,
+    components,
+    flows,
+    views,
+    chapters,
+    // Absent rather than empty, so an SSOT without records loads and prints exactly as before.
+    ...(decisions.length > 0 ? { decisions } : {}),
+  };
   const problems = crossCheck(ssot);
   if (problems.length > 0) throw new UserError(problems.join('\n'));
   return ssot;
 }
 
-/** Root-relative paths of the SSOT's files: `index.yaml`, each component, then each flow. */
+/** More files than every directory of the SSOT may hold together, so a commit is refused early. */
+const MAX_SNAPSHOT_FILES = 6 * MAX_FILES;
+
+/**
+ * Reads the SSOT as it was at a commit, with the same checks as `loadArchitecture`. Its files are
+ * copied from git into a private directory, which is deleted afterwards, so nothing is checked out
+ * and the working tree stays as it is. Null when the commit has no `index.yaml`.
+ */
+export async function loadArchitectureAt(
+  config: Config,
+  commit: string,
+): Promise<ArchitectureSsot | null> {
+  const dir = ssotDir(config);
+  const files = (await filesAt(config.root, commit)).filter((path) => path.startsWith(`${dir}/`));
+  if (files.length > MAX_SNAPSHOT_FILES) {
+    throw new UserError(`${dir}: ${files.length} files at ${commit}, more than an SSOT can have`);
+  }
+  const snapshot = await mkdtemp(join(tmpdir(), 'jevlint-ssot-'));
+  try {
+    for (const path of files) {
+      // A crafted tree can hold these names, which would write outside the directory.
+      if (path.split('/').some((part) => part === '..' || part.toLowerCase() === '.git')) continue;
+      const text = await fileAt(config.root, commit, path);
+      if (text === undefined) continue;
+      await mkdir(dirname(join(snapshot, path)), { recursive: true });
+      await writeFileAtomic(join(snapshot, path), text);
+    }
+    // Root-relative, as an absolute `architecture.dir` would point back into the working tree.
+    const architecture = { ...config.architecture, dir };
+    return await loadArchitecture({ ...config, root: snapshot, architecture });
+  } finally {
+    await rm(snapshot, { recursive: true, force: true });
+  }
+}
+
+/** Root-relative paths of the SSOT's files: `index.yaml`, then components, flows, views and so on. */
 export function architectureFiles(ssot: ArchitectureSsot): string[] {
   return [
     posix.join(ssot.dir, 'index.yaml'),
@@ -475,6 +728,7 @@ export function architectureFiles(ssot: ArchitectureSsot): string[] {
     ...ssot.flows.map(({ id }) => posix.join(ssot.dir, 'flows', `${id}.yaml`)),
     ...ssot.views.map(({ id }) => posix.join(ssot.dir, 'views', `${id}.yaml`)),
     ...ssot.chapters.map(({ id }) => posix.join(ssot.dir, 'chapters', `${id}.md`)),
+    ...(ssot.decisions ?? []).map(({ file }) => posix.join(ssot.dir, 'decisions', `${file}.md`)),
   ];
 }
 
@@ -515,7 +769,14 @@ export function budgetWarnings(ssot: ArchitectureSsot): string[] {
   if (total > BUDGET.documentWords) {
     warnings.push(`The chapters have ${total} words, more than ${BUDGET.documentWords}.`);
   }
-  const tokens = tokensOf({ ...ssot, dir: undefined, chapters: undefined, views: undefined });
+  // Decisions are prose kept for good, as chapters are, so they do not count against the budget.
+  const tokens = tokensOf({
+    ...ssot,
+    dir: undefined,
+    chapters: undefined,
+    views: undefined,
+    decisions: undefined,
+  });
   if (tokens > BUDGET.tokens) {
     warnings.push(`About ${tokens} tokens in all, more than ${BUDGET.tokens}. Shorten summaries.`);
   }

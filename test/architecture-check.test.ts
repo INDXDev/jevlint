@@ -485,3 +485,192 @@ describe('validateSsot', () => {
     expect(await validateSsot(config)).toEqual({ ssot: null, problems: [] });
   });
 });
+
+describe('decision records', () => {
+  const record = (id: string, fields: string, body = '### Context\n\nWhy we chose it.') =>
+    `---\nid: ${id}\ntitle: The ${id} decision\ndate: 2026-10-02\nstatus: accepted\n${fields}\n---\n\n${body}\n`;
+  const REVERSED = "import '../web/page.ts';\nexport function query() { return 1; }\n";
+
+  it('names the decisions a violated rule enforces, in the report', async () => {
+    await write({
+      [`${DIR}/decisions/0001-layered.md`]: record(
+        'layered',
+        'components: [db]\nenforced_by: [down]',
+      ),
+      [`${DIR}/decisions/0002-old.md`]: record(
+        'old',
+        'enforced_by: [down]\nsuperseded_by: layered',
+      ).replace('accepted', 'superseded'),
+      'src/db/client.ts': REVERSED,
+    });
+    await write({
+      [`${DIR}/decisions/0001-layered.md`]: record(
+        'layered',
+        'components: [db]\nsupersedes: [old]\nenforced_by: [down]',
+      ),
+    });
+    const report = await checkArchitecture(config, await ssot(), { static: true });
+    const layered = report.violations.find(({ rule }) => rule === 'layer-violation');
+    expect(layered?.decisions).toEqual(['layered']);
+    expect(report.violations.find(({ rule }) => rule !== 'layer-violation')).not.toHaveProperty(
+      'decisions',
+    );
+  });
+
+  it('reports unenforced and stale decisions, and edited ones from git', async () => {
+    git('init', '-q');
+    await write({
+      [`${DIR}/decisions/0001-loose.md`]: record('loose', 'evidence: [src/web/page.ts]'),
+      [`${DIR}/decisions/0002-reasoned.md`]: record(
+        'reasoned',
+        'unenforceable: "A choice of process, not of code."',
+      ),
+      [`${DIR}/decisions/0003-kept.md`]: record('kept', 'enforced_by: [down]'),
+    });
+    const base = commit('base');
+    await write({
+      [`${DIR}/index.yaml`]: SSOT[`${DIR}/index.yaml`].replace(
+        'name: shop',
+        `name: shop\ncompiled_at: ${base}`,
+      ),
+      // A typo fix and rewrapping are not edits; a changed word is.
+      [`${DIR}/decisions/0002-reasoned.md`]: record(
+        'reasoned',
+        'unenforceable: "A choice of process, not of code."',
+        '### Context\n\nWhy we\nchoose it.',
+      ),
+      [`${DIR}/decisions/0003-kept.md`]: record(
+        'kept',
+        'enforced_by: [down]',
+        '### Context\n\nWhy we never chose it.',
+      ),
+      'src/web/page.ts':
+        "import { query } from '../db/client.ts';\nexport const page = () => query() + 1;\n",
+    });
+    const items = (await driftArchitecture(config, await ssot(), { static: true })).items;
+    expect(items.map(({ kind, target }) => [kind, target]).sort()).toEqual([
+      ['edited-decision', 'kept'],
+      ['stale-decision', 'loose'],
+      ['unenforced-decision', 'loose'],
+    ]);
+    expect(items.find(({ kind }) => kind === 'edited-decision')?.message).toContain(
+      `since commit ${base.slice(0, 7)} accepted it`,
+    );
+  });
+
+  it('treats a record accepted only in the working tree, or a shallow clone, as no edit', async () => {
+    git('init', '-q');
+    commit('code');
+    await write({ [`${DIR}/decisions/0001-new.md`]: record('new', 'enforced_by: [down]') });
+    const fresh = await driftArchitecture(config, await ssot(), { static: true });
+    expect(fresh.items).toEqual([]);
+
+    commit('record');
+    await write({
+      [`${DIR}/decisions/0001-new.md`]: record('new', 'enforced_by: [down]', 'Else.'),
+    });
+    commit('edit');
+    const clone = await mkdtemp(join(tmpdir(), 'jevlint-shallow-'));
+    execFileSync('git', ['clone', '-q', '--depth', '1', `file://${root}`, clone]);
+    const shallow = await driftArchitecture({ ...config, root: clone }, await ssot(), {
+      static: true,
+    });
+    expect(shallow.items).toEqual([]);
+    expect(shallow.warnings.join()).toContain('shallow clone');
+    await rm(clone, { recursive: true, force: true });
+  });
+
+  it('asks whether a stale decision still holds, and keeps only the doubted ones', async () => {
+    git('init', '-q');
+    await write({
+      [`${DIR}/decisions/0001-about-web.md`]: record(
+        'about-web',
+        'components: [web]\nenforced_by: [down]\nevidence: [src/web/page.ts]',
+      ),
+      [`${DIR}/decisions/0002-about-nothing.md`]: record(
+        'about-nothing',
+        'enforced_by: [down]\nevidence: [src/web/page.ts]',
+      ),
+    });
+    const base = commit('base');
+    await write({
+      [`${DIR}/index.yaml`]: SSOT[`${DIR}/index.yaml`].replace(
+        'name: shop',
+        `name: shop\ncompiled_at: ${base}`,
+      ),
+      'src/web/page.ts':
+        "import { query } from '../db/client.ts';\nexport const page = () => query() + 1;\n",
+    });
+    const holds = useModel(() => 'agrees', 0.9);
+    const kept = await driftArchitecture(config, await ssot(), {});
+    const stale = kept.items.filter(({ kind }) => kind === 'stale-decision');
+    expect(stale.map(({ target }) => target)).toEqual(['about-nothing']);
+    const asked = holds.filter((state) => state.includes('Decision record'));
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain('Decision: The about-web decision');
+    expect(asked[0]).toContain('Component: web (Web)');
+    expect(asked[0]).not.toContain('query() + 1');
+
+    useModel(() => 'agrees', 0.1);
+    const doubted = await driftArchitecture(config, await ssot(), { noCache: true });
+    expect(doubted.items.find(({ target }) => target === 'about-web')?.message).toContain(
+      'The model doubts it still holds (0.10)',
+    );
+  });
+
+  it('compares documents with accepted decisions too', async () => {
+    await write({
+      [`${DIR}/decisions/0001-no-orm.md`]: record('no-orm', 'enforced_by: [down]'),
+      'docs/arch.md': '# Arch\nWe use an ORM for everything.\n',
+    });
+    const requests = useModel(
+      (id) =>
+        id === 'route' ? 'global' : id === 'decision_record.no-orm' ? 'contradicts' : 'agrees',
+      0.1,
+    );
+    const report = await driftArchitecture(config, await ssot(), { docs: ['docs/arch.md'] });
+    expect(requests.join()).toContain('decision_record.no-orm: The no-orm decision');
+    expect(report.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'document',
+          target: 'decision_record.no-orm',
+          message: 'contradicts decision_record.no-orm: The no-orm decision',
+        }),
+      ]),
+    );
+  });
+
+  it('reviews each accepted decision with the decision perspective, without still-holds', async () => {
+    await write({
+      [`${DIR}/decisions/0001-kept.md`]: record('kept', 'enforced_by: [down]'),
+      [`${DIR}/decisions/0002-idea.md`]: record('idea', 'enforced_by: [down]').replace(
+        'accepted',
+        'proposed',
+      ),
+    });
+    const requests = useModel(() => 'agrees');
+    const report = await reviewArchitecture(config, { perspectives: ['decision'] });
+    expect(report.units.map(({ perspective, name, path }) => [perspective, name, path])).toEqual([
+      ['decision', 'kept', `${DIR}/decisions/0001-kept.md`],
+    ]);
+    expect(report.units[0]?.model?.answers.map(({ id }) => id)).toEqual([
+      'architecture-decision.context-stated',
+      'architecture-decision.alternatives-named',
+      'architecture-decision.consequences-named',
+      'architecture-decision.evidence-supports',
+    ]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toContain('Decision: The kept decision');
+    expect(requests[0]).toContain('Enforced by: down');
+  });
+
+  it('leaves the default review and drift of an SSOT without records as they were', async () => {
+    const requests = useModel(() => 'agrees', 0.9);
+    await reviewArchitecture(config, {});
+    expect(requests.join()).not.toContain('Decision:');
+    await write({ 'docs/arch.md': '# Arch\n' });
+    await driftArchitecture(config, await ssot(), { docs: ['docs/arch.md'] });
+    expect(requests.join()).not.toContain('decision_record');
+  });
+});

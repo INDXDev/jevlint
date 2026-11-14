@@ -53,13 +53,13 @@ export interface AstRule extends AstPattern {
 }
 
 /** The command a preset's questions are written for. */
-export type PresetUse = 'audit' | 'architecture' | 'intent';
+export type PresetUse = 'audit' | 'architecture' | 'intent' | 'acceptance';
 
 export interface Preset {
   name: string;
   description: string;
   source: string;
-  /** `audit` unless the questions only make sense to `jevlint architecture` or `--intent`. */
+  /** `audit` unless the questions only make sense to `jevlint architecture`, `--intent` or `--acceptance`. */
   used_by: PresetUse;
   /** Other presets that run alongside this one, each keeping its own question ids. */
   includes: string[];
@@ -221,6 +221,58 @@ export interface Change {
   head: string;
   /** The full commit message, or a pull request's title and body. Read only by `--intent`. */
   message?: string;
+  /** When asked for: the pull request's number. */
+  number?: number;
+  /** When asked for: the pull request's body alone, without its title. */
+  body?: string;
+  /** When asked for: the numbers of the same-repository issues it closes on merge. */
+  closes?: number[];
+  /** When asked for: issues it closes in other repositories, as `owner/repo#n`, which are not read. */
+  closesElsewhere?: string[];
+}
+
+/** An issue's title and body, as read from GitHub. Both are repository text. */
+export interface IssueText {
+  number: number;
+  title: string;
+  body: string;
+}
+
+/** One piece of a pull request's body or an issue that may be an acceptance criterion. */
+export interface CriterionChunk {
+  /** `PR`, or the issue it comes from as `#<n>`. */
+  source: string;
+  /** Its first line in the source, from 1. */
+  line: number;
+  /** The headings above it, outermost first, joined by ` > `. Empty under no heading. */
+  heading: string;
+  text: string;
+}
+
+/** How far a change meets one acceptance criterion. `cannot-tell` is left out of the score. */
+export type AcceptanceVerdict = 'met' | 'partly' | 'not-met' | 'cannot-tell';
+
+/** A chunk with the model's probability that it is an acceptance criterion. */
+export interface ClassifiedChunk extends CriterionChunk {
+  probability: number;
+}
+
+/** An acceptance criterion and how the change meets it. */
+export interface AcceptanceCriterion extends ClassifiedChunk {
+  /** Null when the model could not be asked. */
+  verdict: AcceptanceVerdict | null;
+  /** The model's probability for the verdict, or null with no verdict. */
+  confidence: number | null;
+}
+
+/** `pr --acceptance`: the change judged against what it was asked to do. */
+export interface AcceptanceResult {
+  /** On the configured scale. Null when no criterion could be judged from the diff. */
+  score: number | null;
+  criteria: AcceptanceCriterion[];
+  /** The chunks the model did not take for criteria. */
+  rejected: ClassifiedChunk[];
+  warnings: string[];
 }
 
 /** How a change moved one file. */
@@ -236,7 +288,10 @@ export interface ChangedFile {
   warnings: string[];
 }
 
-export interface ChangeReview extends Omit<Change, 'message'> {
+/** What only judging a change reads, which a review leaves out so that `--json` keeps its shape. */
+type ChangeInput = 'message' | 'number' | 'body' | 'closes' | 'closesElsewhere';
+
+export interface ChangeReview extends Omit<Change, ChangeInput> {
   provider: string | null;
   model: string | null;
   scale: number;
@@ -250,6 +305,8 @@ export interface ChangeReview extends Omit<Change, 'message'> {
   warnings?: string[];
   /** With `--architecture`: the SSOT violations the change added. */
   architecture?: ArchitectureViolation[];
+  /** With `--acceptance` and a model: the change judged against its acceptance criteria. */
+  acceptance?: AcceptanceResult;
 }
 
 /** A structural problem, and the directories whose score it counts against. */
@@ -306,7 +363,14 @@ export interface DirectoryNode {
  * A level of the design that the review looks at. `component`, `design` and `chapter` review the
  * architecture SSOT, so they run only when one exists.
  */
-export type Perspective = 'codebase' | 'directory' | 'class' | 'component' | 'design' | 'chapter';
+export type Perspective =
+  | 'codebase'
+  | 'directory'
+  | 'class'
+  | 'component'
+  | 'design'
+  | 'chapter'
+  | 'decision';
 
 /** One reviewed thing: the whole codebase, a directory or a class. */
 export interface ArchitectureUnit {
@@ -653,6 +717,8 @@ export interface ArchitectureIndex {
   name: string;
   /** The commit the SSOT was compiled from: the base for `drift` and an update. */
   compiled_at?: string;
+  /** The date it was compiled, as `YYYY-MM-DD`, so a reader need not ask git. */
+  compiled_on?: string;
   description: string;
   /** Layer names, top to bottom. */
   layers: string[];
@@ -719,6 +785,8 @@ export interface ArchitectureSsot {
   views: ArchitectureView[];
   /** The document's chapters, in file name order. */
   chapters: ArchitectureChapter[];
+  /** Decision records in number order. Absent when `decisions/` holds none. */
+  decisions?: ArchitectureDecision[];
 }
 
 /** What a structural violation broke. */
@@ -747,6 +815,8 @@ export interface ArchitectureViolation {
   message: string;
   /** `target` when the component has `status: target`, so it is known debt. */
   status: 'current' | 'target';
+  /** The accepted decisions whose `enforced_by` names the rule, so the reader sees why it exists. */
+  decisions?: string[];
 }
 
 /** How a component dependency compares with what the SSOT declares. */
@@ -802,6 +872,9 @@ export type DriftKind =
   | 'stale-summary'
   | 'stale-chapter'
   | 'stale-view'
+  | 'unenforced-decision'
+  | 'edited-decision'
+  | 'stale-decision'
   | 'document';
 
 /** One way the SSOT no longer describes the code. */
@@ -987,6 +1060,33 @@ export interface ArchitectureChapter {
   id: string;
   title: string;
   /** Where its claims come from: `path`, `path:line`, `path:10-20` or `commit:<hash>`. */
+  evidence: string[];
+  body: string;
+}
+
+/** Where a decision record stands. Only `status` and `superseded_by` change once it is accepted. */
+export type DecisionStatus = 'proposed' | 'accepted' | 'deprecated' | 'superseded';
+
+/** A dated, append-only decision record, in `decisions/<n>-<id>.md`. */
+export interface ArchitectureDecision {
+  id: string;
+  /** The file name without `.md`, which sets the order, such as `0001-ai-sdk-in-decision`. */
+  file: string;
+  title: string;
+  /** When it was accepted, as `YYYY-MM-DD`. */
+  date: string;
+  status: DecisionStatus;
+  /** Ids of the decisions this one replaces. */
+  supersedes: string[];
+  /** The id of the decision that replaced this one, on a superseded record. */
+  superseded_by: string | null;
+  /** The components it is about. */
+  components: string[];
+  /** The rule and checklist ids that enforce it, as `check` names them. */
+  enforced_by: string[];
+  /** Why no rule or checklist item can enforce it, which silences `unenforced-decision`. */
+  unenforceable?: string;
+  /** Where it comes from: `path`, `path:line`, `path:10-20` or `commit:<hash>`. */
   evidence: string[];
   body: string;
 }

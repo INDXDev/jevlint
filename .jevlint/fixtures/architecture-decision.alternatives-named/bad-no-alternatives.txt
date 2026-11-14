@@ -1,0 +1,17 @@
+Decision: Cache raw answers, score afterwards
+Date: 2026-11-05
+Status: accepted
+Enforced by: decision.cache-key, scoring.pure
+Evidence: docs/architecture.md:187, src/decision/decide.ts:177-183
+
+### Context
+
+Model calls are slow and paid, and weights and thresholds are tuned often.
+
+### Decision
+
+The cache key is the provider, model, endpoint, questions and content. The value is the raw answers, and scoring.ts runs after every lookup.
+
+### Consequences
+
+Tuning weights is free, and every caller has to go through decideFile or decideState to get this.

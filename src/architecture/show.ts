@@ -18,6 +18,8 @@ export interface ShowModel {
   ssot: ArchitectureSsot;
   edges: MapEdge[];
   facts: ArchitectureFacts;
+  /** With `--as-of`: the commit the SSOT and the code were read from. */
+  asOf?: string;
 }
 
 /** A view `show` can draw. */
@@ -28,13 +30,17 @@ export type View =
   | { kind: 'component'; id: string }
   | { kind: 'view'; id: string };
 
-/** Collects the facts and lays them over the SSOT, or over the draft when there is none. */
+/**
+ * Collects the facts and lays them over the SSOT, or over the draft when there is none. With
+ * `asOf`, a full commit hash, the facts come from that commit, as the SSOT given should.
+ */
 export async function showArchitecture(
   config: Config,
   existing: ArchitectureSsot | null,
-  options: { noCache?: boolean } = {},
+  options: { noCache?: boolean; asOf?: string } = {},
 ): Promise<ShowModel> {
-  const { facts, modules } = await collect(config, { skipHistory: true, noCache: options.noCache });
+  const { noCache, asOf } = options;
+  const { facts, modules } = await collect(config, { skipHistory: true, noCache, commit: asOf });
   const ssot = existing ?? draftSsot(facts, basename(config.root), ssotDir(config));
   return {
     root: config.root,
@@ -42,5 +48,6 @@ export async function showArchitecture(
     ssot,
     edges: mapEdges(ssot, modules),
     facts,
+    ...(asOf ? { asOf } : {}),
   };
 }

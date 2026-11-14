@@ -11,7 +11,7 @@ import { prepareCompile, validateSsot } from '../architecture/compile.ts';
 import { assign } from '../architecture/conformance.ts';
 import { driftArchitecture } from '../architecture/drift.ts';
 import { renderArchitectureHtml, renderShowHtml } from '../architecture/html.ts';
-import { architectureFiles, loadArchitecture } from '../architecture/load.ts';
+import { architectureFiles, loadArchitecture, loadArchitectureAt } from '../architecture/load.ts';
 import { renderMarkdown, renderView } from '../architecture/markdown.ts';
 import { planArchitecture } from '../architecture/plan.ts';
 import {
@@ -33,6 +33,7 @@ import {
   formatSsotList,
 } from '../architecture/terminal.ts';
 import { type Config, UserError, writeFileAtomic } from '../config.ts';
+import { resolveAsOf } from '../git.ts';
 import { withoutEscapes } from '../report.ts';
 import type { ArchitectureSsot, Perspective } from '../types.ts';
 import {
@@ -144,6 +145,13 @@ async function repairSsot(config: Config, flags: PromptFlags, dir: string): Prom
     await runAgentOn(config, renderRepairPrompt(dir, found), flags, dir);
   }
 }
+
+const AS_OF_ARG = {
+  type: 'string',
+  valueHint: 'commit|date',
+  description:
+    "Read the SSOT and the code as they were at a commit, or on a date (YYYY-MM-DD) on this branch's first-parent history",
+} as const;
 
 async function requireSsot(config: Config): Promise<ArchitectureSsot> {
   const ssot = await loadArchitecture(config);
@@ -296,12 +304,18 @@ const listCommand = defineCommand({
   },
   args: {
     json: { type: 'boolean', description: 'Print the SSOT as JSON' },
+    'as-of': AS_OF_ARG,
     cache: CACHE_ARG,
   },
   async run({ args }) {
     const config = await projectConfig();
-    const { ssot, error, problems } = await validateSsot(config, { noCache: !args.cache });
+    const asOf =
+      args['as-of'] === undefined ? undefined : await resolveAsOf(config.root, args['as-of']);
+    const { ssot, error, problems } = await validateSsot(config, { noCache: !args.cache, asOf });
     if (error) throw new UserError(error);
+    if (!ssot && asOf) {
+      throw new UserError(`No architecture SSOT at ${asOf.slice(0, 7)}.`);
+    }
     if (!ssot) await requireSsot(config);
     if (args.json) printJson(ssot);
     else console.log(formatSsotList(ssot as ArchitectureSsot, []));
@@ -327,18 +341,24 @@ const showCommand = defineCommand({
       description: 'Write a page with no scripts to this file',
     },
     markdown: { type: 'boolean', description: 'Print an ARCHITECTURE.md with Mermaid diagrams' },
+    'as-of': AS_OF_ARG,
     json: JSON_ARG,
     cache: CACHE_ARG,
   },
   async run({ args }) {
     const html = htmlTarget(args.html);
     const config = await projectConfig();
-    const ssot = await loadArchitecture(config);
-    const model = await showArchitecture(config, ssot, { noCache: !args.cache });
+    const asOf =
+      args['as-of'] === undefined ? undefined : await resolveAsOf(config.root, args['as-of']);
+    const ssot = asOf ? await loadArchitectureAt(config, asOf) : await loadArchitecture(config);
+    const model = await showArchitecture(config, ssot, { noCache: !args.cache, asOf });
     const view = parseView(args.view, model.ssot);
+    if (asOf) console.error(`As it was at ${asOf.slice(0, 7)}.`);
     if (model.draft) {
       console.error(
-        'This is a draft from the code. Run: jevlint architecture compile, to turn it into an SSOT.',
+        asOf
+          ? 'There was no SSOT then, so this is a draft from the code at that commit.'
+          : 'This is a draft from the code. Run: jevlint architecture compile, to turn it into an SSOT.',
       );
     }
     if (html) await writeHtml(html, renderShowHtml(model));

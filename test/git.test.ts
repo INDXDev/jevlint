@@ -1,5 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -12,9 +19,11 @@ import {
   commitsFrom,
   dirtyFiles,
   gitFailureReason,
+  issueText,
   isWorkTree,
   pullRequestChange,
   pullRequestOfRef,
+  resolveAsOf,
   significantCommits,
   touchedFiles,
   uncommittedFiles,
@@ -369,17 +378,17 @@ describe('changes to review', () => {
     });
   });
 
-  describe('pullRequestChange', () => {
-    /** Puts a fake `gh` first on the PATH. */
-    function fakeGh(script: string) {
-      const bin = tempDir();
-      writeFileSync(join(bin, 'gh'), `#!/bin/sh\n${script}\n`);
-      chmodSync(join(bin, 'gh'), 0o755);
-      vi.stubEnv('PATH', `${bin}${delimiter}${process.env.PATH}`);
-    }
+  /** Puts a fake `gh` first on the PATH. */
+  function fakeGh(script: string) {
+    const bin = tempDir();
+    writeFileSync(join(bin, 'gh'), `#!/bin/sh\n${script}\n`);
+    chmodSync(join(bin, 'gh'), 0o755);
+    vi.stubEnv('PATH', `${bin}${delimiter}${process.env.PATH}`);
+  }
 
+  describe('pullRequestChange', () => {
     /** A clone that lacks a pull request `origin` serves at refs/pull/7/head. */
-    function pullRequest() {
+    function pullRequest(extra: Record<string, unknown> = {}, log?: string) {
       const mergeBase = commitFiles({ 'a.ts': CLEAN });
       const clone = tempDir();
       run(clone, 'clone', '-q', dir, '.');
@@ -395,8 +404,9 @@ describe('changes to review', () => {
         baseRefName: 'main',
         baseRefOid: baseTip,
         headRefOid: head,
+        ...extra,
       };
-      fakeGh(`echo '${JSON.stringify(json)}'`);
+      fakeGh(`${log ? `echo "$@" > '${log}'\n` : ''}echo '${JSON.stringify(json)}'`);
       return { clone, mergeBase, head };
     }
 
@@ -448,6 +458,139 @@ describe('changes to review', () => {
       vi.stubEnv('PATH', tempDir());
       await expect(pullRequestChange(dir, 7)).rejects.toThrow('GitHub CLI');
     });
+
+    it('asks gh for closing issues only for --acceptance, so an older gh still works', async () => {
+      const log = join(tempDir(), 'args');
+      const { clone } = pullRequest({}, log);
+      const change = await pullRequestChange(clone, 7);
+      expect(readFileSync(log, 'utf8').trim()).toBe(
+        'pr view 7 --json number,title,body,baseRefName,baseRefOid,headRefOid',
+      );
+      expect(Object.keys(change)).toEqual(['title', 'base', 'head', 'message']);
+    });
+
+    it('returns the number, the body and the issues it closes, apart from other repositories', async () => {
+      const log = join(tempDir(), 'args');
+      const issue = (number: number, repository: string) => ({
+        number,
+        url: `https://github.com/${repository}/issues/${number}`,
+      });
+      const { clone, head } = pullRequest(
+        {
+          url: 'https://github.com/Acme/Shop/pull/7',
+          closingIssuesReferences: [
+            issue(20, 'acme/shop'),
+            issue(19, 'Acme/Shop'),
+            issue(19, 'Acme/Shop'),
+            issue(5, 'other/repo'),
+            { number: 6, repository: { name: 'Shop', owner: { login: 'acme' } } },
+            { number: -1, url: 'https://github.com/Acme/Shop/issues/-1' },
+            { number: 8 },
+          ],
+        },
+        log,
+      );
+      const change = await pullRequestChange(clone, 7, { acceptance: true });
+      expect(readFileSync(log, 'utf8')).toContain(
+        '--json number,title,body,baseRefName,baseRefOid,headRefOid,url,closingIssuesReferences',
+      );
+      expect(change).toMatchObject({
+        title: 'Pull request #7: T',
+        head,
+        number: 7,
+        body: 'Why',
+        closes: [6, 19, 20],
+        closesElsewhere: ['other/repo#5', 'an unknown repository#8'],
+      });
+    });
+
+    it('reads a pull request with no closing issues', async () => {
+      const { clone } = pullRequest({ body: null, url: 'https://github.com/a/b/pull/7' });
+      const change = await pullRequestChange(clone, 7, { acceptance: true });
+      expect(change).toMatchObject({ body: '', closes: [], closesElsewhere: [] });
+    });
+  });
+
+  describe('issueText', () => {
+    it('reads the title and body of an issue', async () => {
+      const log = join(tempDir(), 'args');
+      fakeGh(`echo "$@" > '${log}'\necho '{"number":19,"title":"T","body":"- [ ] B"}'`);
+      expect(await issueText(dir, 19)).toEqual({ number: 19, title: 'T', body: '- [ ] B' });
+      expect(readFileSync(log, 'utf8').trim()).toBe('issue view 19 --json number,title,body');
+    });
+
+    it('gives a warning, not an error, for an issue gh cannot read', async () => {
+      fakeGh('echo "Could not resolve to an issue" >&2; exit 1');
+      expect(await issueText(dir, 404)).toEqual({
+        warning: 'gh could not read issue #404: Could not resolve to an issue',
+      });
+      fakeGh('echo "not json"');
+      expect(await issueText(dir, 1)).toEqual({
+        warning: 'gh printed something other than JSON for issue #1.',
+      });
+      fakeGh('echo \'{"number":1}\'');
+      expect(await issueText(dir, 1)).toEqual({ warning: 'gh printed no title for issue #1.' });
+    });
+
+    it('never passes gh a number that could read as an option', async () => {
+      const log = join(tempDir(), 'args');
+      fakeGh(`echo "$@" > '${log}'`);
+      expect(await issueText(dir, -1)).toEqual({ warning: '-1 is not an issue number.' });
+      expect(existsSync(log)).toBe(false);
+    });
+  });
+});
+
+describe('resolveAsOf', () => {
+  /** Commits with a fixed date, so that a date resolves to a known commit. */
+  const commitOn = (date: string, file: string) => {
+    writeFileSync(join(dir, file), date);
+    execFileSync('git', ['add', '.'], { cwd: dir });
+    execFileSync(
+      'git',
+      ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', date],
+      { cwd: dir, env: { ...process.env, GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date } },
+    );
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  };
+
+  beforeEach(() => git('init', '-q', '-b', 'main'));
+
+  it('takes the last first-parent commit of that day, not one of a branch merged later', () => {
+    const first = commitOn('2026-01-01T10:00:00Z', 'a.txt');
+    git('checkout', '-q', '-b', 'topic');
+    commitOn('2026-01-05T10:00:00Z', 'b.txt');
+    git('checkout', '-q', 'main');
+    const second = commitOn('2026-01-03T23:30:00Z', 'c.txt');
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@example.com',
+        'merge',
+        '-q',
+        '--no-ff',
+        '-m',
+        'm',
+        'topic',
+      ],
+      { cwd: dir, env: { ...process.env, GIT_COMMITTER_DATE: '2026-01-10T10:00:00Z' } },
+    );
+    return Promise.all([
+      expect(resolveAsOf(dir, '2026-01-02')).resolves.toBe(first),
+      expect(resolveAsOf(dir, '2026-01-03')).resolves.toBe(second),
+      expect(resolveAsOf(dir, '2026-01-06')).resolves.toBe(second),
+    ]);
+  });
+
+  it('resolves a revision, and refuses a date with no commit, a false date and an option', async () => {
+    const first = commitOn('2026-01-01T10:00:00Z', 'a.txt');
+    await expect(resolveAsOf(dir, 'HEAD')).resolves.toBe(first);
+    await expect(resolveAsOf(dir, '2025-12-31')).rejects.toThrow('No commit on this branch');
+    await expect(resolveAsOf(dir, '2026-02-30')).rejects.toThrow('is not a date');
+    await expect(resolveAsOf(dir, '--all')).rejects.toThrow(UserError);
   });
 });
 

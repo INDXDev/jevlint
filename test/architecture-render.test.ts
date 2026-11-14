@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { mapEdges } from '../src/architecture/conformance.ts';
 import { draftSsot } from '../src/architecture/draft.ts';
@@ -37,6 +38,7 @@ import {
 } from '../src/architecture/terminal.ts';
 import type {
   ArchitectureCheckReport,
+  ArchitectureDecision,
   ArchitectureSsot,
   ArchitectureViolation,
   DataView,
@@ -350,7 +352,10 @@ describe('terminal', () => {
   });
 
   it('lists the check report sections', () => {
+    const why = formatArchitectureCheck(checkReport([{ ...violation, decisions: ['layered'] }]));
+    expect(why).toContain('Why: decision layered');
     const text = formatArchitectureCheck(checkReport([violation]));
+    expect(text).not.toContain('Why:');
     expect(text).toContain('1 structural violation');
     expect(text).toContain('2 violations in the baseline left out');
     expect(text).toContain('Unimplemented');
@@ -506,6 +511,130 @@ describe('the document', () => {
   });
 });
 
+describe('decision records', () => {
+  const decision = (
+    id: string,
+    fields: Partial<ArchitectureDecision> = {},
+  ): ArchitectureDecision => ({
+    id,
+    file: `1-${id}`,
+    title: `${id} title`,
+    date: '2026-10-02',
+    status: 'accepted',
+    supersedes: [],
+    superseded_by: null,
+    components: [],
+    enforced_by: [],
+    evidence: [],
+    body: '### Context\n\nWhy.',
+    ...fields,
+  });
+  const decisions = [
+    decision('old', { date: '2026-01-05', status: 'superseded', superseded_by: 'pg' }),
+    decision('idea', { status: 'proposed', date: '2026-11-01' }),
+    decision('pg', {
+      title: `Use PostgreSQL ${EVIL}`,
+      supersedes: ['old'],
+      components: ['db'],
+      enforced_by: ['db.owns-pg'],
+      body: '### Context\n\nLine one.\nLine two \u001b[2J.\n\n```\n### not a heading\n```',
+    }),
+    decision('gone', { date: '2025-12-01', status: 'deprecated' }),
+  ];
+  const withRecords = (chapters = documented.ssot.chapters): ShowModel => ({
+    ...documented,
+    ssot: { ...documented.ssot, chapters, decisions },
+  });
+
+  it('renders accepted, then proposed records, then a dated history, after the chapters', () => {
+    const markdown = renderMarkdown(withRecords());
+    const at = (text: string) => markdown.indexOf(text);
+    expect(markdown).toContain(
+      '## Decisions\n\n### Use PostgreSQL ?[31m&lt;script&gt;alert(1)&lt;/script&gt;?\n\n*Accepted 2026-10-02 · about `db` · enforced by `db.owns-pg` · supersedes `old`*\n\n#### Context\n\nLine one.\nLine two ?[2J.\n\n```\n### not a heading\n```',
+    );
+    expect(markdown).not.toContain('\u001b');
+    expect(markdown).toContain('### idea title\n\n*Proposed 2026-11-01*');
+    expect(at('### Use PostgreSQL')).toBeLessThan(at('### idea title'));
+    expect(markdown).toContain(
+      '### History\n\nOlder decisions, by date.\n\n- 2025-12-01: gone title (`gone`), deprecated\n- 2026-01-05: old title (`old`), superseded by "Use PostgreSQL',
+    );
+    expect(markdown).not.toContain('### old title');
+    expect(at('## Overview')).toBeLessThan(at('## Decisions'));
+    expect(at('## Decisions')).toBeLessThan(at('## Reference'));
+  });
+
+  it('places the records where a chapter asks, and in the structural document', () => {
+    const placed = renderMarkdown(
+      withRecords([
+        {
+          id: '70-decisions',
+          title: 'Why',
+          evidence: [],
+          body: '<!-- jevlint:diagram decisions -->',
+        },
+      ]),
+    );
+    expect(placed).toContain('## Why\n\n### Use PostgreSQL');
+    expect(placed).not.toContain('## Decisions');
+    const structural = renderMarkdown(withRecords([]));
+    expect(structural).toContain('## Decisions\n\n### Use PostgreSQL');
+    expect(structural.indexOf('## Decisions')).toBeLessThan(structural.indexOf('## External'));
+  });
+
+  it('renders nothing new without records, and shows compiled_on beside compiled_at', () => {
+    expect(renderMarkdown(documented)).not.toContain('Decisions');
+    const dated = {
+      ...documented,
+      ssot: {
+        ...documented.ssot,
+        index: { ...documented.ssot.index, compiled_on: '2026-11-12' },
+      },
+    };
+    expect(renderMarkdown(dated)).toContain('compiled at abc1234 on 2026-11-12.');
+    expect(renderShowHtml(dated)).toContain('compiled at abc1234 on 2026-11-12.');
+    // CI turns colour on, which puts escapes between the parts of the line.
+    expect(stripVTControlCharacters(formatSsotList(dated.ssot, []))).toContain(
+      'compiled at abc1234 on 2026-11-12',
+    );
+  });
+
+  it('puts the records on the show page, escaped, once', () => {
+    const html = renderShowHtml(withRecords());
+    expect(html).not.toMatch(/<script/i);
+    expect(html).toContain('<h2>Decisions</h2><h3>Use PostgreSQL');
+    expect(html).toContain('enforced by <code>db.owns-pg</code>');
+    expect(html).toContain('<h4>Context</h4>');
+    expect(html).toContain('<h3>History</h3><ul><li>2025-12-01: gone title');
+    const placed = renderShowHtml(
+      withRecords([
+        {
+          id: '70-decisions',
+          title: 'Why',
+          evidence: [],
+          body: '<!-- jevlint:diagram decisions -->',
+        },
+      ]),
+    );
+    expect(placed).toContain('<h2>Why</h2><h3>Use PostgreSQL');
+    expect(placed).not.toContain('<h2>Decisions</h2>');
+  });
+
+  it('lists the records in the terminal without control characters', () => {
+    const list = formatSsotList(withRecords().ssot, []);
+    expect(list).toContain('Decisions');
+    expect(list).toMatch(/2026-10-02 {2}.*accepted.*Use PostgreSQL/);
+    expect(list).not.toContain('\u001b[31m<script>');
+  });
+
+  it('leaves records and compiled_on out of the design review', () => {
+    const state = designState({
+      ...withRecords().ssot,
+      index: { ...documented.ssot.index, compiled_on: '2026-11-12' },
+    });
+    expect(state).toBe(designState(documented.ssot));
+  });
+});
+
 describe('chapterHtml', () => {
   it('converts Markdown with everything escaped and links reduced to text', () => {
     const html = chapterHtml(
@@ -586,7 +715,7 @@ describe('the compile prompt', () => {
     for (const heading of [
       '## How to work',
       '## The SSOT format',
-      '## The views and chapters format',
+      '## The views, chapters and decisions format',
       '## How to draw the views',
       '## The chapters to write',
       '## How to write the chapters',
@@ -603,6 +732,16 @@ describe('the compile prompt', () => {
     expect(prompt).toContain('- Order (src/db/c.ts:3, used by 2): id: string');
     expect(prompt).toContain('- src/db/c.ts:9: Kept because the pool is shared.');
     expect(prompt).toContain('- abc1234 (7 files) Cache outlines: Because parsing is slow.');
+  });
+
+  it('asks for every decision as an append-only record, with no cap', () => {
+    const prompt = renderCompilePrompt(input);
+    expect(prompt).not.toContain('4 to 8 decisions');
+    expect(prompt).toContain('decisions/<nnnn>-<id>.md');
+    expect(prompt).toContain('write one for every decision you can evidence, with no cap');
+    expect(prompt).toContain('say in the record when the date is inferred');
+    expect(prompt).toContain('never edit its body, except for a typo');
+    expect(prompt).toContain('compiled_on: 2026-01-31');
   });
 
   it('asks an update to rewrite only stale chapters and views', () => {
@@ -629,6 +768,27 @@ describe('the compile prompt', () => {
       '- stale-chapter: .jevlint/architecture/chapters/10-a.md: cites a changed file',
     );
     expect(update).not.toContain('## The draft');
+    expect(update).toContain(
+      'never edit the body of an accepted record. For each `stale-decision`',
+    );
+    const drift = renderDriftPrompt(
+      {
+        root: '/r',
+        dir: '.jevlint/architecture',
+        provider: null,
+        model: null,
+        compiledAt: 'def5678',
+        head: 'abc1234',
+        items: [],
+        added: [],
+        removed: [],
+        docs: [],
+        usage: { inputTokens: 0, estimatedCostUsd: null, cacheHits: 0, modelCalls: 0 },
+        warnings: [],
+      },
+      [],
+    );
+    expect(drift).toContain('write a new record that supersedes it');
   });
 
   it('lists the problems in the repair prompt, without control characters', () => {

@@ -1,0 +1,8 @@
+===== Source =====
+Pull request #42: Reject --acceptance with --ast-only
+
+===== Heading =====
+Checklist
+
+===== Chunk =====
+The command exits 2 when --acceptance is combined with --ast-only or --format sarif.

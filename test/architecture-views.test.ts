@@ -4,6 +4,7 @@ import {
   type DocumentInput,
   documentDrift,
   documentProblems,
+  isTypoLevel,
   parseCitation,
 } from '../src/architecture/views.ts';
 import type { ArchitectureSsot, FactModule, GraphView } from '../src/types.ts';
@@ -233,5 +234,19 @@ describe('documentDrift', () => {
   it('reports no chapter when nothing changed', () => {
     const items = documentDrift({ ...ssot, views: [], chapters }, input, new Set());
     expect(items).toEqual([]);
+  });
+});
+
+describe('isTypoLevel', () => {
+  it('lets typo fixes and rewrapping through', () => {
+    expect(isTypoLevel('We chose\nthe SDK.', 'We chose the SDK.')).toBe(true);
+    expect(isTypoLevel('We chsoe the SKD.', 'We chose the SDK.')).toBe(true);
+    expect(isTypoLevel('a b c d', 'a b c d')).toBe(true);
+  });
+
+  it('counts an added word, a new word or many fixes as an edit', () => {
+    expect(isTypoLevel('It must call the SDK.', 'It must not call the SDK.')).toBe(false);
+    expect(isTypoLevel('Use pg here.', 'Use mysql here.')).toBe(false);
+    expect(isTypoLevel('aa bb cc dd', 'ab bc cd de')).toBe(false);
   });
 });

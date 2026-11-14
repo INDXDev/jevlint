@@ -115,6 +115,87 @@ describe('jevlint architecture list', () => {
   });
 });
 
+describe('jevlint architecture list with decision records', () => {
+  const record = (id: string, fields: string) =>
+    `---\nid: ${id}\ntitle: ${id}\ndate: 2026-10-02\n${fields}\n---\n\n### Context\n\nWhy.\n`;
+
+  it('lists the records, warns about their evidence, and exits 2 when they do not fit', () => {
+    const cwd = project({
+      ...CODE,
+      ...SSOT,
+      [`${DIR}/decisions/0001-old.md`]: record(
+        'old',
+        'status: superseded\nsuperseded_by: new\nevidence: [src/gone.ts]',
+      ),
+      [`${DIR}/decisions/0002-new.md`]: record(
+        'new',
+        'status: accepted\nsupersedes: [old]\nenforced_by: [down]\nevidence: [src/db/client.ts:1]',
+      ),
+    });
+    const ok = jevlint(cwd, 'architecture', 'list');
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/Decisions\n {2}2026-10-02 {2}superseded {2}old/);
+    expect(ok.stderr).toContain(
+      `Warning: ${DIR}/decisions/0001-old.md: evidence src/gone.ts does not exist`,
+    );
+    const json = JSON.parse(jevlint(cwd, 'architecture', 'list', '--json').stdout);
+    expect(json.decisions.map(({ file }: { file: string }) => file)).toEqual([
+      '0001-old',
+      '0002-new',
+    ]);
+    expect(jevlint(cwd, 'architecture', 'show', '--markdown').stdout).toContain(
+      '## Decisions\n\n### new',
+    );
+
+    writeFileSync(join(cwd, DIR, 'decisions/0002-new.md'), record('new', 'status: accepted'));
+    const broken = jevlint(cwd, 'architecture', 'list');
+    expect(broken.status).toBe(2);
+    expect(broken.stderr).toContain('superseded_by new, but new does not list old in supersedes');
+  });
+});
+
+describe('jevlint architecture --as-of', () => {
+  it('lists and shows the SSOT as it was at a commit or on a date, leaving the tree alone', () => {
+    const cwd = project({ ...CODE, ...SSOT });
+    const commitOn = (date: string) =>
+      execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qam', date], {
+        cwd,
+        env: { ...process.env, GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date },
+      });
+    git(cwd, 'init', '-q', '-b', 'main');
+    git(cwd, 'add', '.');
+    commitOn('2026-01-01T10:00:00Z');
+    const old = git(cwd, 'rev-parse', 'HEAD').trim();
+    const web = join(cwd, DIR, 'components/web.yaml');
+    writeFileSync(
+      web,
+      SSOT[`${DIR}/components/web.yaml`].replace('title: Web', 'title: Storefront'),
+    );
+    commitOn('2026-02-01T10:00:00Z');
+    writeFileSync(
+      web,
+      SSOT[`${DIR}/components/web.yaml`].replace('title: Web', 'title: Uncommitted'),
+    );
+    const before = git(cwd, 'status', '--porcelain') + git(cwd, 'rev-parse', 'HEAD');
+
+    const onDate = jevlint(cwd, 'architecture', 'list', '--as-of', '2026-01-15');
+    expect(onDate.status).toBe(0);
+    expect(onDate.stdout).toMatch(/web\s+web\s+Web /);
+    const atCommit = jevlint(cwd, 'architecture', 'show', '--as-of', old, '--markdown');
+    expect(atCommit.status).toBe(0);
+    expect(atCommit.stdout).toContain(`as it was at commit ${old.slice(0, 7)}`);
+    expect(atCommit.stdout).toContain('Web');
+    expect(atCommit.stdout).not.toContain('Storefront');
+    expect(jevlint(cwd, 'architecture', 'list', '--as-of', 'HEAD').stdout).toContain('Storefront');
+    expect(jevlint(cwd, 'architecture', 'list').stdout).toContain('Uncommitted');
+    expect(git(cwd, 'status', '--porcelain') + git(cwd, 'rev-parse', 'HEAD')).toBe(before);
+
+    const early = jevlint(cwd, 'architecture', 'list', '--as-of', '2025-12-01');
+    expect(early.status).toBe(2);
+    expect(early.stderr).toContain('No commit on this branch');
+  });
+});
+
 describe('jevlint architecture show', () => {
   it('draws a draft with no SSOT, in every format', () => {
     const cwd = project(CODE);
