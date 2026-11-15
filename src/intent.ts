@@ -28,15 +28,19 @@ async function instructionsAt(root: string, base: string | null): Promise<string
   return (agents?.trim() ? agents : await fileAt(root, base, 'CLAUDE.md'))?.trim() ?? '';
 }
 
+/** Joins labelled texts into one model state, each under a `===== label =====` line. */
+export function labelledSections(sections: [label: string, text: string][]): string {
+  return sections.map(([label, text]) => `===== ${label} =====\n${text}`).join('\n\n');
+}
+
 /** The diff comes last, as the longest section: truncation must not remove the message. */
 function intentState(message: string, instructions: string, diff: string): string {
   const base = "Repository instructions, from the change's base commit";
-  const sections = [
+  return labelledSections([
     ['Message', message],
-    ...(instructions ? [[base, instructions]] : []),
+    ...(instructions ? [[base, instructions] as [string, string]] : []),
     ['Unified diff', diff],
-  ];
-  return sections.map(([label, text]) => `===== ${label} =====\n${text}`).join('\n\n');
+  ]);
 }
 
 /** The change's diff without the files `audit` would never send, such as a committed `.env`. */

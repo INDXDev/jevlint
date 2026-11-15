@@ -5,6 +5,7 @@
  */
 import { posix } from 'node:path';
 import type {
+  ArchitectureDecision,
   ArchitectureSsot,
   DriftItem,
   Evidence,
@@ -239,8 +240,57 @@ export function documentProblems(ssot: ArchitectureSsot, input: DocumentInput): 
   ];
 }
 
-/** How many words an accepted record's body may change, and by how many letters, as typo fixes. */
-export const TYPO_LIMITS = { words: 3, letters: 2 } as const;
+/**
+ * How many words an accepted record's body may change, how many letters each may differ by, and
+ * how long a word must be to differ by more than the order of its letters.
+ */
+export const TYPO_LIMITS = { words: 3, letters: 2, shortWord: 4 } as const;
+
+/** Words whose change turns a decision around, however few letters it takes: "must" to "most". */
+const MEANINGFUL_WORDS = new Set([
+  'no',
+  'not',
+  'nor',
+  'never',
+  'none',
+  'nothing',
+  'nobody',
+  'neither',
+  'nowhere',
+  'can',
+  'cannot',
+  'may',
+  'must',
+  'should',
+  'shall',
+  'will',
+  'would',
+  'could',
+  'might',
+  'all',
+  'any',
+  'some',
+  'each',
+  'every',
+  'both',
+  'either',
+  'few',
+  'many',
+  'more',
+  'most',
+  'less',
+  'least',
+  'only',
+  'always',
+  'and',
+  'or',
+  'with',
+  'without',
+  'unless',
+  'except',
+  'before',
+  'after',
+]);
 
 function letterDistance(a: string, b: string): number {
   let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
@@ -259,10 +309,28 @@ function letterDistance(a: string, b: string): number {
   return previous[b.length] as number;
 }
 
+const wordCore = (word: string) =>
+  word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
+const letters = (word: string) => [...word].sort().join('');
+
+/**
+ * True when one word replacing another can only be a typo fix: a change of case or punctuation
+ * around it, or a misspelling of a plain word. Digits, apostrophes and meaningful words never are,
+ * so "64" to "16", "can" to "can't" and "now" to "not" are edits.
+ */
+function isTypoFix(before: string, after: string): boolean {
+  const [a, b] = [wordCore(before), wordCore(after)];
+  if (a === b) return true;
+  if (!/^\p{L}+$/u.test(a) || !/^\p{L}+$/u.test(b)) return false;
+  if (MEANINGFUL_WORDS.has(a) || MEANINGFUL_WORDS.has(b)) return false;
+  if (Math.min(a.length, b.length) < TYPO_LIMITS.shortWord) return letters(a) === letters(b);
+  return letterDistance(a, b) <= TYPO_LIMITS.letters;
+}
+
 /**
  * True when a body differs from another by no more than typo fixes: the same words in the same
- * order, rewrapped as you like, with at most three of them a letter or two apart. An added or
- * removed word, such as a "not", is never a typo.
+ * order, rewrapped as you like, with at most three of them misspelt. An added or removed word,
+ * such as a "not", is never a typo, nor is a changed number or a word such as "must".
  */
 export function isTypoLevel(before: string, after: string): boolean {
   const a = before.split(/\s+/).filter(Boolean);
@@ -273,11 +341,28 @@ export function isTypoLevel(before: string, after: string): boolean {
     const other = b[index] as string;
     if (word === other) continue;
     changed += 1;
-    if (changed > TYPO_LIMITS.words || letterDistance(word, other) > TYPO_LIMITS.letters) {
-      return false;
-    }
+    if (changed > TYPO_LIMITS.words || !isTypoFix(word, other)) return false;
   }
   return true;
+}
+
+/**
+ * What changed in an accepted record since the version that accepted it, among what must not: its
+ * body and title beyond typo fixes, its date and what it supersedes. The fields that tie it to the
+ * code, `components`, `enforced_by`, `unenforceable` and `evidence`, may follow the code.
+ */
+export function recordEdits(
+  accepted: { front: Record<string, unknown>; body: string },
+  now: ArchitectureDecision,
+): string[] {
+  const { title, date, supersedes } = accepted.front;
+  const ids = (value: unknown) => (Array.isArray(value) ? value.map(String) : []).sort().join(' ');
+  return [
+    ...(isTypoLevel(accepted.body, now.body) ? [] : ['body']),
+    ...(isTypoLevel(typeof title === 'string' ? title : '', now.title) ? [] : ['title']),
+    ...(String(date ?? '') === now.date ? [] : ['date']),
+    ...(ids(supersedes) === ids(now.supersedes) ? [] : ['supersedes']),
+  ];
 }
 
 /**

@@ -156,7 +156,7 @@ the old one, never an edit. jevlint keeps that honest without a model where it c
 | --- | --- |
 | The records fit together | `list` refuses duplicate ids, successors that do not exist or disagree, and loops |
 | Something keeps each decision | `check` names the decisions behind a violated rule, and `drift` reports an accepted decision with no `enforced_by` and no `unenforceable` reason |
-| Nobody rewrote one | `drift` reports an accepted record whose body changed since the commit that accepted it, beyond typo fixes |
+| Nobody rewrote one | `drift` reports an accepted record whose body, title, date or `supersedes` changed since the commit that accepted it, beyond typo fixes |
 | It still fits the code | `drift` reports a decision citing a file that changed, and with a model asks whether the code still follows it |
 | The documents agree | `drift --docs` compares each document with the accepted decisions too |
 | It is well written | `review --perspective decision` scores context, alternatives, consequences and evidence |

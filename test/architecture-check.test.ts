@@ -526,6 +526,8 @@ describe('decision records', () => {
         'unenforceable: "A choice of process, not of code."',
       ),
       [`${DIR}/decisions/0003-kept.md`]: record('kept', 'enforced_by: [down]'),
+      [`${DIR}/decisions/0004-retitled.md`]: record('retitled', 'enforced_by: [down]'),
+      [`${DIR}/decisions/0005-followed.md`]: record('followed', 'enforced_by: [down]'),
     });
     const base = commit('base');
     await write({
@@ -544,18 +546,30 @@ describe('decision records', () => {
         'enforced_by: [down]',
         '### Context\n\nWhy we never chose it.',
       ),
+      // The title and date are part of the decision; what ties it to the code may follow the code.
+      [`${DIR}/decisions/0004-retitled.md`]: record('retitled', 'enforced_by: [down]')
+        .replace('The retitled decision', 'Another decision')
+        .replace('2026-10-02', '2026-10-09'),
+      [`${DIR}/decisions/0005-followed.md`]: record(
+        'followed',
+        'unenforceable: "The rule went away."\ncomponents: [db]',
+      ),
       'src/web/page.ts':
         "import { query } from '../db/client.ts';\nexport const page = () => query() + 1;\n",
     });
     const items = (await driftArchitecture(config, await ssot(), { static: true })).items;
     expect(items.map(({ kind, target }) => [kind, target]).sort()).toEqual([
       ['edited-decision', 'kept'],
+      ['edited-decision', 'retitled'],
       ['stale-decision', 'loose'],
       ['unenforced-decision', 'loose'],
     ]);
-    expect(items.find(({ kind }) => kind === 'edited-decision')?.message).toContain(
-      `since commit ${base.slice(0, 7)} accepted it`,
+    const edited = (target: string) =>
+      items.find((item) => item.kind === 'edited-decision' && item.target === target)?.message;
+    expect(edited('kept')).toContain(
+      `the body of "The kept decision" changed since commit ${base.slice(0, 7)} accepted it`,
     );
+    expect(edited('retitled')).toContain('the title and date of "Another decision" changed');
   });
 
   it('treats a record accepted only in the working tree, or a shallow clone, as no edit', async () => {
@@ -616,6 +630,17 @@ describe('decision records', () => {
     expect(doubted.items.find(({ target }) => target === 'about-web')?.message).toContain(
       'The model doubts it still holds (0.10)',
     );
+
+    // A weight of 0 turns the question off, as it does for `review`.
+    const off = useModel(() => 'agrees', 0.9);
+    const weights = { ...config.weights, 'architecture-decision.still-holds': 0 };
+    const unasked = await driftArchitecture({ ...config, weights }, await ssot(), {
+      noCache: true,
+    });
+    expect(off.filter((state) => state.includes('Decision record'))).toEqual([]);
+    expect(
+      unasked.items.filter(({ kind }) => kind === 'stale-decision').map(({ target }) => target),
+    ).toEqual(['about-web', 'about-nothing']);
   });
 
   it('compares documents with accepted decisions too', async () => {

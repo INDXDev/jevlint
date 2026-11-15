@@ -18,7 +18,9 @@ import {
   commitPaths,
   commitsFrom,
   dirtyFiles,
+  filesAt,
   gitFailureReason,
+  isIsoDate,
   issueText,
   isWorkTree,
   pullRequestChange,
@@ -591,6 +593,31 @@ describe('resolveAsOf', () => {
     await expect(resolveAsOf(dir, '2025-12-31')).rejects.toThrow('No commit on this branch');
     await expect(resolveAsOf(dir, '2026-02-30')).rejects.toThrow('is not a date');
     await expect(resolveAsOf(dir, '--all')).rejects.toThrow(UserError);
+  });
+});
+
+describe('filesAt', () => {
+  it('lists only the files under a directory, taking its name literally', async () => {
+    git('init', '-q');
+    await mkdir(join(dir, 'ssot', 'decisions'), { recursive: true });
+    await mkdir(join(dir, 'ss*'), { recursive: true });
+    await commit(['top.txt', 'ssot/index.yaml', 'ssot/decisions/0001-a.md', 'ss*/other.txt']);
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+    expect((await filesAt(dir, head, 'ssot')).sort()).toEqual([
+      'ssot/decisions/0001-a.md',
+      'ssot/index.yaml',
+    ]);
+    expect(await filesAt(dir, head, 'ss*')).toEqual(['ss*/other.txt']);
+    expect(await filesAt(dir, head)).toHaveLength(4);
+  });
+});
+
+describe('isIsoDate', () => {
+  it('takes real days as YYYY-MM-DD only', () => {
+    expect(isIsoDate('2024-02-29')).toBe(true);
+    expect(isIsoDate('2026-02-29')).toBe(false);
+    expect(isIsoDate('2026-1-01')).toBe(false);
+    expect(isIsoDate('2026-01-01T00:00')).toBe(false);
   });
 });
 

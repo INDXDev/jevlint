@@ -443,6 +443,13 @@ export async function resolveCommit(root: string, revision: string): Promise<str
   return hash.trim();
 }
 
+/** True for a real calendar day written as `YYYY-MM-DD`, so not `2026-02-30`. */
+export function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const day = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(day.getTime()) && day.toISOString().startsWith(value);
+}
+
 /**
  * Resolves `--as-of`. A date, as `YYYY-MM-DD`, is the last commit on HEAD's first-parent line
  * committed before that day ended in UTC: the branch as it stood then, not a commit of a branch
@@ -450,10 +457,7 @@ export async function resolveCommit(root: string, revision: string): Promise<str
  */
 export async function resolveAsOf(root: string, value: string): Promise<string> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return resolveCommit(root, value);
-  const day = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(day.getTime()) || !day.toISOString().startsWith(value)) {
-    throw new UserError(`${value} is not a date.`);
-  }
+  if (!isIsoDate(value)) throw new UserError(`${value} is not a date.`);
   const before = `--before=${value} 23:59:59 +0000`;
   const hash = await git(root, ['rev-list', '-1', '--first-parent', before, 'HEAD']).catch(
     () => '',
@@ -482,9 +486,10 @@ export async function isShallow(root: string): Promise<boolean> {
   return answer.trim() === 'true';
 }
 
-/** Lists the root-relative files a commit holds under the root. */
-export async function filesAt(root: string, commit: string): Promise<string[]> {
-  const names = await git(root, ['ls-tree', '-r', '-z', '--name-only', commit]);
+/** Lists the root-relative files a commit holds under the root, or only under `dir` in it. */
+export async function filesAt(root: string, commit: string, dir?: string): Promise<string[]> {
+  const only = dir === undefined ? [] : ['--', `:(literal)${dir}`];
+  const names = await git(root, ['ls-tree', '-r', '-z', '--name-only', commit, ...only]);
   return names.split('\0').filter(Boolean);
 }
 

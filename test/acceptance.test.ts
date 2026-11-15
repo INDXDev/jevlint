@@ -116,6 +116,21 @@ describe('chunkCriteria', () => {
     expect(texts(body)).toEqual(['Kept one.', 'Kept two.', 'Kept three.']);
   });
 
+  it('reads a comment marker in code as code, and a fence in a comment as comment', () => {
+    const body = [
+      '```html',
+      '<!-- start',
+      '```',
+      'Use `<!--` to open a comment.',
+      '- [ ] Kept.',
+      '<!--',
+      '```',
+      '-->',
+      '- [ ] Also kept.',
+    ].join('\n');
+    expect(texts(body)).toEqual(['Use `<!--` to open a comment.', 'Kept.', 'Also kept.']);
+  });
+
   it('skips code in a nested list item, and reads CRLF and CR line endings', () => {
     expect(texts('- Item:\n    ```\n    - [ ] code\n    ```\n- Next.')).toEqual(['Item:', 'Next.']);
     expect(chunkCriteria('PR', 'One.\r\n\r\n- [ ] Two.\rThree.')).toEqual([
@@ -283,7 +298,9 @@ describe('judgeAcceptance', () => {
     const run = await judgeAcceptance(config, pullRequest());
     const classified = requests.filter(({ questions }) => questions[0] === IS_CRITERION);
     expect(classified).toHaveLength(4);
-    expect(classified[1]?.state).toBe(
+    // Chunks are classified concurrently, so the requests can arrive in any order.
+    const documented = classified.find(({ state }) => state.includes('The flag is documented.'));
+    expect(documented?.state).toBe(
       '===== Source =====\nPull request #7: Add a flag\n\n===== Heading =====\nAcceptance criteria\n\n===== Chunk =====\nThe flag is documented.',
     );
     const judged = requests.at(-1) as { state: string; questions: string[] };
@@ -364,7 +381,7 @@ describe('judgeAcceptance', () => {
 
   it('warns rather than fails with no criteria, and with no diff', async () => {
     classify = () => 0.1;
-    const none = await judgeAcceptance(config, pullRequest());
+    const none = await judgeAcceptance(config, pullRequest(), { noCache: true });
     expect(none?.result).toMatchObject({ score: null, criteria: [] });
     expect(none?.result.warnings).toEqual([
       'no acceptance criteria found in the pull request or the issues it closes.',
@@ -382,10 +399,32 @@ describe('judgeAcceptance', () => {
     expect(failed?.result.criteria).toEqual([]);
     expect(failed?.result.warnings).toEqual([
       'Provider error: busy',
-      'no acceptance criteria found in the pull request or the issues it closes.',
+      '4 of 4 chunks could not be classified, so nothing was judged.',
     ]);
     vi.mocked(createDecisionModel).mockResolvedValue(null);
     expect(await judgeAcceptance(config, pullRequest())).toBeNull();
+  });
+
+  it('says how many chunks could not be classified, rather than that none is a criterion', async () => {
+    classify = (state) => {
+      if (state.includes('Deployed')) throw new Error('busy');
+      return byHeading(state);
+    };
+    const partial = await judgeAcceptance(config, pullRequest(), { noCache: true });
+    expect(partial?.result.criteria.map(({ text }) => text)).toEqual(['The flag is documented.']);
+    expect(partial?.result.warnings).toContain(
+      '1 of 4 chunks could not be classified, so criteria may be missing.',
+    );
+
+    classify = (state) => {
+      if (state.includes('documented') || state.includes('Deployed')) throw new Error('busy');
+      return 0.1;
+    };
+    const none = await judgeAcceptance(config, pullRequest(), { noCache: true });
+    expect(none?.result.criteria).toEqual([]);
+    expect(none?.result.warnings).toContain(
+      '2 of 4 chunks could not be classified, and none of the rest is a criterion, so nothing was judged.',
+    );
   });
 
   it('puts the criterion in its question and the state, so the cache key covers both', () => {

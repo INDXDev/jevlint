@@ -3,6 +3,7 @@
  * then asks the model about stale summaries and documents. See docs/architecture-reference.md#drift.
  */
 import { join, posix } from 'node:path';
+import pLimit from 'p-limit';
 import { type Config, readRegularFile, UserError } from '../config.ts';
 import { decisionRequest } from '../decision/decide.ts';
 import { discoverDocs } from '../files.ts';
@@ -34,7 +35,7 @@ import {
   stillHoldsState,
   UNCOVERED,
 } from './questions.ts';
-import { isTypoLevel, documentDrift as ssotDocumentDrift } from './views.ts';
+import { recordEdits, documentDrift as ssotDocumentDrift } from './views.ts';
 
 /** Narrows and observes a drift run. */
 export interface ArchitectureDriftOptions {
@@ -119,10 +120,14 @@ async function staleSummaries(
   return results.flat();
 }
 
+/** `body`, `body and title`, `body, title and date`. */
+const joinedEdits = (edits: string[]) =>
+  edits.length > 1 ? `${edits.slice(0, -1).join(', ')} and ${edits.at(-1)}` : (edits[0] ?? '');
+
 /**
- * Accepted records whose body changed since the commit that first held them as accepted, by more
- * than typo fixes. A record accepted only in the working tree has nothing to compare with, and in a
- * shallow clone the accepting commit may be missing, so neither counts as an edit.
+ * Accepted records whose body, title, date or `supersedes` changed since the commit that first held
+ * them as accepted, beyond typo fixes. A record accepted only in the working tree has nothing to
+ * compare with, and in a shallow clone the accepting commit may be missing, so neither counts.
  */
 async function editedDecisions(
   config: Config,
@@ -143,14 +148,15 @@ async function editedDecisions(
     for (const commit of await fileHistory(config.root, path)) {
       const raw = await fileAt(config.root, commit, path);
       const version = raw === undefined ? null : recordVersion(raw);
-      if (version?.status !== 'accepted') continue;
-      if (!isTypoLevel(version.body, decision.body)) {
+      if (version?.front.status !== 'accepted') continue;
+      const edits = recordEdits(version, decision);
+      if (edits.length > 0) {
         items.push({
           kind: 'edited-decision',
           component: decision.components[0] ?? null,
           path,
           target: decision.id,
-          message: `the body of "${decision.title}" changed since commit ${commit.slice(0, 7)} accepted it; write a new record that supersedes it instead`,
+          message: `the ${joinedEdits(edits)} of "${decision.title}" changed since commit ${commit.slice(0, 7)} accepted it; write a new record that supersedes it instead`,
         });
       }
       break;
@@ -161,7 +167,8 @@ async function editedDecisions(
 
 /**
  * Asks of each stale decision whether the code still follows it, from the outlines of the
- * components it names. One that holds is dropped; a decision about no component stays as it is.
+ * components it names. One that holds is dropped; a decision about no component stays as it is,
+ * and so does every other item.
  */
 async function confirmStaleDecisions(
   run: SpecRun,
@@ -170,18 +177,18 @@ async function confirmStaleDecisions(
   items: DriftItem[],
   warnings: string[],
 ): Promise<DriftItem[]> {
-  const questions = activeQuestions(await loadPresets([DECISION_PRESET], run.config.root), {});
-  const question = questions.filter(({ id }) => id === STILL_HOLDS);
+  const presets = await loadPresets([DECISION_PRESET], run.config.root);
+  // Weighted as `review` weighs it, so a weight of 0 turns the question off here too.
+  const question = activeQuestions(presets, run.config.weights).filter(
+    ({ id }) => id === STILL_HOLDS,
+  );
   if (question.length === 0) return items;
   const request = decisionRequest(question);
   const edges = mapEdges(ssot, collected.modules);
   const { componentOf } = assign(ssot);
   const byId = new Map((ssot.decisions ?? []).map((decision) => [decision.id, decision]));
-  const keys = items.map((_, index) => String(index));
-  const checked = await eachPath(run, keys, undefined, async (key): Promise<DriftItem[]> => {
-    const item = items[Number(key)] as DriftItem;
-    const decision = byId.get(item.target ?? '') as ArchitectureDecision | undefined;
-    if (item.kind !== 'stale-decision' || !decision) return [item];
+  const limit = pLimit(run.config.concurrency);
+  const confirm = async (item: DriftItem, decision: ArchitectureDecision): Promise<DriftItem[]> => {
     const components = ssot.components.filter(({ id }) => decision.components.includes(id));
     if (components.length === 0) return [item];
     const outlines = components.map((component) =>
@@ -200,13 +207,15 @@ async function confirmStaleDecisions(
     const holds = answers?.[STILL_HOLDS]?.value;
     if (holds === undefined) return [item];
     if (holds >= 0.5) return [];
-    return [
-      {
-        ...item,
-        message: `${item.message} The model doubts it still holds (${holds.toFixed(2)}).`,
-      },
-    ];
-  });
+    const doubt = `The model doubts it still holds (${holds.toFixed(2)}).`;
+    return [{ ...item, message: `${item.message} ${doubt}` }];
+  };
+  const checked = await Promise.all(
+    items.map((item) => {
+      const decision = item.kind === 'stale-decision' ? byId.get(item.target ?? '') : undefined;
+      return decision ? limit(() => confirm(item, decision)) : [item];
+    }),
+  );
   return checked.flat();
 }
 
@@ -289,7 +298,7 @@ export async function driftArchitecture(
   const history = base
     ? await sinceBase(config, base, collected.paths)
     : { added: [], removed: [], changed: collected.paths };
-  const items = staticDrift(ssot, {
+  let items = staticDrift(ssot, {
     modules: collected.modules,
     exists: existsIn(config.root),
     added: new Set(history.added),
@@ -312,8 +321,7 @@ export async function driftArchitecture(
       options.noCache,
       'Run: jevlint auth set <provider name>, or pass --static',
     );
-    const confirmed = await confirmStaleDecisions(run, ssot, collected, items, warnings);
-    items.splice(0, items.length, ...confirmed);
+    items = await confirmStaleDecisions(run, ssot, collected, items, warnings);
     const touched = componentsTouching(ssot, history.changed);
     items.push(...(await staleSummaries(run, ssot, collected, touched, warnings)));
     if (options.docs) {

@@ -26,8 +26,8 @@ This project follows [Semantic Versioning](https://semver.org).
 - **Decisions are audited, statically where there is an exact answer.** `check` names the
   accepted decisions behind a violated rule (`decisions` in `--json`). `drift` reports
   `unenforced-decision` (an accepted decision with no `enforced_by` and no new `unenforceable`
-  reason), `edited-decision` (an accepted record's body changed since the commit that accepted it,
-  beyond typo fixes; skipped with a warning in a shallow clone) and `stale-decision` (it cites a file
+  reason), `edited-decision` (an accepted record's body, title, date or `supersedes` changed since the
+  commit that accepted it, beyond typo fixes; skipped with a warning in a shallow clone) and `stale-decision` (it cites a file
   changed since `compiled_at`; with a model, one the code still follows is dropped).
   `drift --docs` compares documents with accepted decisions too. `review --perspective decision`
   scores each accepted record with the new `architecture-decision` preset, which has fixtures for

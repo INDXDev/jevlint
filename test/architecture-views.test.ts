@@ -6,8 +6,14 @@ import {
   documentProblems,
   isTypoLevel,
   parseCitation,
+  recordEdits,
 } from '../src/architecture/views.ts';
-import type { ArchitectureSsot, FactModule, GraphView } from '../src/types.ts';
+import type {
+  ArchitectureDecision,
+  ArchitectureSsot,
+  FactModule,
+  GraphView,
+} from '../src/types.ts';
 
 const mod = (
   path: string,
@@ -237,11 +243,66 @@ describe('documentDrift', () => {
   });
 });
 
+describe('recordEdits', () => {
+  const now: ArchitectureDecision = {
+    id: 'cache',
+    file: '0001-cache',
+    title: 'Cache raw answers',
+    date: '2026-10-02',
+    status: 'accepted',
+    supersedes: ['old', 'older'],
+    superseded_by: null,
+    components: ['decision'],
+    enforced_by: [],
+    unenforceable: 'A choice of process.',
+    evidence: ['src/cache.ts:10'],
+    body: 'We cache raw answers.',
+  };
+  const front = {
+    title: 'Cache raw answrs',
+    date: '2026-10-02',
+    status: 'accepted',
+    supersedes: ['older', 'old'],
+    components: ['scoring'],
+    enforced_by: ['decision.cache-key'],
+    evidence: ['src/cache.ts:3'],
+  };
+
+  it('allows typo fixes, and changes to what ties the record to the code', () => {
+    expect(recordEdits({ front, body: 'We cache raw  answers.' }, now)).toEqual([]);
+  });
+
+  it('names a changed body, title, date or supersedes', () => {
+    const changed = { ...front, title: 'Cache scores', date: '2026-10-03', supersedes: ['old'] };
+    expect(recordEdits({ front: changed, body: 'We cache scores.' }, now)).toEqual([
+      'body',
+      'title',
+      'date',
+      'supersedes',
+    ]);
+    expect(recordEdits({ front: {}, body: now.body }, now)).toEqual([
+      'title',
+      'date',
+      'supersedes',
+    ]);
+  });
+});
+
 describe('isTypoLevel', () => {
   it('lets typo fixes and rewrapping through', () => {
     expect(isTypoLevel('We chose\nthe SDK.', 'We chose the SDK.')).toBe(true);
     expect(isTypoLevel('We chsoe the SKD.', 'We chose the SDK.')).toBe(true);
     expect(isTypoLevel('a b c d', 'a b c d')).toBe(true);
+    expect(isTypoLevel('We recieve it, Then cache it', 'We receive it. then cache it')).toBe(true);
+  });
+
+  it('counts a word that turns the decision around as an edit, however short the change', () => {
+    expect(isTypoLevel('Commands can call it.', "Commands can't call it.")).toBe(false);
+    expect(isTypoLevel('We now cache it.', 'We not cache it.')).toBe(false);
+    expect(isTypoLevel('Commands must stay thin.', 'Commands most stay thin.')).toBe(false);
+    expect(isTypoLevel('At most 64 criteria.', 'At most 16 criteria.')).toBe(false);
+    expect(isTypoLevel('Read it on the way.', 'Read it no the way.')).toBe(false);
+    expect(isTypoLevel('Use the cat.', 'Use the cot.')).toBe(false);
   });
 
   it('counts an added word, a new word or many fixes as an edit', () => {

@@ -1064,7 +1064,10 @@ export interface ArchitectureChapter {
   body: string;
 }
 
-/** Where a decision record stands. Only `status` and `superseded_by` change once it is accepted. */
+/**
+ * Where a decision record stands. Once it is accepted, its body, title, date and `supersedes` stay
+ * as they were; the fields that tie it to the code may follow the code.
+ */
 export type DecisionStatus = 'proposed' | 'accepted' | 'deprecated' | 'superseded';
 
 /** A dated, append-only decision record, in `decisions/<n>-<id>.md`. */

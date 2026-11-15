@@ -9,7 +9,7 @@ import { type Config, UserError } from './config.ts';
 import { type DecisionQuestion, decisionRequest } from './decision/decide.ts';
 import { createDecisionModel } from './decision/providers.ts';
 import { issueText } from './git.ts';
-import { sendableDiff } from './intent.ts';
+import { labelledSections, sendableDiff } from './intent.ts';
 import { activeQuestions, loadPresets } from './presets.ts';
 import { acceptanceScore, compliance } from './scoring.ts';
 import { ask, type SpecRun, usageOf } from './spec/run.ts';
@@ -50,22 +50,36 @@ interface Line {
   text: string;
 }
 
-/** Removes HTML comments, which may span lines, keeping the line count. */
-function withoutComments(lines: string[]): string[] {
-  let open = false;
-  return lines.map((line) => {
-    let rest = line;
-    let kept = '';
-    while (rest) {
-      const marker = open ? '-->' : '<!--';
-      const at = rest.indexOf(marker);
-      if (at < 0) return open ? kept : kept + rest;
-      if (!open) kept += rest.slice(0, at);
-      rest = rest.slice(at + marker.length);
-      open = !open;
+/**
+ * Removes the HTML comments from one line outside a code block, given whether a comment is open
+ * when it starts. A `<!--` inside a code span is code, not a comment.
+ */
+function withoutComments(line: string, open: boolean): { text: string; open: boolean } {
+  let text = '';
+  let at = 0;
+  while (at < line.length) {
+    if (open) {
+      const end = line.indexOf('-->', at);
+      if (end < 0) return { text, open };
+      at = end + '-->'.length;
+      open = false;
+      continue;
     }
-    return kept;
-  });
+    const tick = line.slice(at).match(/^`+/)?.[0];
+    if (tick) {
+      const end = line.indexOf(tick, at + tick.length);
+      const stop = end < 0 ? at + tick.length : end + tick.length;
+      text += line.slice(at, stop);
+      at = stop;
+    } else if (line.startsWith('<!--', at)) {
+      at += '<!--'.length;
+      open = true;
+    } else {
+      text += line[at];
+      at += 1;
+    }
+  }
+  return { text, open };
 }
 
 const tidy = (text: string) => text.replace(/\s+/g, ' ').trim();
@@ -107,6 +121,7 @@ export function chunkCriteria(source: string, text: string): CriterionChunk[] {
   let table = false;
   let item: CriterionChunk | null = null;
   let paragraph: Line[] = [];
+  let comment = false;
   const headingPath = () => headings.filter(Boolean).join(' > ');
   const close = () => {
     if (item?.text) chunks.push({ ...item, text: tidy(item.text) });
@@ -115,17 +130,21 @@ export function chunkCriteria(source: string, text: string): CriterionChunk[] {
     for (const sentence of sentences(paragraph)) chunks.push({ source, heading, ...sentence });
     paragraph = [];
   };
-  withoutComments(text.split(/\r\n|\r|\n/)).forEach((raw, index) => {
+  text.split(/\r\n|\r|\n/).forEach((written, index) => {
     const line = index + 1;
-    const trimmed = raw.trim();
     if (fence !== null) {
       // A fence closes only on a bare run of its own character, at least as long as it opened.
-      const closing = raw.match(FENCE)?.[1] ?? '';
-      if (closing[0] === fence[0] && closing.length >= fence.length && trimmed === closing) {
+      const closing = written.match(FENCE)?.[1] ?? '';
+      if (closing[0] === fence[0] && closing.length >= fence.length && written.trim() === closing) {
         fence = null;
       }
       return;
     }
+    // Comments are removed only outside code blocks, where `<!--` is text, as is the rest.
+    const stripped = withoutComments(written, comment);
+    comment = stripped.open;
+    const raw = stripped.text;
+    const trimmed = raw.trim();
     const opening = raw.match(FENCE)?.[1];
     if (opening) {
       close();
@@ -183,12 +202,9 @@ interface CriteriaSource {
   text: string;
 }
 
-const sections = (parts: [string, string][]) =>
-  parts.map(([label, text]) => `===== ${label} =====\n${text}`).join('\n\n');
-
 /** What a chunk's request holds: where it comes from, the headings above it and the chunk. */
 export function chunkState(chunk: CriterionChunk, title: string): string {
-  return sections([
+  return labelledSections([
     ['Source', title],
     ['Heading', chunk.heading || '(none)'],
     ['Chunk', chunk.text],
@@ -230,7 +246,7 @@ export function judgeState(
   first = 1,
 ): string {
   const listed = criteria.map(({ source, text }, index) => `${first + index}. (${source}) ${text}`);
-  return sections([
+  return labelledSections([
     ['Change', title],
     ['Acceptance criteria', listed.join('\n')],
     ['Unified diff', diff],
@@ -267,7 +283,7 @@ async function classifyChunks(
   run: SpecRun,
   chunks: { chunk: CriterionChunk; title: string }[],
   warnings: string[],
-): Promise<{ criteria: ClassifiedChunk[]; rejected: ClassifiedChunk[] }> {
+): Promise<{ criteria: ClassifiedChunk[]; rejected: ClassifiedChunk[]; unclassified: number }> {
   const { config } = run;
   const questions = activeQuestions(
     await loadPresets([ACCEPTANCE_PRESET], config.root),
@@ -291,6 +307,8 @@ async function classifyChunks(
   return {
     criteria: classified.filter(({ probability }) => probability >= CRITERION_THRESHOLD),
     rejected: classified.filter(({ probability }) => probability < CRITERION_THRESHOLD),
+    // A chunk the model did not answer is neither a criterion nor not one.
+    unclassified: chunks.length - classified.length,
   };
 }
 
@@ -357,7 +375,11 @@ export async function judgeAcceptance(
     chunkCriteria(source, text).map((chunk) => ({ chunk, title })),
   );
   onChunks?.(chunks.length);
-  const { criteria, rejected } = await classifyChunks(run, chunks, warnings);
+  const { criteria, rejected, unclassified } = await classifyChunks(run, chunks, warnings);
+  const failed = `${unclassified} of ${chunks.length} ${chunks.length === 1 ? 'chunk' : 'chunks'} could not be classified`;
+  if (unclassified > 0 && criteria.length > 0) {
+    warnings.push(`${failed}, so criteria may be missing.`);
+  }
   const finish = (judged: AcceptanceCriterion[], warning?: string): AcceptanceRun => ({
     result: {
       score: acceptanceScore(
@@ -372,7 +394,12 @@ export async function judgeAcceptance(
     usage: usageOf(run),
   });
   if (criteria.length === 0) {
-    return finish([], 'no acceptance criteria found in the pull request or the issues it closes.');
+    return finish(
+      [],
+      unclassified > 0
+        ? `${failed}${unclassified < chunks.length ? ', and none of the rest is a criterion' : ''}, so nothing was judged.`
+        : 'no acceptance criteria found in the pull request or the issues it closes.',
+    );
   }
   const unjudged = criteria.map((criterion) => ({ ...criterion, verdict: null, confidence: null }));
   const diff = await sendableDiff(config, change);

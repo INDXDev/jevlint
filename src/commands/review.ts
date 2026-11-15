@@ -115,10 +115,10 @@ function failUnmetCriteria(reviews: ChangeReview[]): void {
 }
 
 /** Each chunk is one small request, so a long issue costs many before any answer shows. */
-function warnAboutChunks(config: Config): (count: number) => void {
+function warnAboutChunks(config: Config, notify: (line: string) => void): (count: number) => void {
   return (count) => {
     if (count <= config.warn_file_count) return;
-    console.error(
+    notify(
       `Warning: ${count} pieces of the pull request and its issues are each sent to ask whether they are acceptance criteria, which may be slow and costly. Press Ctrl-C to stop.`,
     );
   };
@@ -148,12 +148,13 @@ async function printReviews(
     noCache: !flags.cache,
     intent: Boolean(flags.intent),
     acceptance: Boolean(flags.acceptance),
-    onAcceptanceChunks: warnAboutChunks(config),
   };
-  const reviewed = await withSpinner(async (onProgress) => {
+  const reviewed = await withSpinner(async (onProgress, notify = console.error) => {
+    // Told inside the spinner, which `notify` lifts, as the chunks are counted only once read.
+    const onAcceptanceChunks = warnAboutChunks(config, notify);
     const done: ChangeReview[] = [];
     for (const change of changes) {
-      done.push(await reviewChange(config, change, { ...options, onProgress }));
+      done.push(await reviewChange(config, change, { ...options, onProgress, onAcceptanceChunks }));
     }
     return done;
   });

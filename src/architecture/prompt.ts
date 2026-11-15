@@ -180,7 +180,7 @@ Dated from commit 5f1db8a, which first records it.
 ### Alternatives
 \`\`\`
 
-A record is append-only. Once it is accepted, never edit its body, except for a typo. To change a decision, write a new record that \`supersedes\` it, and on the old one set \`status: superseded\` and \`superseded_by\`. A decision no rule or checklist item can keep, such as a choice of process, says why in \`unenforceable: <reason>\` instead of \`enforced_by\`. \`list\` refuses records that do not fit together, and \`drift\` reports accepted ones that are edited, unenforced, or cite files that changed.`;
+A record is append-only. Once it is accepted, never edit its body, \`title\`, \`date\` or \`supersedes\`, except for a typo; \`components\`, \`enforced_by\`, \`unenforceable\` and \`evidence\` may follow the code. To change a decision, write a new record that \`supersedes\` it, and on the old one set \`status: superseded\` and \`superseded_by\`. A decision no rule or checklist item can keep, such as a choice of process, says why in \`unenforceable: <reason>\` instead of \`enforced_by\`. \`list\` refuses records that do not fit together, and \`drift\` reports accepted ones that are edited, unenforced, or cite files that changed.`;
 
 const DIAGRAM_RULES = `## How to draw the views
 
@@ -340,7 +340,7 @@ function documentsSection(docs: string[]): string {
 }
 
 /** How an update treats decision records, so that it adds to their history rather than rewrites it. */
-const DECISION_UPDATES = `Decision records are append-only: never edit the body of an accepted record. For each \`stale-decision\`, check the code and either confirm that the decision still holds, changing nothing, or write a new record that supersedes it. For an \`edited-decision\`, put the accepted body back and write the change as a new record. For an \`unenforced-decision\`, add the rule or checklist item that keeps it to \`enforced_by\`, or say in \`unenforceable\` why none can.`;
+const DECISION_UPDATES = `Decision records are append-only: never edit the body, \`title\`, \`date\` or \`supersedes\` of an accepted record. For each \`stale-decision\`, check the code and either confirm that the decision still holds, changing nothing, or write a new record that supersedes it. For an \`edited-decision\`, put back what was accepted and write the change as a new record. For an \`unenforced-decision\`, add the rule or checklist item that keeps it to \`enforced_by\`, or say in \`unenforceable\` why none can.`;
 
 const driftLine = ({ kind, path, line, message, since }: DriftItem) =>
   `- ${kind}: ${path}${line ? `:${line}` : ''}: ${message}${since ? ' (new since compiled_at)' : ''}`;

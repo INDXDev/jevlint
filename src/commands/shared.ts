@@ -184,16 +184,25 @@ export async function warnAboutScope(config: Config, paths?: string[]): Promise<
   }
 }
 
-/** Runs a task with a progress spinner when stderr is a terminal. */
+/**
+ * Runs a task with a progress spinner when stderr is a terminal. The task prints to stderr through
+ * `notify`, which lifts the spinner for the line, so that the spinner cannot draw over it.
+ */
 export async function withSpinner<T>(
-  task: (onProgress?: AuditOptions['onProgress']) => Promise<T>,
+  task: (onProgress?: AuditOptions['onProgress'], notify?: (line: string) => void) => Promise<T>,
 ) {
-  if (!process.stderr.isTTY) return task();
+  if (!process.stderr.isTTY) return task(undefined, (line) => console.error(line));
   const progress = spinner({ output: process.stderr, withGuide: false });
   progress.start('Auditing');
+  const notify = (line: string) => {
+    progress.clear();
+    console.error(line);
+    progress.start('Auditing');
+  };
   try {
-    return await task((done, total, path) =>
-      progress.message(withoutControlCharacters(`${done}/${total} ${path}`)),
+    return await task(
+      (done, total, path) => progress.message(withoutControlCharacters(`${done}/${total} ${path}`)),
+      notify,
     );
   } finally {
     progress.clear();

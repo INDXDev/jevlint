@@ -335,7 +335,7 @@ was asked? It answers in two stages, both with the decision model.
    Issues in another repository are named in a warning and not read, nor are comments. Each text is
    cut into chunks, line by line: each checklist item, each list item, and each sentence of a
    paragraph, with the headings above it. Code blocks, tables, HTML comments and quoted text are left
-   out. Each chunk is asked one question of the built-in `acceptance-criteria` preset, in a request
+   out; a `<!--` inside a code block or a code span is code, not a comment. Each chunk is asked one question of the built-in `acceptance-criteria` preset, in a request
    of its own: is it a condition the finished change must meet, specific enough to check against
    the code? A chunk is a criterion at a probability of 0.5 or more. Headings are context, not a
    filter, so a checklist under "Out of scope" is asked about too, and rejected.
@@ -353,7 +353,9 @@ was asked? It answers in two stages, both with the decision model.
 The score is the points over the criteria that count, on the configured scale. The output lists
 each criterion with its verdict and where it comes from (`PR` or `#<n>`), and says how many chunks
 were not criteria; `--json` lists those too. The command exits 1 when any criterion is `not-met`.
-Finding no criteria is a warning, not a failure, and so is an issue `gh` cannot read.
+Finding no criteria is a warning, not a failure, and so is an issue `gh` cannot read. A chunk the
+model could not answer, as when the provider fails, is neither a criterion nor a rejected chunk: a
+warning says how many there were, so that a provider failure never reads as "no criteria found".
 
 Every chunk is a small request, cached on its own, so running the command again costs nothing until
 the text or the diff changes. A long issue still makes many requests the first time, so the command

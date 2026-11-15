@@ -619,6 +619,22 @@ describe('decision records', () => {
     expect(placed).not.toContain('<h2>Decisions</h2>');
   });
 
+  it('places no diagram from inside a record, so a record cannot draw the records forever', () => {
+    const looped = decision('loop', {
+      body: 'Before.\n\n<!-- jevlint:diagram decisions -->\n\n<!-- jevlint:diagram map -->\n\nAfter.',
+    });
+    const model: ShowModel = {
+      ...documented,
+      ssot: { ...documented.ssot, chapters: [], decisions: [looped] },
+    };
+    const html = renderShowHtml(model);
+    expect(html).toContain(
+      '<h3>loop title</h3><p>Accepted 2026-10-02</p><p>Before.</p>\n<p>After.</p>',
+    );
+    expect(html.match(/<h3>loop title<\/h3>/g)).toHaveLength(1);
+    expect(renderMarkdown(model)).toContain('Before.\n\n<!-- jevlint:diagram decisions -->');
+  });
+
   it('lists the records in the terminal without control characters', () => {
     const list = formatSsotList(withRecords().ssot, []);
     expect(list).toContain('Decisions');
@@ -740,7 +756,9 @@ describe('the compile prompt', () => {
     expect(prompt).toContain('decisions/<nnnn>-<id>.md');
     expect(prompt).toContain('write one for every decision you can evidence, with no cap');
     expect(prompt).toContain('say in the record when the date is inferred');
-    expect(prompt).toContain('never edit its body, except for a typo');
+    expect(prompt).toContain(
+      'never edit its body, `title`, `date` or `supersedes`, except for a typo',
+    );
     expect(prompt).toContain('compiled_on: 2026-01-31');
   });
 
@@ -769,7 +787,7 @@ describe('the compile prompt', () => {
     );
     expect(update).not.toContain('## The draft');
     expect(update).toContain(
-      'never edit the body of an accepted record. For each `stale-decision`',
+      'never edit the body, `title`, `date` or `supersedes` of an accepted record. For each `stale-decision`',
     );
     const drift = renderDriftPrompt(
       {

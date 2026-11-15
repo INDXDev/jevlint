@@ -2,6 +2,7 @@
 import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
+import pLimit from 'p-limit';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import {
@@ -14,7 +15,7 @@ import {
   writeFileAtomic,
 } from '../config.ts';
 import { isOutsideRoot } from '../files.ts';
-import { fileAt, filesAt } from '../git.ts';
+import { fileAt, filesAt, isIsoDate } from '../git.ts';
 import { assertInRepo } from '../presets.ts';
 import { checklistSchema, idSchema, readYaml } from '../spec/load.ts';
 import type {
@@ -65,13 +66,7 @@ const commit = z.string().regex(/^[0-9a-f]{7,40}$/, 'must be a commit hash');
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a date as YYYY-MM-DD')
-  .refine(
-    (date) => {
-      const parsed = new Date(`${date}T00:00:00Z`);
-      return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(date);
-    },
-    { message: 'must be a real date' },
-  );
+  .refine(isIsoDate, { message: 'must be a real date' });
 
 const ruleSchema = z.discriminatedUnion('kind', [
   z.strictObject({ id: idSchema, kind: z.literal('layers') }),
@@ -322,13 +317,15 @@ function parseFrontmatter(raw: string, file: string): { front: unknown; body: st
 }
 
 /**
- * The status and body of a decision record as some commit held it, or null when it does not
+ * The frontmatter and body of a decision record as some commit held it, or null when it does not
  * parse. Lenient, as an old version need not fit today's schema.
  */
-export function recordVersion(raw: string): { status: unknown; body: string } | null {
+export function recordVersion(
+  raw: string,
+): { front: Record<string, unknown>; body: string } | null {
   try {
     const { front, body } = parseFrontmatter(raw, 'record');
-    return isTable(front) ? { status: front.status, body } : null;
+    return isTable(front) ? { front, body } : null;
   } catch {
     return null;
   }
@@ -685,6 +682,8 @@ export async function loadArchitecture(config: Config): Promise<ArchitectureSsot
   return ssot;
 }
 
+/** How many `git cat-file` processes read a commit's files at once. */
+export const GIT_READS = 8;
 /** More files than every directory of the SSOT may hold together, so a commit is refused early. */
 const MAX_SNAPSHOT_FILES = 6 * MAX_FILES;
 
@@ -698,20 +697,28 @@ export async function loadArchitectureAt(
   commit: string,
 ): Promise<ArchitectureSsot | null> {
   const dir = ssotDir(config);
-  const files = (await filesAt(config.root, commit)).filter((path) => path.startsWith(`${dir}/`));
+  const files = (await filesAt(config.root, commit, dir)).filter(
+    // A crafted tree can hold these names, which would write outside the directory.
+    (path) =>
+      path.startsWith(`${dir}/`) &&
+      !path.split('/').some((part) => part === '..' || part.toLowerCase() === '.git'),
+  );
   if (files.length > MAX_SNAPSHOT_FILES) {
     throw new UserError(`${dir}: ${files.length} files at ${commit}, more than an SSOT can have`);
   }
   const snapshot = await mkdtemp(join(tmpdir(), 'jevlint-ssot-'));
   try {
-    for (const path of files) {
-      // A crafted tree can hold these names, which would write outside the directory.
-      if (path.split('/').some((part) => part === '..' || part.toLowerCase() === '.git')) continue;
-      const text = await fileAt(config.root, commit, path);
-      if (text === undefined) continue;
-      await mkdir(dirname(join(snapshot, path)), { recursive: true });
-      await writeFileAtomic(join(snapshot, path), text);
-    }
+    const limit = pLimit(GIT_READS);
+    await Promise.all(
+      files.map((path) =>
+        limit(async () => {
+          const text = await fileAt(config.root, commit, path);
+          if (text === undefined) return;
+          await mkdir(dirname(join(snapshot, path)), { recursive: true });
+          await writeFileAtomic(join(snapshot, path), text);
+        }),
+      ),
+    );
     // Root-relative, as an absolute `architecture.dir` would point back into the working tree.
     const architecture = { ...config.architecture, dir };
     return await loadArchitecture({ ...config, root: snapshot, architecture });

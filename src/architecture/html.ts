@@ -421,9 +421,10 @@ function tableHtml(rows: string[]): string {
 
 /**
  * A chapter's Markdown as HTML: headings, paragraphs, lists, tables, code and the diagram
- * directives. Everything is escaped first, so repository text cannot add markup or scripts.
+ * directives. Everything is escaped first, so repository text cannot add markup or scripts. With
+ * `diagrams` false, a directive is dropped, as Markdown hides a comment.
  */
-export function chapterHtml(body: string, model: ShowModel): string {
+export function chapterHtml(body: string, model: ShowModel, { diagrams = true } = {}): string {
   const out: string[] = [];
   const blocks = body.split(/\n```[^\n]*\n([\s\S]*?)\n```/);
   blocks.forEach((block, index) => {
@@ -433,8 +434,9 @@ export function chapterHtml(body: string, model: ShowModel): string {
       if (!text) continue;
       const directive = text.match(/^<!--\s*jevlint:diagram\s+([a-z0-9_:-]+)\s*-->$/);
       const lines = text.split('\n');
-      if (directive) out.push(diagramHtml(directive[1] as string, model));
-      else if (/^#{1,6}\s/.test(text) && lines.length === 1) {
+      if (directive) {
+        if (diagrams) out.push(diagramHtml(directive[1] as string, model));
+      } else if (/^#{1,6}\s/.test(text) && lines.length === 1) {
         const level = Math.min(6, Math.max(3, (text.match(/^#+/)?.[0].length ?? 3) + 1));
         out.push(`<h${level}>${inline(text.replace(/^#+\s*/, ''))}</h${level}>`);
       } else if (lines.every((line) => line.trim().startsWith('|'))) out.push(tableHtml(lines));
@@ -467,7 +469,9 @@ function decisionsHtml(model: ShowModel): string {
       decision.enforced_by.length > 0 ? `enforced by ${codes(decision.enforced_by)}` : '',
       decision.supersedes.length > 0 ? `supersedes ${codes(decision.supersedes)}` : '',
     ].filter(Boolean);
-    return `<h3>${escapeHtml(decision.title)}</h3><p>${facts.join(' · ')}</p>${chapterHtml(decision.body, model)}`;
+    // A record places no diagram, as in Markdown, and `decisions` there would draw itself forever.
+    const body = chapterHtml(decision.body, model, { diagrams: false });
+    return `<h3>${escapeHtml(decision.title)}</h3><p>${facts.join(' · ')}</p>${body}`;
   });
   const history = past.map(({ id, title, date, status, superseded_by }) => {
     const successor = superseded_by ? byId.get(superseded_by) : undefined;

@@ -247,9 +247,11 @@ evidence: [src/decision/providers.ts:9, commit:cd3216c]
 | `unenforceable` | string | No | Why no rule or checklist item can keep it, such as a choice of process. Silences `unenforced-decision`. Not with `enforced_by` |
 | `evidence` | list | No | As for a chapter: `path`, `path:line`, `path:start-end` or `commit:<hash>` |
 
-Once a record is accepted, its body stays as it is. To change a decision, write a new record that
-`supersedes` it, and on the old one set `status: superseded` and `superseded_by`. There is no cap on
-the number of records: the history is the point.
+Once a record is accepted, its body, `title`, `date` and `supersedes` stay as they are, except for
+typo fixes. To change a decision, write a new record that `supersedes` it, and on the old one set
+`status: superseded` and `superseded_by`. The keys that tie a record to the code, `components`,
+`enforced_by`, `unenforceable` and `evidence`, may follow the code. A diagram directive in a record
+places nothing. There is no cap on the number of records: the history is the point.
 
 `list` exits 2 when the records do not fit together: a duplicate id, a `supersedes` or
 `superseded_by` that names no record, the two sides disagreeing, a superseded record with no
@@ -421,7 +423,7 @@ text and in `--json`, so the reader sees why the rule exists.
 | `stale-chapter` | A chapter that cites a file changed since `compiled_at`. Decision records have their own kinds | git |
 | `stale-view` | A view node whose path matches nothing, a solid arrow with no import behind it, or a data entity whose type is gone | AST |
 | `unenforced-decision` | An accepted decision with no `enforced_by` and no `unenforceable` reason | Static |
-| `edited-decision` | An accepted record whose body changed since the commit that first held it as accepted, by more than typo fixes: a changed word count, or more than three words each one or two letters apart. A record accepted only in the working tree is not compared, and a shallow clone skips the check with a warning | git |
+| `edited-decision` | An accepted record whose body, `title`, `date` or `supersedes` changed since the commit that first held it as accepted, beyond typo fixes. A typo fix keeps the word count and changes at most three words, each a misspelt plain word: one or two letters apart, or only reordered in a word of fewer than four letters. A changed number, a word with an apostrophe and words such as "not", "can", "must" or "most" are never typos. A record accepted only in the working tree is not compared, and a shallow clone skips the check with a warning | git |
 | `stale-decision` | An accepted decision that cites a file changed since `compiled_at`. Unless `--static`, the model is asked whether the code still follows it, from the outlines of the components it names, and one that holds is dropped | git, then `architecture-decision.still-holds`, a boolean |
 | `document` | With `--docs`: a document that contradicts a summary, a checklist item or an accepted decision, or states a structural fact the SSOT leaves out | Two requests per document, as `spec drift` |
 

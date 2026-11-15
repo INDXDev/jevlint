@@ -3,6 +3,7 @@
  * it was compiled, for the prompt that asks a coding agent to write or update it.
  */
 import { basename } from 'node:path';
+import pLimit from 'p-limit';
 import { type Config, UserError } from '../config.ts';
 import { discoverDocs } from '../files.ts';
 import { changedSince, fileAt, resolveCommit, significantCommits } from '../git.ts';
@@ -13,6 +14,7 @@ import { draftSsot } from './draft.ts';
 import {
   architectureFiles,
   budgetWarnings,
+  GIT_READS,
   loadArchitecture,
   loadArchitectureAt,
   ssotDir,
@@ -188,14 +190,19 @@ const MAX_COUNTED_CHARS = 5 * 1024 * 1024;
 
 /** Counts the lines of cited files as a commit holds them, read ahead because checks are sync. */
 async function lineCountsAt(root: string, commit: string, paths: string[]) {
-  const counts = new Map<string, number | undefined>();
-  for (const path of paths) {
-    const text = await fileAt(root, commit, path);
-    counts.set(
-      path,
-      text && text.length <= MAX_COUNTED_CHARS ? text.split('\n').length : undefined,
-    );
-  }
+  const limit = pLimit(GIT_READS);
+  const counts = new Map(
+    await Promise.all(
+      paths.map((path) =>
+        limit(async () => {
+          const text = await fileAt(root, commit, path);
+          const count =
+            text && text.length <= MAX_COUNTED_CHARS ? text.split('\n').length : undefined;
+          return [path, count] as const;
+        }),
+      ),
+    ),
+  );
   return (path: string) => counts.get(path);
 }
 
