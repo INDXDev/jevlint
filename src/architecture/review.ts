@@ -20,7 +20,14 @@ import { collect } from './collect.ts';
 import { assign, mapEdges } from './conformance.ts';
 import { loadArchitecture } from './load.ts';
 import { type Subject, subjectsOf } from './outline.ts';
-import { chapterState, componentOutline, designState } from './questions.ts';
+import {
+  chapterState,
+  componentOutline,
+  DECISION_PRESET,
+  decisionState,
+  designState,
+  STILL_HOLDS,
+} from './questions.ts';
 import { buildStructure } from './structure.ts';
 
 /** The preset whose questions are asked of each kind of unit. */
@@ -31,13 +38,14 @@ const PRESETS: Record<Perspective, string> = {
   component: 'architecture-component',
   design: 'architecture-design',
   chapter: 'architecture-chapter',
+  decision: DECISION_PRESET,
 };
 
 /** Every perspective, broadest first. */
 export const PERSPECTIVES = Object.keys(PRESETS) as Perspective[];
 
 /** The perspectives that review the SSOT, which need one. */
-export const SSOT_PERSPECTIVES: Perspective[] = ['component', 'design', 'chapter'];
+export const SSOT_PERSPECTIVES: Perspective[] = ['component', 'design', 'chapter', 'decision'];
 
 /** Narrows and observes a review. */
 export interface ReviewOptions {
@@ -156,13 +164,30 @@ function ssotSubjects(ssot: ArchitectureSsot, modules: FactModule[]): Subject[] 
       outline: chapterState(chapter),
     }),
   );
-  return [...components, design, ...chapters];
+  const decisions = (ssot.decisions ?? [])
+    .filter(({ status }) => status === 'accepted')
+    .map(
+      (decision): Subject => ({
+        perspective: 'decision',
+        name: decision.id,
+        path: posix.join(ssot.dir, 'decisions', `${decision.file}.md`),
+        line: 1,
+        lines: decision.body.split('\n').length,
+        findings: [],
+        outline: decisionState(decision),
+      }),
+    );
+  return [...components, design, ...chapters, ...decisions];
 }
 
 async function loadQuestions(config: Config, perspectives: Perspective[]) {
   const entries = perspectives.map(async (perspective) => {
     const presets = await loadPresets([PRESETS[perspective]], config.root);
-    return [perspective, activeQuestions(presets, config.weights)] as const;
+    // `still-holds` is about the code, not the record, so only `drift` asks it.
+    const questions = activeQuestions(presets, config.weights).filter(
+      ({ id }) => id !== STILL_HOLDS,
+    );
+    return [perspective, questions] as const;
   });
   return new Map(await Promise.all(entries));
 }

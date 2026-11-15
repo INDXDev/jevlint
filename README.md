@@ -75,7 +75,8 @@ hands it to Claude Code, and confirms the score went up.
   first item is the one worth your time.
 - **Reviews of a change, not only a repository.** `jevlint pr` and `jevlint commits` show a file's
   score before and after, and only what the change made worse. `--intent` also holds a change
-  against its message and your `AGENTS.md`.
+  against its message and your `AGENTS.md`, and `pr --acceptance` against the acceptance criteria
+  of the issues it closes.
 - **Your own rules, in one sentence.** An ast-grep pattern picks the code and a yes/no question
   judges each match, so a model's verdict gets a line number.
 - **Most source languages.** TypeScript, JavaScript, Python, Go and Rust get exact metrics. Other
@@ -181,6 +182,7 @@ jevlint pr --ast-only                # what this branch's pull request made wors
 jevlint pr 42 --ast-only             # the same, by number
 jevlint commits --count 5 --ast-only # the same, commit by commit
 jevlint commits --count 5 --intent   # also check each message and AGENTS.md against the diff
+jevlint pr 42 --acceptance           # does it meet the criteria of the issues it closes?
 ```
 
 Your working tree stays as it is, and your own config applies, not the change's. `--intent` reads

@@ -2,6 +2,7 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { judgeAcceptance } from './acceptance.ts';
 import { type AuditOptions, audit } from './audit.ts';
 import { type Config, writeFileAtomic } from './config.ts';
 import { changedFiles, fileAt } from './git.ts';
@@ -101,27 +102,45 @@ function addUsage(a: AuditReport['usage'], b: AuditReport['usage']): AuditReport
 export interface ChangeReviewOptions extends AuditOptions {
   /** Also judges the change against its message and the repository's instructions. */
   intent?: boolean;
+  /** Also judges a pull request against the acceptance criteria in it and the issues it closes. */
+  acceptance?: boolean;
+  /** Told how many chunks `acceptance` is about to classify, before any request. */
+  onAcceptanceChunks?: (count: number) => void;
 }
 
 /** Compares a change's added and modified files between its two commits. */
 export async function reviewChange(
   config: Config,
   change: Change,
-  { intent, ...options }: ChangeReviewOptions = {},
+  { intent, acceptance, onAcceptanceChunks, ...options }: ChangeReviewOptions = {},
 ): Promise<ChangeReview> {
   const paths = (await changedFiles(config.root, change)).filter((path) => !UNSAFE_PATH.test(path));
   const after = await auditAt(config, change.head, paths, options);
   const before = change.base ? await auditAt(config, change.base, paths, options) : null;
-  const review = compareReports(change, after, before);
-  if (!intent) return review;
-  const judged = await judgeIntent(config, change, options.noCache);
-  if (!judged) return review;
-  return {
-    ...review,
-    usage: addUsage(review.usage, judged.usage),
-    intent: judged.answers,
-    warnings: judged.warnings,
-  };
+  let review = compareReports(change, after, before);
+  const judged = intent ? await judgeIntent(config, change, options.noCache) : null;
+  if (judged) {
+    review = {
+      ...review,
+      usage: addUsage(review.usage, judged.usage),
+      intent: judged.answers,
+      warnings: judged.warnings,
+    };
+  }
+  const accepted = acceptance
+    ? await judgeAcceptance(config, change, {
+        noCache: options.noCache,
+        onChunks: onAcceptanceChunks,
+      })
+    : null;
+  if (accepted) {
+    review = {
+      ...review,
+      usage: addUsage(review.usage, accepted.usage),
+      acceptance: accepted.result,
+    };
+  }
+  return review;
 }
 
 /** Compares a root-relative file on disk with HEAD. Null if it is excluded or cannot be scored. */

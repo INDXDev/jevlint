@@ -1,0 +1,8 @@
+===== Source =====
+Issue #19: architecture: dated, append-only decision records
+
+===== Heading =====
+How > P1
+
+===== Chunk =====
+Read src/architecture/load.ts first, then add a schema that mirrors the chapter schema.

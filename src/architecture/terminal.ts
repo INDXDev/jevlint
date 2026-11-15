@@ -90,6 +90,7 @@ const PERSPECTIVE_LABELS: Record<Perspective, string> = {
   component: 'Components',
   design: 'Design',
   chapter: 'Chapters',
+  decision: 'Decisions',
 };
 
 function formatSummary({ score, scale, perspectives, modules, edges }: ArchitectureReport): string {
@@ -152,7 +153,7 @@ export function formatSsotList(untrusted: ArchitectureSsot, warnings: string[]):
       `  ${id.padEnd(width)}  ${pc.dim((layer ?? '-').padEnd(layerWidth))}  ${title}${status === 'target' ? pc.dim(' (target)') : ''}  ${pc.dim(paths.join(' '))}`,
   );
   return [
-    ` ${pc.bold(index.name)}  ${pc.dim(ssot.dir)}${index.compiled_at ? pc.dim(`  compiled at ${index.compiled_at}`) : ''}`,
+    ` ${pc.bold(index.name)}  ${pc.dim(ssot.dir)}${index.compiled_at ? pc.dim(`  compiled at ${index.compiled_at}`) : ''}${index.compiled_on ? pc.dim(` on ${index.compiled_on}`) : ''}`,
     ` ${[plural(components.length, 'component'), plural(index.layers.length, 'layer'), plural(flows.length, 'flow'), plural(index.rules.length + components.reduce((n, c) => n + c.rules.length, 0), 'rule'), plural(index.checklist.length + components.reduce((n, c) => n + c.checklist.length, 0), 'checklist item')].join(SEPARATOR)}`,
     '',
     ...lines,
@@ -168,6 +169,13 @@ export function formatSsotList(untrusted: ArchitectureSsot, warnings: string[]):
       ssot.chapters.map(
         ({ id, title, evidence }) =>
           `  ${id.padEnd(width)}  ${title}  ${pc.dim(plural(evidence.length, 'citation'))}`,
+      ),
+    ),
+    ...formatSection(
+      'Decisions',
+      (ssot.decisions ?? []).map(
+        ({ id, date, status, title }) =>
+          `  ${date}  ${(status === 'accepted' ? pc.green : pc.dim)(status.padEnd(10))}  ${title}  ${pc.dim(id)}`,
       ),
     ),
     ...formatSection(
@@ -320,9 +328,10 @@ export function formatShow(
   return [header, legend, '', ...body].join('\n');
 }
 
-const violationRow = ({ path, line, rule, message, ruleId }: ArchitectureViolation) => [
+const violationRow = ({ path, line, rule, message, ruleId, decisions }: ArchitectureViolation) => [
   `  ${path}:${line}`,
   `    ${pc.red('✗')} ${rule.padEnd(22)} ${message} ${pc.dim(`(${ruleId})`)}`,
+  ...(decisions ? [`      ${pc.dim(`Why: decision ${decisions.join(', ')}`)}`] : []),
 ];
 
 /** The check report: structural violations, checklist violations and unimplemented items. */

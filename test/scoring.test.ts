@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  acceptanceScore,
   astScoreFrom,
   compliance,
   fileScore,
@@ -179,5 +180,19 @@ describe('scaleScore', () => {
   it('scales and rounds to the configured precision', () => {
     expect(scaleScore(0.456, scoring)).toBe(46);
     expect(scaleScore(0.456, { ...scoring, scale: 1, precision: 2 })).toBe(0.46);
+  });
+});
+
+describe('acceptanceScore', () => {
+  it('counts met as 1 and partly as half, over the criteria a diff can show', () => {
+    expect(acceptanceScore(['met', 'partly', 'not-met', 'cannot-tell'], scoring)).toBe(50);
+    expect(acceptanceScore(['met', 'met', 'partly'], scoring)).toBe(83);
+    expect(acceptanceScore(['not-met'], { ...scoring, scale: 1, precision: 2 })).toBe(0);
+  });
+
+  it('leaves out cannot-tell and unjudged criteria, and is null when none count', () => {
+    expect(acceptanceScore(['met', 'cannot-tell', null], scoring)).toBe(100);
+    expect(acceptanceScore(['cannot-tell', null], scoring)).toBeNull();
+    expect(acceptanceScore([], scoring)).toBeNull();
   });
 });

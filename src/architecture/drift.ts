@@ -2,15 +2,17 @@
  * `jevlint architecture drift`: finds where the SSOT no longer describes the code, from the AST,
  * then asks the model about stale summaries and documents. See docs/architecture-reference.md#drift.
  */
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
+import pLimit from 'p-limit';
 import { type Config, readRegularFile, UserError } from '../config.ts';
 import { decisionRequest } from '../decision/decide.ts';
 import { discoverDocs } from '../files.ts';
-import { changedSince, resolveCommit } from '../git.ts';
+import { changedSince, fileAt, fileHistory, isShallow, resolveCommit } from '../git.ts';
 import { activeQuestions, loadPresets } from '../presets.ts';
 import { ask, eachPath, type SpecRun, startRun, usageOf, verdicts } from '../spec/run.ts';
 import type {
   ArchitectureComponent,
+  ArchitectureDecision,
   ArchitectureDriftReport,
   ArchitectureSsot,
   DriftItem,
@@ -19,17 +21,21 @@ import type {
 } from '../types.ts';
 import { collect, existsIn, filesOfCommit, lineCountIn } from './collect.ts';
 import { assign, componentsTouching, mapEdges, staticDrift } from './conformance.ts';
+import { recordVersion } from './load.ts';
 import {
   componentOutline,
+  DECISION_PRESET,
   DRIFT_PRESET,
   documentItems,
   documentRequest,
   documentState,
   ROUTE,
   routeQuestion,
+  STILL_HOLDS,
+  stillHoldsState,
   UNCOVERED,
 } from './questions.ts';
-import { documentDrift as ssotDocumentDrift } from './views.ts';
+import { recordEdits, documentDrift as ssotDocumentDrift } from './views.ts';
 
 /** Narrows and observes a drift run. */
 export interface ArchitectureDriftOptions {
@@ -114,6 +120,105 @@ async function staleSummaries(
   return results.flat();
 }
 
+/** `body`, `body and title`, `body, title and date`. */
+const joinedEdits = (edits: string[]) =>
+  edits.length > 1 ? `${edits.slice(0, -1).join(', ')} and ${edits.at(-1)}` : (edits[0] ?? '');
+
+/**
+ * Accepted records whose body, title, date or `supersedes` changed since the commit that first held
+ * them as accepted, beyond typo fixes. A record accepted only in the working tree has nothing to
+ * compare with, and in a shallow clone the accepting commit may be missing, so neither counts.
+ */
+async function editedDecisions(
+  config: Config,
+  ssot: ArchitectureSsot,
+  warnings: string[],
+): Promise<DriftItem[]> {
+  const accepted = (ssot.decisions ?? []).filter(({ status }) => status === 'accepted');
+  if (accepted.length === 0) return [];
+  if (await isShallow(config.root)) {
+    warnings.push(
+      'This is a shallow clone, so accepted decision records were not compared with the commit that accepted them.',
+    );
+    return [];
+  }
+  const items: DriftItem[] = [];
+  for (const decision of accepted) {
+    const path = posix.join(ssot.dir, 'decisions', `${decision.file}.md`);
+    for (const commit of await fileHistory(config.root, path)) {
+      const raw = await fileAt(config.root, commit, path);
+      const version = raw === undefined ? null : recordVersion(raw);
+      if (version?.front.status !== 'accepted') continue;
+      const edits = recordEdits(version, decision);
+      if (edits.length > 0) {
+        items.push({
+          kind: 'edited-decision',
+          component: decision.components[0] ?? null,
+          path,
+          target: decision.id,
+          message: `the ${joinedEdits(edits)} of "${decision.title}" changed since commit ${commit.slice(0, 7)} accepted it; write a new record that supersedes it instead`,
+        });
+      }
+      break;
+    }
+  }
+  return items;
+}
+
+/**
+ * Asks of each stale decision whether the code still follows it, from the outlines of the
+ * components it names. One that holds is dropped; a decision about no component stays as it is,
+ * and so does every other item.
+ */
+async function confirmStaleDecisions(
+  run: SpecRun,
+  ssot: ArchitectureSsot,
+  collected: Awaited<ReturnType<typeof collect>>,
+  items: DriftItem[],
+  warnings: string[],
+): Promise<DriftItem[]> {
+  const presets = await loadPresets([DECISION_PRESET], run.config.root);
+  // Weighted as `review` weighs it, so a weight of 0 turns the question off here too.
+  const question = activeQuestions(presets, run.config.weights).filter(
+    ({ id }) => id === STILL_HOLDS,
+  );
+  if (question.length === 0) return items;
+  const request = decisionRequest(question);
+  const edges = mapEdges(ssot, collected.modules);
+  const { componentOf } = assign(ssot);
+  const byId = new Map((ssot.decisions ?? []).map((decision) => [decision.id, decision]));
+  const limit = pLimit(run.config.concurrency);
+  const confirm = async (item: DriftItem, decision: ArchitectureDecision): Promise<DriftItem[]> => {
+    const components = ssot.components.filter(({ id }) => decision.components.includes(id));
+    if (components.length === 0) return [item];
+    const outlines = components.map((component) =>
+      componentOutline(
+        component,
+        collected.modules.filter(({ path }) => componentOf(path) === component.id),
+        edges,
+      ),
+    );
+    const own: string[] = [];
+    const answers = await ask(run, request, stillHoldsState(decision, outlines), own);
+    for (const warning of own) {
+      const tagged = `${warning} (${decision.id})`;
+      if (!warnings.includes(tagged)) warnings.push(tagged);
+    }
+    const holds = answers?.[STILL_HOLDS]?.value;
+    if (holds === undefined) return [item];
+    if (holds >= 0.5) return [];
+    const doubt = `The model doubts it still holds (${holds.toFixed(2)}).`;
+    return [{ ...item, message: `${item.message} ${doubt}` }];
+  };
+  const checked = await Promise.all(
+    items.map((item) => {
+      const decision = item.kind === 'stale-decision' ? byId.get(item.target ?? '') : undefined;
+      return decision ? limit(() => confirm(item, decision)) : [item];
+    }),
+  );
+  return checked.flat();
+}
+
 async function driftDocument(
   run: SpecRun,
   ssot: ArchitectureSsot,
@@ -193,7 +298,7 @@ export async function driftArchitecture(
   const history = base
     ? await sinceBase(config, base, collected.paths)
     : { added: [], removed: [], changed: collected.paths };
-  const items = staticDrift(ssot, {
+  let items = staticDrift(ssot, {
     modules: collected.modules,
     exists: existsIn(config.root),
     added: new Set(history.added),
@@ -206,6 +311,7 @@ export async function driftArchitecture(
     lineCount: lineCountIn(config.root),
   };
   items.push(...ssotDocumentDrift(ssot, lookup, changed));
+  items.push(...(await editedDecisions(config, ssot, warnings)));
   let docs: SpecDocResult[] = [];
   let run: SpecRun | null = null;
   if (!options.static) {
@@ -215,6 +321,7 @@ export async function driftArchitecture(
       options.noCache,
       'Run: jevlint auth set <provider name>, or pass --static',
     );
+    items = await confirmStaleDecisions(run, ssot, collected, items, warnings);
     const touched = componentsTouching(ssot, history.changed);
     items.push(...(await staleSummaries(run, ssot, collected, touched, warnings)));
     if (options.docs) {

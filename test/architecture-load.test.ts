@@ -357,6 +357,167 @@ describe('views and chapters', () => {
   });
 });
 
+describe('decision records', () => {
+  const record = (id: string, fields = '', body = '### Context\n\nWhy.\n') =>
+    `---\nid: ${id}\ntitle: ${id} title\ndate: 2026-10-02\nstatus: accepted\n${fields}---\n\n${body}`;
+  const withDecisions = (files: Record<string, string>) =>
+    valid().then(() =>
+      write(
+        Object.fromEntries(
+          Object.entries(files).map(([name, content]) => [`${DIR}/decisions/${name}`, content]),
+        ),
+      ),
+    );
+
+  it('leaves the SSOT as it was when there are no records', async () => {
+    await valid();
+    await mkdir(join(root, DIR, 'decisions'));
+    const ssot = (await loadArchitecture(config)) as ArchitectureSsot;
+    expect(ssot).not.toHaveProperty('decisions');
+    expect(Object.keys(ssot)).toEqual(['dir', 'index', 'components', 'flows', 'views', 'chapters']);
+  });
+
+  it('loads records with defaults, in number order, and lists their files', async () => {
+    await withDecisions({
+      '10-later.md': record('later', 'supersedes: [first]\n'),
+      '9-first.md': record('first', 'status: superseded\nsuperseded_by: later\n').replace(
+        'status: accepted\n',
+        '',
+      ),
+      '0011-owned.md': record(
+        'owned',
+        'components: [db]\nenforced_by: [layers-point-down, db.owns-pg]\nevidence: [commit:abc1234]\n',
+      ),
+      'README.txt': 'not a record',
+    });
+    const ssot = (await loadArchitecture(config)) as ArchitectureSsot;
+    expect(ssot.decisions?.map(({ file }) => file)).toEqual(['9-first', '10-later', '0011-owned']);
+    expect(ssot.decisions?.[1]).toEqual({
+      id: 'later',
+      file: '10-later',
+      title: 'later title',
+      date: '2026-10-02',
+      status: 'accepted',
+      supersedes: ['first'],
+      superseded_by: null,
+      components: [],
+      enforced_by: [],
+      evidence: [],
+      body: '### Context\n\nWhy.',
+    });
+    expect(ssot.decisions?.[2]).toMatchObject({
+      components: ['db'],
+      enforced_by: ['layers-point-down', 'db.owns-pg'],
+    });
+    expect(architectureFiles(ssot)).toContain(`${DIR}/decisions/0011-owned.md`);
+  });
+
+  it('reads compiled_on and refuses a date that is not real', async () => {
+    await valid();
+    await write({ [`${DIR}/index.yaml`]: `${INDEX}compiled_on: 2026-11-12\n` });
+    expect((await loadArchitecture(config))?.index.compiled_on).toBe('2026-11-12');
+    await write({ [`${DIR}/index.yaml`]: `${INDEX}compiled_on: 2026-02-30\n` });
+    await expect(loadArchitecture(config)).rejects.toThrow('compiled_on: must be a real date');
+  });
+
+  it.each([
+    ['a duplicate id', { '1-a.md': record('a'), '2-a.md': record('a') }, 'duplicate id a'],
+    [
+      'a supersedes id that does not exist',
+      { '1-a.md': record('a', 'supersedes: [ghost]\n') },
+      'no decision ghost',
+    ],
+    [
+      'a superseded record with no successor',
+      { '1-a.md': record('a').replace('accepted', 'superseded') },
+      'superseded_by must name its successor',
+    ],
+    [
+      'a successor that does not agree',
+      {
+        '1-a.md': record('a', 'superseded_by: b\n').replace('accepted', 'superseded'),
+        '2-b.md': record('b'),
+      },
+      'b does not list a in supersedes',
+    ],
+    [
+      'superseded_by on a record that is still accepted',
+      { '1-a.md': record('a', 'superseded_by: b\n'), '2-b.md': record('b', 'supersedes: [a]\n') },
+      'superseded_by is set, so status must be superseded',
+    ],
+    [
+      'a cycle',
+      {
+        '1-a.md': record('a', 'supersedes: [b]\nsuperseded_by: b\n').replace(
+          'accepted',
+          'superseded',
+        ),
+        '2-b.md': record('b', 'supersedes: [a]\nsuperseded_by: a\n').replace(
+          'accepted',
+          'superseded',
+        ),
+      },
+      'decisions supersede each other: a → b → a',
+    ],
+    [
+      'an enforced_by id that is not a rule or checklist item',
+      { '1-a.md': record('a', 'enforced_by: [owns-pg]\n') },
+      'no rule or checklist item owns-pg',
+    ],
+    ['an unknown component', { '1-a.md': record('a', 'components: [ghost]\n') }, 'no component'],
+    [
+      'an id that differs from the file name',
+      { '1-a.md': record('b') },
+      'must equal the file name',
+    ],
+    ['a file name with no number', { 'a.md': record('a') }, 'name decision records'],
+    [
+      'a date that is not ISO',
+      { '1-a.md': record('a').replace('2026-10-02', '02/10/2026') },
+      'must be a date as YYYY-MM-DD',
+    ],
+    ['an unknown status', { '1-a.md': record('a').replace('accepted', 'done') }, '1-a.md: status'],
+    ['an unknown key', { '1-a.md': record('a', 'owner: me\n') }, 'owner: unknown key'],
+    [
+      'both enforced_by and unenforceable',
+      { '1-a.md': record('a', 'enforced_by: [layers-point-down]\nunenforceable: Because.\n') },
+      'give enforced_by or unenforceable, not both',
+    ],
+  ])('rejects %s', async (_, files, message) => {
+    await withDecisions(files);
+    await expect(loadArchitecture(config)).rejects.toThrow(message);
+  });
+
+  it('places the records with a decisions directive', async () => {
+    await withDecisions({ '1-a.md': record('a') });
+    await write({
+      [`${DIR}/chapters/70-decisions.md`]:
+        '---\ntitle: D\n---\n<!-- jevlint:diagram decisions -->\n',
+    });
+    expect((await loadArchitecture(config))?.chapters).toHaveLength(1);
+  });
+
+  it('refuses a record linked from outside the repository, and one that is too large', async () => {
+    await withDecisions({ '1-a.md': record('a', '', 'x'.repeat(61_000)) });
+    await expect(loadArchitecture(config)).rejects.toThrow('larger than');
+    await rm(join(root, DIR, 'decisions/1-a.md'));
+    const outside = await mkdtemp(join(tmpdir(), 'jevlint-outside-'));
+    await writeFile(join(outside, 'secret.md'), record('b'));
+    await symlink(join(outside, 'secret.md'), join(root, DIR, 'decisions/2-b.md'));
+    await expect(loadArchitecture(config)).rejects.toThrow();
+    await rm(outside, { recursive: true, force: true });
+  });
+
+  it('leaves records out of the token budget', async () => {
+    const big = Array.from({ length: 40 }, (_, i) =>
+      record(`d${i}`, '', 'word '.repeat(BUDGET.tokens)),
+    );
+    await withDecisions(Object.fromEntries(big.map((content, i) => [`${i}-d${i}.md`, content])));
+    const ssot = (await loadArchitecture(config)) as ArchitectureSsot;
+    expect(budgetWarnings(ssot).join('\n')).not.toContain('tokens in all');
+  });
+});
+
 describe('budgetWarnings for chapters', () => {
   const ssotWith = (
     chapters: ArchitectureSsot['chapters'],

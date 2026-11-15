@@ -1,0 +1,33 @@
+===== Decision record =====
+Decision: Only the decision folder talks to model providers
+Date: 2026-11-05
+Status: accepted
+Enforced by: ai-sdk-only-in-decision
+Evidence: src/decision/providers.ts:9
+
+### Decision
+
+Every request to a model provider goes through src/decision/, which alone imports the AI SDK. Commands and pipelines call decideFile or decideState and never build a provider client themselves.
+
+===== Components it is about, now =====
+Component: decision (Decision models)
+Layer: engines
+Summary: Sends questions to a decision model provider through the AI SDK and caches raw answers by content.
+Modules:
+- src/decision/decide.ts (240 lines): decideFile, decideState, decisionRequest
+- src/decision/pricing.ts (60 lines): estimateCostUsd
+Depends on: configuration (3), decision-cache (2), contracts (4)
+Declared dependencies: configuration, decision-cache, contracts
+Used by: audit (4), change-review (2), commands (3)
+Externals: ai_sdk
+
+Component: commands (CLI commands)
+Layer: interface
+Summary: One file per command; parses flags and prints.
+Modules:
+- src/commands/audit.ts (160 lines): auditCommand
+- src/commands/openai-direct.ts (120 lines): createOpenAIClient, askOpenAIDirectly, buildProviderClient
+Depends on: audit (2), configuration (4), contracts (3)
+Declared dependencies: audit, configuration, decision, contracts
+Used by: cli (9)
+Externals: ai_sdk, openai

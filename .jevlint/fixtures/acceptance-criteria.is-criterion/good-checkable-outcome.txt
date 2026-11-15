@@ -1,0 +1,8 @@
+===== Source =====
+Issue #19: architecture: dated, append-only decision records
+
+===== Heading =====
+Acceptance criteria
+
+===== Chunk =====
+`jevlint architecture show --as-of <commit>` prints the SSOT as it was at that revision, and leaves the working tree untouched.

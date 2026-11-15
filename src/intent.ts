@@ -28,19 +28,23 @@ async function instructionsAt(root: string, base: string | null): Promise<string
   return (agents?.trim() ? agents : await fileAt(root, base, 'CLAUDE.md'))?.trim() ?? '';
 }
 
-/** The diff comes last, as the longest section: truncation must not remove the message. */
-function intentState(message: string, instructions: string, diff: string): string {
-  const base = "Repository instructions, from the change's base commit";
-  const sections = [
-    ['Message', message],
-    ...(instructions ? [[base, instructions]] : []),
-    ['Unified diff', diff],
-  ];
+/** Joins labelled texts into one model state, each under a `===== label =====` line. */
+export function labelledSections(sections: [label: string, text: string][]): string {
   return sections.map(([label, text]) => `===== ${label} =====\n${text}`).join('\n\n');
 }
 
-async function sendableDiff(config: Config, change: Change): Promise<string> {
-  // A change can touch a file audit would never send, such as a committed `.env`.
+/** The diff comes last, as the longest section: truncation must not remove the message. */
+function intentState(message: string, instructions: string, diff: string): string {
+  const base = "Repository instructions, from the change's base commit";
+  return labelledSections([
+    ['Message', message],
+    ...(instructions ? [[base, instructions] as [string, string]] : []),
+    ['Unified diff', diff],
+  ]);
+}
+
+/** The change's diff without the files `audit` would never send, such as a committed `.env`. */
+export async function sendableDiff(config: Config, change: Change): Promise<string> {
   const excluded = await excludedPaths(config, await touchedFiles(config.root, change));
   return changeDiff(config.root, change, excluded);
 }

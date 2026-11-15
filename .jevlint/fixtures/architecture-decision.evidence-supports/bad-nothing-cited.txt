@@ -1,0 +1,9 @@
+Decision: Use a good architecture
+Date: 2026-11-05
+Status: accepted
+Enforced by: nothing
+Evidence: none
+
+### Decision
+
+We use a clean, layered architecture with best practices, so that the code is maintainable and scalable.

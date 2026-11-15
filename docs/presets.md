@@ -72,6 +72,7 @@ The `presets` key in `jevlint.toml` wins over your user config, as every reposit
 | `bug-hunt` | MITRE CWE, IBM Orthogonal Defect Classification, Beizer's bug taxonomy, SEI CERT coding standards, SpotBugs bug patterns | 43 defect classes, from absent values and swallowed errors to races and leaks. See [Hunting bugs](#hunting-bugs) |
 | `architecture-codebase`, `architecture-directory`, `architecture-class` | Common design guidance | One preset per perspective. Used only by [`jevlint architecture`](architecture-review.md) |
 | `change-intent` | Common code review practice | Whether a change does what its message says and keeps to the repository's instructions. Used only by [`--intent`](cli.md#judging-a-change-with---intent) |
+| `acceptance-criteria` | Common practice in writing acceptance criteria | Whether a piece of a pull request or issue is an acceptance criterion. Used only by [`pr --acceptance`](cli.md#judging-a-pull-request-with---acceptance) |
 
 `full` is the default. Each preset is an independent paraphrase of ideas. None reproduces
 text from these works, and none is affiliated with or endorsed by their authors or publishers.
@@ -200,8 +201,9 @@ fix = "Rethrow it, or return an error the caller must handle."
 ```
 
 The top-level `used_by` key says which command the questions are written for: `audit` (the default),
-`architecture` or `intent`. It only decides where `preset list`, `--help` and the pickers show the
-preset, so a preset for `jevlint architecture` does not appear among the choices for audits.
+`architecture`, `intent` or `acceptance`. It only decides where `preset list`, `--help` and the
+pickers show the preset, so a preset for `jevlint architecture` does not appear among the choices for
+audits.
 
 To run other presets alongside yours, name them in a top-level `includes`, as `full` does. Each keeps
 its own question ids, weights and scores, and `includes` on its own needs only `questions = []`:

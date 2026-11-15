@@ -42,7 +42,7 @@ const presetSchema = z.strictObject({
   description: z.string(),
   source: z.string(),
   used_by: z
-    .enum(['audit', 'architecture', 'intent'] as const satisfies PresetUse[])
+    .enum(['audit', 'architecture', 'intent', 'acceptance'] as const satisfies PresetUse[])
     .default('audit'),
   includes: z.array(idSchema).default([]),
   questions: z

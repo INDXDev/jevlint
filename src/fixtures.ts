@@ -3,6 +3,7 @@ import { readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import pLimit from 'p-limit';
 import { z } from 'zod';
+import { ACCEPTANCE_PRESET } from './acceptance.ts';
 import { ARCHITECTURE_PRESETS } from './architecture/questions.ts';
 import type { AuditOptions } from './audit.ts';
 import {
@@ -292,8 +293,9 @@ export async function testFixtures(
 ): Promise<FixtureReport> {
   const { questionIds = [], record, drift, driftLimit = DEFAULT_DRIFT_LIMIT, onProgress } = options;
   const { root } = config;
-  // The architecture review asks its presets whatever `presets` says, so their questions are active.
-  const names = [...new Set([...config.presets, ...ARCHITECTURE_PRESETS])];
+  // The architecture verbs and `pr --acceptance` ask their presets whatever `presets` says, so
+  // their questions are active.
+  const names = [...new Set([...config.presets, ...ARCHITECTURE_PRESETS, ACCEPTANCE_PRESET])];
   const active = activeQuestions(await loadPresets(names, root), config.weights);
   const selected = selectQuestions(active, questionIds);
   const { fixtures, warnings } = await loadFixtures(config, active, selected);

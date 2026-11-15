@@ -5,7 +5,7 @@
  */
 import { posix } from 'node:path';
 import type {
-  ArchitectureChapter,
+  ArchitectureDecision,
   ArchitectureSsot,
   DriftItem,
   Evidence,
@@ -135,6 +135,16 @@ export function parseCitation(text: string): Citation | null {
 /** Only references with a line are checked: a bare path may name a file made at run time. */
 const INLINE_REFERENCE = /`([\w.@+-]+(?:\/[\w.@+-]+)+\.\w+:\d+(?:-\d+)?)`/g;
 
+/** Every path that chapters and decision records cite, in their evidence or their text. */
+export function citedPaths(ssot: ArchitectureSsot): string[] {
+  const documents = [...ssot.chapters, ...(ssot.decisions ?? [])];
+  const cited = documents.flatMap(({ evidence, body }) => [
+    ...evidence,
+    ...[...body.matchAll(INLINE_REFERENCE)].map((match) => match[1] as string),
+  ]);
+  return [...new Set(cited.flatMap((text) => parseCitation(text)?.path ?? []))];
+}
+
 function citationProblem(citation: Citation, input: DocumentInput): string | null {
   if (!citation.path) return null;
   if (!input.exists(citation.path)) return `${citation.path} does not exist`;
@@ -146,27 +156,26 @@ function citationProblem(citation: Citation, input: DocumentInput): string | nul
     : null;
 }
 
-function chapterProblems(
-  chapter: ArchitectureChapter,
-  dir: string,
+/** Problems with the evidence and inline references of a chapter or a decision record. */
+function proseProblems(
+  { evidence, body }: { evidence: string[]; body: string },
+  where: string,
   input: DocumentInput,
+  what: string,
 ): string[] {
-  const where = posix.join(dir, 'chapters', `${chapter.id}.md`);
-  const cited = chapter.evidence.map((text) => {
+  const cited = evidence.map((text) => {
     const citation = parseCitation(text);
     if (!citation) return `${where}: evidence "${text}" is neither a path nor commit:<hash>`;
     const problem = citationProblem(citation, input);
     return problem ? `${where}: evidence ${problem}` : null;
   });
-  const inline = [...chapter.body.matchAll(INLINE_REFERENCE)].map((match) => {
+  const inline = [...body.matchAll(INLINE_REFERENCE)].map((match) => {
     const citation = parseCitation(match[1] as string);
     const problem = citation && citationProblem(citation, input);
     return problem ? `${where}: ${problem}` : null;
   });
   const missing =
-    chapter.evidence.length === 0
-      ? [`${where}: no evidence; cite the files the chapter is based on`]
-      : [];
+    evidence.length === 0 ? [`${where}: no evidence; cite the files the ${what} is based on`] : [];
   return [...missing, ...cited, ...inline].filter((problem): problem is string => problem !== null);
 }
 
@@ -208,12 +217,188 @@ function viewProblems(ssot: ArchitectureSsot, input: DocumentInput): string[] {
   });
 }
 
-/** Problems with the views and chapters, as warnings for `list` and the agent's repair. */
+/** Problems with the views, chapters and decisions, as warnings for `list` and the agent's repair. */
 export function documentProblems(ssot: ArchitectureSsot, input: DocumentInput): string[] {
   return [
     ...viewProblems(ssot, input),
-    ...ssot.chapters.flatMap((chapter) => chapterProblems(chapter, ssot.dir, input)),
+    ...ssot.chapters.flatMap((chapter) =>
+      proseProblems(
+        chapter,
+        posix.join(ssot.dir, 'chapters', `${chapter.id}.md`),
+        input,
+        'chapter',
+      ),
+    ),
+    ...(ssot.decisions ?? []).flatMap((decision) =>
+      proseProblems(
+        decision,
+        posix.join(ssot.dir, 'decisions', `${decision.file}.md`),
+        input,
+        'decision',
+      ),
+    ),
   ];
+}
+
+/**
+ * How many words an accepted record's body may change, how many letters each may differ by, and
+ * how long a word must be to differ by more than the order of its letters.
+ */
+export const TYPO_LIMITS = { words: 3, letters: 2, shortWord: 4 } as const;
+
+/** Words whose change turns a decision around, however few letters it takes: "must" to "most". */
+const MEANINGFUL_WORDS = new Set([
+  'no',
+  'not',
+  'nor',
+  'never',
+  'none',
+  'nothing',
+  'nobody',
+  'neither',
+  'nowhere',
+  'can',
+  'cannot',
+  'may',
+  'must',
+  'should',
+  'shall',
+  'will',
+  'would',
+  'could',
+  'might',
+  'all',
+  'any',
+  'some',
+  'each',
+  'every',
+  'both',
+  'either',
+  'few',
+  'many',
+  'more',
+  'most',
+  'less',
+  'least',
+  'only',
+  'always',
+  'and',
+  'or',
+  'with',
+  'without',
+  'unless',
+  'except',
+  'before',
+  'after',
+]);
+
+function letterDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        (previous[j] as number) + 1,
+        (current[j - 1] as number) + 1,
+        (previous[j - 1] as number) + cost,
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length] as number;
+}
+
+const wordCore = (word: string) =>
+  word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
+const letters = (word: string) => [...word].sort().join('');
+
+/**
+ * True when one word replacing another can only be a typo fix: a change of case or punctuation
+ * around it, or a misspelling of a plain word. Digits, apostrophes and meaningful words never are,
+ * so "64" to "16", "can" to "can't" and "now" to "not" are edits.
+ */
+function isTypoFix(before: string, after: string): boolean {
+  const [a, b] = [wordCore(before), wordCore(after)];
+  if (a === b) return true;
+  if (!/^\p{L}+$/u.test(a) || !/^\p{L}+$/u.test(b)) return false;
+  if (MEANINGFUL_WORDS.has(a) || MEANINGFUL_WORDS.has(b)) return false;
+  if (Math.min(a.length, b.length) < TYPO_LIMITS.shortWord) return letters(a) === letters(b);
+  return letterDistance(a, b) <= TYPO_LIMITS.letters;
+}
+
+/**
+ * True when a body differs from another by no more than typo fixes: the same words in the same
+ * order, rewrapped as you like, with at most three of them misspelt. An added or removed word,
+ * such as a "not", is never a typo, nor is a changed number or a word such as "must".
+ */
+export function isTypoLevel(before: string, after: string): boolean {
+  const a = before.split(/\s+/).filter(Boolean);
+  const b = after.split(/\s+/).filter(Boolean);
+  if (a.length !== b.length) return false;
+  let changed = 0;
+  for (const [index, word] of a.entries()) {
+    const other = b[index] as string;
+    if (word === other) continue;
+    changed += 1;
+    if (changed > TYPO_LIMITS.words || !isTypoFix(word, other)) return false;
+  }
+  return true;
+}
+
+/**
+ * What changed in an accepted record since the version that accepted it, among what must not: its
+ * body and title beyond typo fixes, its date and what it supersedes. The fields that tie it to the
+ * code, `components`, `enforced_by`, `unenforceable` and `evidence`, may follow the code.
+ */
+export function recordEdits(
+  accepted: { front: Record<string, unknown>; body: string },
+  now: ArchitectureDecision,
+): string[] {
+  const { title, date, supersedes } = accepted.front;
+  const ids = (value: unknown) => (Array.isArray(value) ? value.map(String) : []).sort().join(' ');
+  return [
+    ...(isTypoLevel(accepted.body, now.body) ? [] : ['body']),
+    ...(isTypoLevel(typeof title === 'string' ? title : '', now.title) ? [] : ['title']),
+    ...(String(date ?? '') === now.date ? [] : ['date']),
+    ...(ids(supersedes) === ids(now.supersedes) ? [] : ['supersedes']),
+  ];
+}
+
+/**
+ * Drift in the decision records: accepted ones that nothing enforces and that do not say why, and
+ * accepted ones citing files that changed, whose fix is a confirmation or a new superseding record,
+ * never a rewrite.
+ */
+export function decisionDrift(ssot: ArchitectureSsot, changed: Set<string>): DriftItem[] {
+  return (ssot.decisions ?? []).flatMap((decision): DriftItem[] => {
+    if (decision.status !== 'accepted') return [];
+    const path = posix.join(ssot.dir, 'decisions', `${decision.file}.md`);
+    const items: DriftItem[] = [];
+    if (decision.enforced_by.length === 0 && decision.unenforceable === undefined) {
+      items.push({
+        kind: 'unenforced-decision',
+        component: decision.components[0] ?? null,
+        path,
+        target: decision.id,
+        message: `"${decision.title}" names no rule or checklist item in enforced_by, and no reason in unenforceable`,
+      });
+    }
+    const cited = decision.evidence.flatMap((text) => parseCitation(text)?.path ?? []);
+    const touched = [...new Set(cited)].filter((cite) =>
+      [...changed].some((file) => covers(cite, file)),
+    );
+    if (touched.length > 0) {
+      items.push({
+        kind: 'stale-decision',
+        component: decision.components[0] ?? null,
+        path,
+        target: decision.id,
+        message: `"${decision.title}" cites ${touched.join(', ')}, which changed; confirm it still holds, or supersede it`,
+      });
+    }
+    return items;
+  });
 }
 
 /** Drift in the document: chapters citing files that changed, and views that no longer fit. */
@@ -242,5 +427,5 @@ export function documentDrift(
     const [path = '', ...rest] = problem.split(': ');
     return { kind: 'stale-view', component: null, path, message: rest.join(': ') };
   });
-  return [...chapters, ...views];
+  return [...chapters, ...views, ...decisionDrift(ssot, changed)];
 }

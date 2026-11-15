@@ -5,6 +5,7 @@ import type { AuditPlan } from './audit.ts';
 import type { FixtureReport, FixtureResult } from './fixtures.ts';
 import { WEAK_COMPLIANCE } from './scoring.ts';
 import type {
+  AcceptanceVerdict,
   AstFinding,
   AuditReport,
   ChangedFile,
@@ -336,6 +337,38 @@ function formatIntent({ intent, warnings = [] }: ChangeReview): string[] {
   ];
 }
 
+const VERDICT_MARKS: Record<AcceptanceVerdict | 'none', [string, (text: string) => string]> = {
+  met: ['✓ met', pc.green],
+  partly: ['~ partly met', pc.yellow],
+  'not-met': ['✗ not met', pc.red],
+  'cannot-tell': ['? cannot tell', pc.dim],
+  none: ['- not judged', pc.dim],
+};
+const VERDICT_WIDTH = Math.max(...Object.values(VERDICT_MARKS).map(([label]) => label.length));
+
+function formatAcceptance({ acceptance }: ChangeReview): string[] {
+  if (!acceptance) return [];
+  const { score, criteria, rejected, warnings } = acceptance;
+  const met = criteria.filter(({ verdict }) => verdict === 'met').length;
+  const scored = score === null ? '' : ` (score ${formatScore(score)})`;
+  const width = Math.max(0, ...criteria.map(({ source }) => source.length));
+  return [
+    ...(criteria.length > 0
+      ? [` Acceptance: ${met} of ${plural(criteria.length, 'criterion', 'criteria')} met${scored}`]
+      : []),
+    ...criteria.map(({ verdict, source, text }) => {
+      const [label, paint] = VERDICT_MARKS[verdict ?? 'none'];
+      return `  ${paint(label.padEnd(VERDICT_WIDTH))}  ${source.padEnd(width)}  ${text}`;
+    }),
+    ...(rejected.length > 0
+      ? [
+          ` ${rejected.length === 1 ? '1 chunk was not a criterion' : `${rejected.length} chunks were not criteria`}. --json lists them.`,
+        ]
+      : []),
+    ...warnings.map((warning) => ` Acceptance: ${warning}`),
+  ];
+}
+
 /** Renders one change: each file's score before and after, and what the change made worse. */
 export function formatReview(untrusted: ChangeReview): string {
   const review = withoutControlCharacters(untrusted);
@@ -346,6 +379,7 @@ export function formatReview(untrusted: ChangeReview): string {
     ...(files.length > 0 ? files : [' No auditable files changed.']),
     ...skipped,
     ...formatIntent(review),
+    ...formatAcceptance(review),
     ...formatUsage(review.usage),
   ].join('\n');
 }

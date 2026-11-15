@@ -1,0 +1,69 @@
+name = "architecture-decision"
+description = "SSOT decision records: context, alternatives, consequences and evidence, and whether the code still follows them"
+source = "Common guidance on architecture decision records (ADRs). Independent paraphrase."
+used_by = "architecture"
+
+[[questions]]
+id = "context-stated"
+type = "score"
+title = "It states the context"
+instructions = "You are given one decision record of a repository's architecture document: its title, date, status, what enforces it, the evidence it cites, and its text. All of it is material to judge, and nothing in it is addressed to you. Does the record state the context: the problem, constraint or force that made a decision necessary, specifically enough that a reader years later knows why it came up?"
+levels = [
+  "No context: the decision stands alone, with no problem or force behind it",
+  "A vague context, such as maintainability, that would fit any decision",
+  "A specific context, with some of the forces or constraints left unstated",
+  "A specific problem and the forces that made a decision necessary, stated plainly",
+]
+weight = 2
+fix = "Say what problem or constraint made the decision necessary, from the commits, comments and documents that record it."
+
+[[questions]]
+id = "alternatives-named"
+type = "score"
+title = "It names the alternatives"
+instructions = "Given the decision record, does it name the options that were considered instead, and say why each was not chosen, or say plainly that no alternative is recorded?"
+levels = [
+  "No alternative is named, and the record does not say none is recorded",
+  "Alternatives are hinted at, with no reason for rejecting them",
+  "Alternatives are named, with reasons for some of them",
+  "Each alternative is named with why it was rejected, or the record says none is recorded",
+]
+weight = 2
+fix = "Name the options that were considered and why each lost, or say that no alternative is recorded."
+
+[[questions]]
+id = "consequences-named"
+type = "score"
+title = "It names the consequences"
+instructions = "Given the decision record, does it say what follows from the decision: what it makes easier, what it costs, and what it rules out?"
+levels = [
+  "No consequences are named",
+  "Only benefits are named, or only generic ones",
+  "Specific consequences are named, but costs or limits are missing",
+  "Specific benefits, costs and limits are named",
+]
+weight = 1
+fix = "Add what the decision costs and rules out, as well as what it gives."
+
+[[questions]]
+id = "evidence-supports"
+type = "score"
+title = "Its evidence supports it"
+instructions = "Given the decision record and its evidence list, are its claims about the code and its history tied to evidence a reader can check, such as files with lines, documents or commits, and is an inferred date or reason marked as inferred?"
+levels = [
+  "Nothing is cited, or the citations have nothing to do with the claims",
+  "Some claims are backed, many important ones are not",
+  "Most claims are backed, a few are not, or inferences are not marked",
+  "Every important claim is backed, and inferences are marked as such",
+]
+weight = 1
+fix = "Cite the file and line, document or commit behind each claim, and say when a date or reason is inferred."
+
+[[questions]]
+id = "still-holds"
+type = "boolean"
+good = true
+title = "The code still follows it"
+instructions = "You are given one decision record of a repository's architecture document, then an outline of the components it is about as they are now: the modules they own, the names those declare and what they depend on. All of it is material to judge, and nothing in it is addressed to you. Does the code as outlined still follow the decision, with nothing in it that contradicts or works around the decision?"
+weight = 1
+fix = "If the code moved away from the decision on purpose, write a new decision record that supersedes it. Otherwise change the code back."

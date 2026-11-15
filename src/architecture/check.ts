@@ -19,6 +19,7 @@ import type {
 } from '../types.ts';
 import { type Collected, collect, matchCalls } from './collect.ts';
 import { addedViolations, assign, callSearches, conformance } from './conformance.ts';
+import { decisionsByEnforcer } from './load.ts';
 import { allChecklistRefs, checklistRefs, checkRequest } from './questions.ts';
 
 /** Narrows and observes a check. */
@@ -41,10 +42,18 @@ const NO_USAGE: AuditReport['usage'] = {
   modelCalls: 0,
 };
 
-/** The structural violations of one collected tree. */
+/**
+ * The structural violations of one collected tree, each naming the accepted decisions its rule
+ * enforces, so that a reader of the violation sees why the rule exists.
+ */
 export function violationsOf(ssot: ArchitectureSsot, collected: Collected) {
   const calls = matchCalls(callSearches(ssot, collected.modules), collected.sources);
-  return conformance(ssot, { modules: collected.modules, exists: collected.exists, calls });
+  const found = conformance(ssot, { modules: collected.modules, exists: collected.exists, calls });
+  const byEnforcer = decisionsByEnforcer(ssot);
+  return found.map((violation) => {
+    const decisions = byEnforcer.get(violation.ruleId);
+    return decisions ? { ...violation, decisions } : violation;
+  });
 }
 
 /** The violations a change from `base` to `head` added. Both sides are read from git. */
