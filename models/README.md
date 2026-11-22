@@ -26,8 +26,9 @@ as with any provider.
   (Apache-2.0) answered every question about each file, given the file as jevlint sends it.
 - **Data.** 20,499 source files from 55 open-source repositories, split by repository: 15,791 files
   to train on, 2,421 to choose settings and 2,287 to test.
-- **Features.** The trees were trained on features computed in Python. `features.ts` is a port that
-  gives the same numbers: on 20,512 files from those repositories, every feature matched.
+- **Features.** The trees were trained on features computed in Python, from each file cut to its
+  first 80,000 characters as jevlint sends it. `features.ts` is a port that gives the same
+  numbers: on all 2,288 test files, jevlint's answers equal the Python model's to within 1e-15.
   `test/local.test.ts` checks the answers to a few files against the values from training.
 
 ## How good it is
@@ -37,11 +38,11 @@ teacher's answers averages 0.83. It ranks files well on structure and less well 
 
 | Questions | Spearman |
 | --- | --- |
-| abstraction-level, focused-blocks, function-focus, control-flow | 0.90 to 0.95 |
+| abstraction-level, focused-blocks, function-focus, control-flow | 0.89 to 0.95 |
 | named-subexpressions, safe-failure, error-path-separation, side-effects, unambiguous-names | 0.86 to 0.89 |
-| error-handling, no-injection, magic-values, access-control, input-validation | 0.80 to 0.83 |
+| error-handling, no-injection, magic-values, access-control, input-validation | 0.80 to 0.82 |
 | time-to-understand, naming, comments, no-embedded-secrets, sound-crypto | 0.72 to 0.79 |
-| dead-code | 0.68 |
+| dead-code | 0.67 |
 
 It is a cheap stand-in for the teacher, not a replacement: use a provider when the answers matter.
 Files in languages other than the five above get answers too, but nothing like them was in its

@@ -9,7 +9,7 @@
 // web-tree-sitter with the grammar versions the model was trained with. Both sides parse UTF-16 text, which
 // keeps error recovery, and with it the trees, identical.
 
-export const FEATURE_VERSION = 4;
+export const FEATURE_VERSION = 5;
 export const LANGUAGES = ['go', 'javascript', 'python', 'rust', 'typescript'] as const;
 export type LanguageName = (typeof LANGUAGES)[number];
 
@@ -20,8 +20,11 @@ export interface SyntaxNode {
   readonly isMissing: boolean;
   readonly hasError: boolean;
   readonly text: string;
+  /** Offsets in UTF-16 code units, as web-tree-sitter reports them for string input. */
+  readonly startIndex: number;
+  readonly endIndex: number;
   readonly startPosition: { row: number };
-  readonly endPosition: { row: number };
+  readonly endPosition: { row: number; column: number };
   readonly children: (SyntaxNode | null)[];
   readonly namedChildren: (SyntaxNode | null)[];
   readonly namedChildCount: number;
@@ -90,45 +93,63 @@ function translate(src: string, multiline: boolean): string {
   return out;
 }
 
-/** Python's `re` operations over one translated pattern. */
-interface PyRe {
-  search(s: string): boolean;
-  match(s: string): boolean;
-  fullmatch(s: string): boolean;
-  /** `re.search()`'s match: groups (unmatched ones as ''), index and length, or null. */
-  exec(s: string): { groups: string[]; index: number; length: number } | null;
-  count(s: string): number;
-  /** `re.findall()`: whole matches without groups, the group with one, all groups with several. */
-  findall(s: string): string[];
-  findallGroups(s: string): string[][];
-  sub(s: string, replacement: string): string;
-}
+// Python's re.IGNORECASE matches U+0130 İ and U+0131 ı to i/I; JavaScript's case folding does not. Both are one
+// UTF-16 unit, like 'i', so folding them first keeps every position and count.
+const TURKIC_I = /[İı]/g;
 
-/** Compiles a Python pattern. Flags: I (ignore case), M (multiline). */
-function pyRe(src: string, flags = ''): PyRe {
-  const body = translate(src, flags.includes('M'));
-  const f = `u${flags.includes('I') ? 'i' : ''}`;
-  const any = new RegExp(body, f);
-  const all = new RegExp(body, `${f}g`);
-  const sticky = new RegExp(body, `${f}y`);
-  const full = new RegExp(`(?:${body})(?![\\s\\S])`, `${f}y`);
-  const at = (re: RegExp, s: string) => {
-    re.lastIndex = 0;
-    return re.test(s);
-  };
-  return {
-    search: (s) => any.test(s),
-    match: (s) => at(sticky, s),
-    fullmatch: (s) => at(full, s),
-    exec: (s) => {
-      const m = any.exec(s);
-      return m ? { groups: m.map((g) => g ?? ''), index: m.index, length: m[0].length } : null;
-    },
-    count: (s) => [...s.matchAll(all)].length,
-    findall: (s) => [...s.matchAll(all)].map((m) => (m.length === 1 ? m[0] : (m[1] ?? ''))),
-    findallGroups: (s) => [...s.matchAll(all)].map((m) => m.slice(1).map((g) => g ?? '')),
-    sub: (s, replacement) => s.replace(all, () => replacement),
-  };
+/**
+ * Python's `re` operations over one translated pattern. Flags: I (ignore case), M (multiline). With I, the
+ * boolean and counting operations fold İ/ı first; the ones that return text do not (no I pattern uses them).
+ */
+class PyRe {
+  private readonly any: RegExp;
+  private readonly all: RegExp;
+  private readonly sticky: RegExp;
+  private readonly full: RegExp;
+  private readonly fold: boolean;
+  constructor(src: string, flags = '') {
+    const body = translate(src, flags.includes('M'));
+    const f = `u${flags.includes('I') ? 'i' : ''}`;
+    this.any = new RegExp(body, f);
+    this.all = new RegExp(body, `${f}g`);
+    this.sticky = new RegExp(body, `${f}y`);
+    this.full = new RegExp(`(?:${body})(?![\\s\\S])`, `${f}y`);
+    this.fold = flags.includes('I');
+  }
+  private folded(s: string): string {
+    return this.fold ? s.replace(TURKIC_I, 'i') : s;
+  }
+  search(s: string): boolean {
+    return this.any.test(this.folded(s));
+  }
+  match(s: string): boolean {
+    this.sticky.lastIndex = 0;
+    return this.sticky.test(this.folded(s));
+  }
+  fullmatch(s: string): boolean {
+    this.full.lastIndex = 0;
+    return this.full.test(this.folded(s));
+  }
+  /** `re.search()`'s match: groups (unmatched ones as ''), index and length, or null. */
+  exec(s: string): { groups: string[]; index: number; length: number } | null {
+    const m = this.any.exec(s);
+    return m ? { groups: m.map((g) => g ?? ''), index: m.index, length: m[0].length } : null;
+  }
+  count(s: string): number {
+    let n = 0;
+    for (const _ of this.folded(s).matchAll(this.all)) n++;
+    return n;
+  }
+  /** `re.findall()`: whole matches without groups, the group with one, all groups with several. */
+  findall(s: string): string[] {
+    return [...s.matchAll(this.all)].map((m) => (m.length === 1 ? m[0] : (m[1] ?? '')));
+  }
+  findallGroups(s: string): string[][] {
+    return [...s.matchAll(this.all)].map((m) => m.slice(1).map((g) => g ?? ''));
+  }
+  sub(s: string, replacement: string): string {
+    return s.replace(this.all, () => replacement);
+  }
 }
 
 /** len() of a Python str: code points, not UTF-16 units. */
@@ -192,12 +213,27 @@ function splitlines(s: string): string[] {
   return parts;
 }
 
+/** Rows as tree-sitter numbers them (`features_code._lines()`): split at \n only, without the \r of CRLF. */
+function sourceLines(s: string): string[] {
+  const rows = s.split('\n');
+  if (rows[rows.length - 1] === '') rows.pop();
+  const out = rows.map((row) => (row.endsWith('\r') ? row.slice(0, -1) : row));
+  return out.length ? out : [''];
+}
+
+// str.isupper()/islower() by Unicode property, as Python decides them: letters without a case mapping (ℝ, ª)
+// count, which a toUpperCase()/toLowerCase() round trip would miss.
+const UPPERCASE = /\p{Uppercase}/u;
+const LOWERCASE = /\p{Lowercase}/u;
+const NOT_UPPER = /[\p{Lowercase}\p{Lt}]/u;
+const NOT_LOWER = /[\p{Uppercase}\p{Lt}]/u;
+
 function isUpper(s: string): boolean {
-  return s === s.toUpperCase() && s !== s.toLowerCase();
+  return !NOT_UPPER.test(s) && UPPERCASE.test(s);
 }
 
 function isLower(s: string): boolean {
-  return s === s.toLowerCase() && s !== s.toUpperCase();
+  return !NOT_LOWER.test(s) && LOWERCASE.test(s);
 }
 
 function firstChar(s: string): string {
@@ -471,7 +507,7 @@ const MUTATOR_PREFIXES =
 const MUTATING_METHODS =
   set(`append extend insert pop remove clear sort reverse update setdefault push unshift
   shift splice set delete add discard push_str truncate retain drain fill`);
-const IO_NAMES = pyRe(
+const IO_NAMES = new PyRe(
   '^(print|println|printf|eprintln|dbg|open|write|writeln|fetch|log|debug|info|warn|warning|error|' +
     'exception|critical|Print|Println|Printf|Fprintf|Fprintln|WriteFile|ReadFile|readFile|writeFile|' +
     'readFileSync|writeFileSync|urlopen|system|popen|run|exec|spawn|send|request|get_json)$',
@@ -480,170 +516,176 @@ const IO_RECEIVERS =
   set(`console logger logging log fs os sys requests httpx http subprocess fmt io socket
   process shutil Path stdout stderr`);
 
-const SPLIT_CAMEL = pyRe('[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\\d+');
-const WORD = pyRe('[A-Za-z]{3,}');
-const VOWEL = pyRe('[aeiouy]');
-const COMMENT_MARK = pyRe('^\\s*(?://+!?|/\\*+!?|#+!?|\\*+(?!/))\\s?|\\s*\\*+/\\s*$');
-const LICENSE = pyRe('copyright|licen[cs]e|spdx', 'I');
-const DIRECTIVE = pyRe(
+const SPLIT_CAMEL = new PyRe('[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\\d+');
+const WORD = new PyRe('[A-Za-z]{3,}');
+const VOWEL = new PyRe('[aeiouy]');
+const COMMENT_MARK = new PyRe('^\\s*(?://+!?|/\\*+!?|#+!?|\\*+(?!/))\\s?|\\s*\\*+/\\s*$');
+const LICENSE = new PyRe('copyright|licen[cs]e|spdx', 'I');
+const DIRECTIVE = new PyRe(
   '@ts-|eslint-|noqa|type:\\s*ignore|nolint|go:build|go:generate|go:linkname|go:noinline|prettier-ignore|' +
     'istanbul|c8 ignore|pragma|pylint:|mypy:|fmt:|isort:|biome-|jshint|@flow|@format|-\\*-|^\\s*!|clippy::|' +
     'rustfmt::|SAFETY:|@vitest|@jest-environment|@noflow|@lightSyntaxTransform|@emails|@generated',
   'I',
 );
-const TODO = pyRe('\\b(TODO|FIXME|HACK|XXX)\\b');
-const REASON = pyRe(
+const TODO = new PyRe('\\b(TODO|FIXME|HACK|XXX)\\b');
+const REASON = new PyRe(
   '\\b(because|since|so that|otherwise|note|warning|must|avoid|workaround|hack|why|ensure|in order to|careful|' +
     'important|due to|caveat|assume|assumes|instead|unless|required|requires|beware|never|only if|so we|we need)\\b',
   'I',
 );
-const CODE_HINT = pyRe(
+const CODE_HINT = new PyRe(
   '[(){}\\[\\];=]|^\\s*(return|import|from|let|const|var|def|fn|func|if|for|while|use)\\b',
 );
-const PROSE_END = pyRe('[a-z]{3,}[.:!?]$');
-const BARE_ASSIGN = pyRe('^\\s*[A-Za-z_][\\w.]*\\s*=\\s*$');
+const PROSE_END = new PyRe('[a-z]{3,}[.:!?]$');
+const BARE_ASSIGN = new PyRe('^\\s*[A-Za-z_][\\w.]*\\s*=\\s*$');
 const STOP =
   set(`the and for this that with from into are was not but its it's then than when will can all any
   has have use used using get set new our out you your one also just here there`);
-const TEST_FN = pyRe(
-  '^\\s*(def test_\\w+|func Test\\w+|#\\[(tokio::)?test\\]|(it|test|describe)\\(\\s*[\'"`])',
+// Multiline patterns start lines with `^[ \\t]*`, not `^\\s*`, as in features_code.py (`\\s` crosses newlines, which
+// makes `^\\s*` quadratic in runs of blank lines).
+const TEST_FN = new PyRe(
+  '^[ \\t]*(def test_\\w+|func Test\\w+|#\\[(tokio::)?test\\]|(it|test|describe)\\(\\s*[\'"`])',
   'M',
 );
-const INPUTS = pyRe(
+const INPUTS = new PyRe(
   '\\brequest\\.(args|form|json|data|GET|POST|query_params|path_params|body|files|headers|cookies|values|' +
     'get_json)|\\breq\\.(body|query|params|headers|cookies|files)|\\bc\\.(Query|Param|PostForm|GetHeader|' +
     'ShouldBind\\w*|Bind\\w*)\\(|\\bc\\.req\\.(json|query|param|header|parseBody|formData)|os\\.environ|getenv|' +
     'process\\.env|sys\\.argv|os\\.Args|env::args|env::var|\\binput\\(|FormValue|URL\\.Query|r\\.Body|stdin|' +
     'readline\\(',
 );
-const VALIDATION = pyRe(
+const VALIDATION = new PyRe(
   '\\bisinstance\\(|\\btypeof\\b|\\bvalidate\\w*|\\bschema\\b|\\bparseInt\\(|\\bNumber\\(|\\bstrconv\\.|\\bparse::<|' +
     '\\.parse\\(|\\bis_valid\\(|\\bassert\\w*\\(|BaseModel|\\bz\\.(object|string|number)|\\bclean_\\w+|\\.isdigit\\(|' +
     '\\bmatch(es)?\\(|\\bre\\.fullmatch|\\blen\\([^)]*\\)\\s*[<>]|\\.length\\s*[<>]|Validator|\\bguard\\b',
 );
-const SINKS = pyRe(
+const SINKS = new PyRe(
   '(execute|executemany|query|raw|exec)\\s*\\(\\s*(f[\'"]|[\'"][^\'"]*[\'"]\\s*(%|\\+|\\.format)|`[^`]*\\$\\{)|' +
     'shell\\s*=\\s*True|\\beval\\s*\\(|new\\s+Function\\s*\\(|innerHTML\\s*=|outerHTML\\s*=|dangerouslySetInnerHTML|' +
     'document\\.write\\(|os\\.system\\(|mark_safe\\(|\\|\\s*safe\\b|Command::new\\(\\s*\\"(sh|bash)\\"|exec\\.Command\\(' +
     '\\s*\\"(sh|bash)\\"|child_process|execSync\\(',
   'I',
 );
-const DYNAMIC_INTO = pyRe(
+const DYNAMIC_INTO = new PyRe(
   '\\b(execute|query|system|exec|popen|run|open|Command|raw|render_template_string)\\s*\\(\\s*(f[\'"]|`[^`]*\\$\\{|' +
     '[\'"][^\'"]*[\'"]\\s*\\.format|[\'"][^\'"]*[\'"]\\s*%\\s)',
 );
-const AUTH = pyRe(
+const AUTH = new PyRe(
   'permission|authoriz|is_authenticated|login_required|has_perm|\\bowner\\b|current_user|is_admin|is_staff|' +
     '\\brole(s)?\\b|forbidden|\\b403\\b|Unauthorized|requireAuth|isAuthenticated|access_control|can_\\w+\\(',
   'I',
 );
-const EXPOSE = pyRe(
+const EXPOSE = new PyRe(
   'traceback\\.(format_exc|print_exc)|\\.stack\\b|str\\(e\\)|str\\(exc\\)|err\\.Error\\(\\)|e\\.message|' +
     'error\\.message|repr\\(e\\)|DEBUG\\s*=\\s*True|debug\\s*=\\s*True|\\{e\\}|\\{err\\}|\\{exc\\}',
 );
-const WEAK_CRYPTO = pyRe(
+const WEAK_CRYPTO = new PyRe(
   '\\b(md5|sha1)\\b|createHash\\(\\s*[\'"](md5|sha1)|Math\\.random\\(|\\brandom\\.(random|randint|choice|' +
     'randrange)\\(|math/rand|(password|secret|token|digest|signature|hmac)\\w*\\s*===?\\s*\\w+|(iv|key|nonce)\\s*=' +
     '\\s*b?[\'"][^\'"]{8,}[\'"]',
   'I',
 );
-const SECRET_NAME = pyRe(
+const SECRET_NAME = new PyRe(
   '(password|passwd|secret|api_?key|access_?key|token|private_?key)\\w*[\'"]?\\s*[:=]\\s*[\'"][^\'"\\s]{8,}[\'"]',
   'I',
 );
-const PRIVATE_KEY = pyRe(
+const PRIVATE_KEY = new PyRe(
   '-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30,}|sk_live_',
 );
-const HTTP = pyRe(
+const HTTP = new PyRe(
   '@(app|router|bp|blueprint|api)\\.(route|get|post|put|patch|delete)\\b|@(Get|Post|Put|Patch|Delete|' +
     'Controller)\\(|\\b(app|router|server)\\.(get|post|put|patch|delete|all|use)\\(\\s*[\'"`/]|HandleFunc\\(|' +
     'http\\.ResponseWriter|\\*gin\\.Context|echo\\.Context|#\\[(get|post|put|delete|patch)\\(|\\.route\\(\\s*\\"|' +
     'Router::new\\(\\)|def (get|post|put|patch|delete)\\(self, request',
 );
-const DB = pyRe(
+const DB = new PyRe(
   '\\.(execute|executemany|raw|query|exec|QueryRow|QueryContext|ExecContext)\\(|\\bcursor\\(|\\.objects\\.|' +
     '\\bsql\\.(Open|DB)\\b|session\\.(query|execute)\\(|\\bprisma\\.|\\bknex\\(|\\.where\\(',
   'I',
 );
-const SQL_START = pyRe(
+const SQL_START = new PyRe(
   '^\\W{0,4}(select|insert\\s+into|update\\s+\\w+\\s+set|delete\\s+from|create\\s+table|' +
     'alter\\s+table|drop\\s+table|with\\s+\\w+\\s+as)\\b',
   'I',
 );
-const SHELL = pyRe(
+const SHELL = new PyRe(
   '\\bsubprocess\\.\\w+\\(|os\\.system\\(|os\\.popen\\(|exec\\.Command(Context)?\\(|Command::new\\(|child_process|' +
     '\\bexecSync\\(|\\bspawn(Sync)?\\(',
 );
-const PATHS = pyRe(
+const PATHS = new PyRe(
   '\\bopen\\(|os\\.path\\.join\\(|\\bpath\\.(join|resolve)\\(|filepath\\.(Join|Clean|Abs)\\(|File::(open|create)\\(|' +
     '\\b(readFile|writeFile|readFileSync|writeFileSync|createReadStream)\\(|\\bPath\\(|fs::(read|write|remove)\\w*\\(|' +
     'os\\.(Open|Create|ReadFile|WriteFile|Remove)\\(',
 );
-const HTML = pyRe(
+const HTML = new PyRe(
   '\\brender(_template|_to_string|_template_string)?\\(|\\.innerHTML\\b|dangerouslySetInnerHTML|res\\.send\\(|' +
     '\\.Execute(Template)?\\(|template\\.HTML\\(|mark_safe\\(|Markup\\(|v-html',
 );
-const REGEX_VAR = pyRe(
+const REGEX_VAR = new PyRe(
   'new RegExp\\(\\s*[A-Za-z_`]|re\\.compile\\(\\s*[A-Za-z_]|regexp\\.(Must)?Compile\\(\\s*[A-Za-z_]|' +
     'Regex::new\\(\\s*&?[a-z_]',
 );
-const DESERIALIZE = pyRe(
+const DESERIALIZE = new PyRe(
   'pickle\\.loads?\\(|yaml\\.load\\((?![^)]*SafeLoader)|marshal\\.loads?\\(|unserialize\\(|' +
     '\\beval\\(\\s*(data|body|payload|input|request)',
 );
-const SECURITY_TERMS = pyRe(
+const SECURITY_TERMS = new PyRe(
   'password|passwd|\\btoken|secret|credential|\\bsession|cookie|csrf|\\bjwt|\\bauth',
   'I',
 );
-const CRYPTO = pyRe(
+const CRYPTO = new PyRe(
   '\\bhashlib\\b|\\bcrypto\\b|crypto/|\\bhmac\\b|cipher|\\bjwt\\b|bcrypt|argon2|scrypt|pbkdf2|sha256|sha512|ring::|' +
     'rustls|\\baes\\b|\\brsa\\b|\\.sign\\(|\\.verify\\(',
   'I',
 );
-const SECURE_RANDOM = pyRe(
+const SECURE_RANDOM = new PyRe(
   '\\bsecrets\\.\\w+|crypto/rand|randomBytes|getRandomValues|OsRng|os\\.urandom|randomUUID|thread_rng',
 );
-const CONST_TIME = pyRe(
+const CONST_TIME = new PyRe(
   'compare_digest|ConstantTimeCompare|timingSafeEqual|constant_time_eq|ct_eq',
 );
-const TLS_OFF = pyRe(
+const TLS_OFF = new PyRe(
   'verify\\s*=\\s*False|InsecureSkipVerify:\\s*true|rejectUnauthorized:\\s*false|' +
     'danger_accept_invalid_(certs|hostnames)\\(\\s*true|CERT_NONE|check_hostname\\s*=\\s*False',
 );
-const CRED_URL = pyRe('[a-z][a-z0-9+.-]*://[^/\\s:@\'\\"]+:[^/\\s@\'\\"]+@', 'I');
-const PLACEHOLDER_SECRET = pyRe(
+// Tried only where a run of scheme characters starts, so long runs without `://` are scanned once.
+const CRED_URL = new PyRe(
+  '(?<![a-z0-9+.-])[0-9+.-]*[a-z][a-z0-9+.-]*://[^/\\s:@\'\\"]+:[^/\\s@\'\\"]+@',
+  'I',
+);
+const PLACEHOLDER_SECRET = new PyRe(
   '(password|passwd|secret|api_?key|token)\\w*[\'"]?\\s*[:=]\\s*[\'"](changeme|change-me|x{3,}|\\*{3,}|your[-_ ]' +
     '|<|\\$\\{|example|test|dummy|fake|secret|password|placeholder|todo)',
   'I',
 );
-const DEBUG = pyRe(
-  'console\\.(log|debug|trace)\\(|\\bdbg!\\(|^\\s*debugger;?\\s*$|\\bbreakpoint\\(\\)|\\bpdb\\.set_trace|import pdb',
+const DEBUG = new PyRe(
+  'console\\.(log|debug|trace)\\(|\\bdbg!\\(|^[ \\t]*debugger;?\\s*$|\\bbreakpoint\\(\\)|\\bpdb\\.set_trace|import pdb',
   'M',
 );
-const DEPRECATED = pyRe(
+const DEPRECATED = new PyRe(
   '@deprecated|#\\[deprecated|Deprecated:|DeprecationWarning|\\bdeprecated\\(',
   'I',
 );
-const EXITS = pyRe(
+const EXITS = new PyRe(
   '\\bpanic!\\(|\\bpanic\\(|\\btodo!\\(|\\bunimplemented!\\(|process\\.exit\\(|os\\.Exit\\(|sys\\.exit\\(',
 );
-const DISABLED = pyRe(
-  '^\\s*(if\\s+(False|0)\\s*:|if\\s*\\(\\s*(false|0)\\s*\\)|#if\\s+0\\b|if\\s+false\\s*\\{)',
+const DISABLED = new PyRe(
+  '^[ \\t]*(if\\s+(False|0)\\s*:|if\\s*\\(\\s*(false|0)\\s*\\)|#if\\s+0\\b|if\\s+false\\s*\\{)',
   'M',
 );
-const TEST_IMPORT = pyRe(
-  '^\\s*(import pytest|import unittest|from unittest|import \\{[^}]*\\b(describe|it|test|' +
+const TEST_IMPORT = new PyRe(
+  '^[ \\t]*(import pytest|import unittest|from unittest|import \\{[^}]*\\b(describe|it|test|' +
     'expect)\\b[^}]*\\} from [\'"](vitest|@jest/globals|node:test|mocha)|\\"testing\\"|' +
     '#\\[cfg\\(test\\)\\])',
   'M',
 );
-const CODE_LIKE = pyRe(
+const CODE_LIKE = new PyRe(
   '[;{}\\[(,]\\s*$|^\\s*[}\\])]|=>|:=|^\\s*(return|import|from|let|const|var|def|fn|func|if|for|while|use|export|' +
     'type|class|pub|await|else|elif|try|except|catch|match|case|switch|impl|struct|async)\\b|' +
     '^\\s*[\\w.$\\[\\]\\"\']+\\s*(\\+|-|\\*|/|\\|\\||&&)?=\\s*\\S|^\\s*[\\w.$]+\\([^)]*\\)\\s*;?$|^\\s*[?:|]\\s',
 );
-const PROSE = pyRe("^[A-Za-z][A-Za-z'\\-]*(\\s+[A-Za-z][A-Za-z,'\\-]*){3,}[.:!?]?$");
-const TOKEN = pyRe('[A-Za-z_$][\\w$]*');
+const PROSE = new PyRe("^[A-Za-z][A-Za-z'\\-]*(\\s+[A-Za-z][A-Za-z,'\\-]*){3,}[.:!?]?$");
+const TOKEN = new PyRe('[A-Za-z_$][\\w$]*');
 const GENERIC_FN =
   set(`handle process do run execute perform manage doit dostuff go main2 data info stuff thing
   helper util func fn foo bar test1 temp tmp work go2 run2 handle2 process2 callback cb f g h`);
@@ -655,283 +697,48 @@ const NAMED_DECLS = new Set([
   ...set(`type_spec class_definition class_declaration abstract_class_declaration enum_variant field_declaration
     property_signature public_field_definition`),
 ]);
-const SWALLOW = pyRe('\\b(raise|throw|return|reject|panic|abort|exit|error|Error|fail|warn)\\b');
-const BROAD = pyRe('\\b(Base)?Exception\\b');
-const IGNORED = pyRe('(^|,)\\s*_\\s*(,|$)');
-const IDENT_WORD = pyRe('[A-Za-z_]\\w*');
-const CODE_PUNCT = pyRe('[(){}\\[\\];=]');
-const NUMBERED = pyRe('[A-Za-z]\\d+$');
-const CAMEL = pyRe('[a-z][A-Z]');
+// Nodes between a function used as a value and the statement its doc comment precedes.
+const DOC_ANCHORS =
+  set(`variable_declarator lexical_declaration variable_declaration export_statement pair
+  public_field_definition field_definition assignment_expression expression_statement`);
+const SWALLOW = new PyRe(
+  '\\b(raise|throw|return|reject|panic|abort|exit|error|Error|fail|warn)\\b',
+);
+const BROAD = new PyRe('\\b(Base)?Exception\\b');
+const IGNORED = new PyRe('(^|,)\\s*_\\s*(,|$)');
+const IDENT_WORD = new PyRe('[A-Za-z_]\\w*');
+const CODE_PUNCT = new PyRe('[(){}\\[\\];=]');
+const NUMBERED = new PyRe('[A-Za-z]\\d+$');
+const CAMEL = new PyRe('[a-z][A-Z]');
 
-// Lexical features: (pattern, lowercase substrings at least one of which must occur for a match).
-const LEXICAL: [string, PyRe, string[]][] = [
-  [
-    'external_inputs',
-    INPUTS,
-    [
-      'request',
-      'req.',
-      'c.',
-      'environ',
-      'getenv',
-      'process.env',
-      'argv',
-      'os.args',
-      'env::',
-      'input(',
-      'formvalue',
-      'url.query',
-      'r.body',
-      'stdin',
-      'readline',
-    ],
-  ],
-  [
-    'validation_calls',
-    VALIDATION,
-    [
-      'isinstance',
-      'typeof',
-      'validat',
-      'schema',
-      'parseint',
-      'number(',
-      'strconv',
-      'parse',
-      'is_valid',
-      'assert',
-      'basemodel',
-      'z.',
-      'clean_',
-      'isdigit',
-      'match',
-      'len(',
-      '.length',
-      'guard',
-    ],
-  ],
-  [
-    'injection_sinks',
-    SINKS,
-    [
-      'execute',
-      'query',
-      'raw',
-      'exec',
-      'shell',
-      'eval',
-      'function(',
-      'innerhtml',
-      'outerhtml',
-      'dangerously',
-      'document.write',
-      'os.system',
-      'mark_safe',
-      'safe',
-      'command',
-      'child_process',
-    ],
-  ],
-  [
-    'dynamic_strings_into_calls',
-    DYNAMIC_INTO,
-    [
-      'execute',
-      'query',
-      'system',
-      'exec',
-      'popen',
-      'run(',
-      'open(',
-      'command(',
-      'raw(',
-      'render_template_string',
-    ],
-  ],
-  [
-    'auth_checks',
-    AUTH,
-    [
-      'permission',
-      'authoriz',
-      'authenticated',
-      'login_required',
-      'has_perm',
-      'owner',
-      'current_user',
-      'admin',
-      'staff',
-      'role',
-      'forbidden',
-      '403',
-      'unauthorized',
-      'requireauth',
-      'access_control',
-      'can_',
-    ],
-  ],
-  [
-    'error_details_exposed',
-    EXPOSE,
-    [
-      'traceback',
-      '.stack',
-      'str(e',
-      'error()',
-      'message',
-      'repr(e',
-      'debug',
-      '{e}',
-      '{err}',
-      '{exc}',
-    ],
-  ],
-  [
-    'weak_crypto',
-    WEAK_CRYPTO,
-    [
-      'md5',
-      'sha1',
-      'random',
-      'math/rand',
-      'password',
-      'secret',
-      'token',
-      'digest',
-      'signature',
-      'hmac',
-      'iv',
-      'key',
-      'nonce',
-    ],
-  ],
-  [
-    'http_handlers',
-    HTTP,
-    [
-      'route',
-      'app.',
-      'router',
-      'handlefunc',
-      'responsewriter',
-      'gin.context',
-      'echo.context',
-      '@get',
-      '@post',
-      '#[get',
-      '#[post',
-      'handler',
-    ],
-  ],
-  [
-    'db_access',
-    DB,
-    ['execute', 'cursor', 'query', 'objects.', 'sql', 'session.', 'prisma', 'knex', 'where('],
-  ],
-  [
-    'shell_commands',
-    SHELL,
-    [
-      'subprocess',
-      'os.system',
-      'popen',
-      'exec.command',
-      'command::new',
-      'child_process',
-      'execsync',
-      'spawn',
-    ],
-  ],
-  [
-    'path_operations',
-    PATHS,
-    [
-      'open(',
-      'path.join',
-      'filepath.join',
-      'file::open',
-      'readfile',
-      'writefile',
-      'path(',
-      'os.path',
-      'fs::',
-    ],
-  ],
-  ['html_output', HTML, ['render', 'innerhtml', 'res.send', 'template', 'html', 'markup']],
-  ['regex_from_variables', REGEX_VAR, ['regexp', 're.compile', 'mustcompile', 'regex::new']],
-  [
-    'unsafe_deserialization',
-    DESERIALIZE,
-    ['pickle', 'yaml.load', 'marshal', 'unserialize', 'eval('],
-  ],
-  [
-    'security_terms',
-    SECURITY_TERMS,
-    [
-      'password',
-      'passwd',
-      'token',
-      'secret',
-      'credential',
-      'session',
-      'cookie',
-      'csrf',
-      'jwt',
-      'auth',
-    ],
-  ],
-  [
-    'crypto_usage',
-    CRYPTO,
-    [
-      'hashlib',
-      'crypto',
-      'hmac',
-      'cipher',
-      'jwt',
-      'bcrypt',
-      'argon2',
-      'scrypt',
-      'pbkdf2',
-      'sha256',
-      'sha512',
-      'ring::',
-      'rustls',
-      'aes',
-      'rsa',
-      'sign',
-    ],
-  ],
-  [
-    'secure_random',
-    SECURE_RANDOM,
-    [
-      'secrets.',
-      'crypto/rand',
-      'randombytes',
-      'getrandomvalues',
-      'osrng',
-      'urandom',
-      'randomuuid',
-      'thread_rng',
-    ],
-  ],
-  [
-    'constant_time_compares',
-    CONST_TIME,
-    ['compare_digest', 'constanttimecompare', 'timingsafeequal', 'constant_time'],
-  ],
-  [
-    'tls_verification_off',
-    TLS_OFF,
-    ['verify', 'insecureskipverify', 'rejectunauthorized', 'danger'],
-  ],
-  ['credential_urls', CRED_URL, ['://']],
-  ['placeholder_secrets', PLACEHOLDER_SECRET, ['password', 'passwd', 'secret', 'key', 'token']],
-  ['debug_statements', DEBUG, ['console.', 'dbg!', 'debugger', 'breakpoint', 'pdb']],
-  ['deprecated_markers', DEPRECATED, ['deprecat']],
-  ['process_exits', EXITS, ['panic', 'todo!', 'unimplemented!', 'exit']],
-  ['disabled_blocks', DISABLED, ['if false', 'if (false)', 'if 0', '#if 0', 'if (0)']],
+// Lexical features: a regular expression counted over the whole file, as in features_code.py (no substring
+// prefilter: one keyed to a few words skipped files whose matches used none of them).
+const LEXICAL: [string, PyRe][] = [
+  ['external_inputs', INPUTS],
+  ['validation_calls', VALIDATION],
+  ['injection_sinks', SINKS],
+  ['dynamic_strings_into_calls', DYNAMIC_INTO],
+  ['auth_checks', AUTH],
+  ['error_details_exposed', EXPOSE],
+  ['weak_crypto', WEAK_CRYPTO],
+  ['http_handlers', HTTP],
+  ['db_access', DB],
+  ['shell_commands', SHELL],
+  ['path_operations', PATHS],
+  ['html_output', HTML],
+  ['regex_from_variables', REGEX_VAR],
+  ['unsafe_deserialization', DESERIALIZE],
+  ['security_terms', SECURITY_TERMS],
+  ['crypto_usage', CRYPTO],
+  ['secure_random', SECURE_RANDOM],
+  ['constant_time_compares', CONST_TIME],
+  ['tls_verification_off', TLS_OFF],
+  ['credential_urls', CRED_URL],
+  ['placeholder_secrets', PLACEHOLDER_SECRET],
+  ['debug_statements', DEBUG],
+  ['deprecated_markers', DEPRECATED],
+  ['process_exits', EXITS],
+  ['disabled_blocks', DISABLED],
 ];
 
 const subtokenCache = new Map<string, string[]>();
@@ -953,6 +760,37 @@ function statementsOf(block: SyntaxNode): SyntaxNode[] {
     children = nn(children[0]!.namedChildren).filter((c) => !COMMENT.has(c.type));
   }
   return children;
+}
+
+/** A return/raise/throw/break/continue, also wrapped in an expression statement (Rust's `return x;`). */
+function isExit(statement: SyntaxNode): boolean {
+  return (
+    EXIT.has(statement.type) ||
+    (statement.type === 'expression_statement' &&
+      statement.namedChildCount > 0 &&
+      EXIT.has((statement.namedChildren[0] as SyntaxNode).type))
+  );
+}
+
+// As _SCANNER_SPACES in features_code.py: the grammars' scanners treat these as whitespace differently in
+// native and WebAssembly builds (libc iswspace), so both sides read them as spaces.
+const SCANNER_SPACES = /[\u0085 ]/g;
+
+/** Rows that hold text outside comments (`features_code._code_rows()`); spans are UTF-16 offsets. */
+function codeRows(content: string, spans: [number, number][]): Set<number> {
+  let blanked = '';
+  let pos = 0;
+  for (const [start, end] of [...spans].sort((a, b) => a[0] - b[0] || a[1] - b[1])) {
+    const from = Math.max(start, pos);
+    blanked += content.slice(pos, from) + content.slice(from, end).replace(/[^\n]/g, ' ');
+    pos = Math.max(pos, end);
+  }
+  blanked += content.slice(pos);
+  const rows = new Set<number>();
+  blanked.split('\n').forEach((row, i) => {
+    if (strip(row)) rows.add(i);
+  });
+  return rows;
 }
 
 function errorCount(root: SyntaxNode): number {
@@ -1009,488 +847,484 @@ const PATTERN_STOP = set(
   'default_parameter typed_default_parameter assignment_pattern optional_parameter required_parameter',
 );
 
-/** What one walk over a syntax tree collects. */
-interface Walker {
-  fns: Fn[];
-  declared: string[];
-  locals: string[];
-  privateFns: string[];
-  idents: Map<string, number>;
-  comments: Comment[];
-  strings: string[];
-  c: Map<string, number>;
-  magic: Map<string, number>;
-  exprSizes: number[];
-  boolOps: number[];
-  chains: number[];
-  fnNestingBase: number[];
-  deepStatements: number;
-  statements: number;
-  errorStatements: number;
-  nodes: number;
-  lang: LanguageName;
-}
+class Walker {
+  readonly fns: Fn[] = [];
+  readonly declared: string[] = [];
+  readonly locals: string[] = [];
+  readonly privateFns: string[] = [];
+  readonly idents = new Map<string, number>();
+  readonly comments: Comment[] = [];
+  /** [start, end] of every comment, in UTF-16 code units. */
+  readonly commentSpans: [number, number][] = [];
+  readonly strings: string[] = [];
+  readonly c = new Map<string, number>();
+  readonly magic = new Map<string, number>();
+  readonly exprSizes: number[] = [];
+  readonly boolOps: number[] = [];
+  readonly chains: number[] = [];
+  readonly fnNestingBase: number[] = [];
+  deepStatements = 0;
+  statements = 0;
+  errorStatements = 0;
+  nodes = 0;
+  readonly lang: LanguageName;
 
-function newWalker(lang: LanguageName): Walker {
-  return {
-    fns: [],
-    declared: [],
-    locals: [],
-    privateFns: [],
-    idents: new Map(),
-    comments: [],
-    strings: [],
-    c: new Map(),
-    magic: new Map(),
-    exprSizes: [],
-    boolOps: [],
-    chains: [],
-    fnNestingBase: [],
-    deepStatements: 0,
-    statements: 0,
-    errorStatements: 0,
-    nodes: 0,
-    lang,
-  };
-}
-
-function rootObject(w: Walker, start: SyntaxNode | null): string | null {
-  let node = start;
-  while (
-    node !== null &&
-    (MEMBER.has(node.type) || INDEX.has(node.type) || node.type === 'parenthesized_expression')
-  ) {
-    node = field(node, 'object', 'value', 'operand') ?? firstNamed(node);
+  constructor(lang: LanguageName) {
+    this.lang = lang;
   }
-  if (node !== null && (node.type === 'identifier' || node.type === 'self' || node.type === 'this'))
-    return node.text;
-  return null;
-}
 
-function callee(w: Walker, node: SyntaxNode): [string, string | null] {
-  const fn = field(node, 'function', 'macro', 'constructor');
-  if (fn === null) return ['', null];
-  if (MEMBER.has(fn.type)) {
-    const prop = field(fn, 'property', 'attribute', 'field');
-    return [prop !== null ? prop.text : '', rootObject(w, fn)];
-  }
-  const parts = fn.text.split('::');
-  return [parts[parts.length - 1]!, null];
-}
-
-function chainLength(w: Walker, start: SyntaxNode): number {
-  let length = 0;
-  let node: SyntaxNode | null = start;
-  while (node !== null && CALL.has(node.type)) {
-    const fn: SyntaxNode | null = node.childForFieldName('function');
-    if (fn === null || !MEMBER.has(fn.type)) break;
-    length++;
-    node = field(fn, 'object', 'value', 'operand');
+  private rootObject(start: SyntaxNode | null): string | null {
+    let node = start;
     while (
       node !== null &&
-      (node.type === 'await_expression' ||
-        node.type === 'try_expression' ||
-        node.type === 'non_null_expression')
+      (MEMBER.has(node.type) || INDEX.has(node.type) || node.type === 'parenthesized_expression')
     ) {
-      node = firstNamed(node);
+      node = field(node, 'object', 'value', 'operand') ?? firstNamed(node);
     }
+    if (
+      node !== null &&
+      (node.type === 'identifier' || node.type === 'self' || node.type === 'this')
+    )
+      return node.text;
+    return null;
   }
-  return length;
-}
 
-function declareTargets(w: Walker, node: SyntaxNode, local: boolean): void {
-  for (const sub of patternNames(w, node)) {
-    w.declared.push(sub);
-    if (local) w.locals.push(sub);
+  private callee(node: SyntaxNode): [string, string | null] {
+    const fn = field(node, 'function', 'macro', 'constructor');
+    if (fn === null) return ['', null];
+    if (MEMBER.has(fn.type)) {
+      const prop = field(fn, 'property', 'attribute', 'field');
+      return [prop !== null ? prop.text : '', this.rootObject(fn)];
+    }
+    const parts = fn.text.split('::');
+    return [parts[parts.length - 1]!, null];
   }
-}
 
-function patternNames(w: Walker, node: SyntaxNode | null): string[] {
-  if (node === null) return [];
-  if (node.type === 'identifier') return [node.text];
-  if (!PATTERN_NODES.has(node.type)) return [];
-  if (node.type === 'shorthand_property_identifier_pattern') return [node.text];
-  const names: string[] = [];
-  for (const child of nn(node.namedChildren)) {
-    if (PATTERN_TYPES.has(child.type)) continue;
-    names.push(...patternNames(w, child));
-    if (PATTERN_STOP.has(node.type)) break; // the rest is the default value or type
-  }
-  return names;
-}
-
-function walk(w: Walker, root: SyntaxNode): void {
-  // flags: 1 in literal, 2 in const context, 4 in catch/error block, 8 in ternary, 16 in test fn,
-  //        32 in array literal
-  const stack: [SyntaxNode, number, number, number][] = [[root, -1, 0, 0]];
-  while (stack.length) {
-    let [node, fi, nesting, flags] = stack.pop() as [SyntaxNode, number, number, number];
-    w.nodes++;
-    const t = node.type;
-    if (!node.isNamed) {
-      if (COMPARE_OPS.has(t) && node.parent !== null) {
-        for (const sib of nn(node.parent.namedChildren)) {
-          if (STRING.has(sib.type) && plen(sib.text) > 3) inc(w.c, 'magic_strings_compared');
-        }
+  private chainLength(start: SyntaxNode): number {
+    let length = 0;
+    let node: SyntaxNode | null = start;
+    while (node !== null && CALL.has(node.type)) {
+      const fn: SyntaxNode | null = node.childForFieldName('function');
+      if (fn === null || !MEMBER.has(fn.type)) break;
+      length++;
+      node = field(fn, 'object', 'value', 'operand');
+      while (
+        node !== null &&
+        (node.type === 'await_expression' ||
+          node.type === 'try_expression' ||
+          node.type === 'non_null_expression')
+      ) {
+        node = firstNamed(node);
       }
-      continue;
     }
-    const fn = fi >= 0 ? w.fns[fi]! : null;
-    if (COMMENT.has(t)) {
-      w.comments.push([node.startPosition.row, node.endPosition.row, node.text]);
-      continue;
+    return length;
+  }
+
+  private declareTargets(node: SyntaxNode, local: boolean): void {
+    for (const sub of this.patternNames(node)) {
+      this.declared.push(sub);
+      if (local) this.locals.push(sub);
     }
-    if (STRING.has(t)) {
-      if (!(flags & 1)) w.strings.push(node.text);
-      flags |= 1;
+  }
+
+  private patternNames(node: SyntaxNode | null): string[] {
+    if (node === null) return [];
+    if (node.type === 'identifier') return [node.text];
+    if (!PATTERN_NODES.has(node.type)) return [];
+    if (node.type === 'shorthand_property_identifier_pattern') return [node.text];
+    const names: string[] = [];
+    for (const child of nn(node.namedChildren)) {
+      if (PATTERN_TYPES.has(child.type)) continue;
+      names.push(...this.patternNames(child));
+      if (PATTERN_STOP.has(node.type)) break; // the rest is the default value or type
     }
-    if (flags & 1) {
-      if (t === 'interpolation' || t === 'template_substitution') flags &= ~1;
-      else {
-        const children = node.children;
-        for (let i = children.length - 1; i >= 0; i--) {
-          const child = children[i];
-          if (child) stack.push([child, fi, nesting, flags]);
+    return names;
+  }
+
+  walk(root: SyntaxNode): void {
+    // flags: 1 in literal, 2 in const context, 4 in catch/error block, 8 in ternary, 16 in test fn,
+    //        32 in array literal
+    const stack: [SyntaxNode, number, number, number][] = [[root, -1, 0, 0]];
+    while (stack.length) {
+      let [node, fi, nesting, flags] = stack.pop() as [SyntaxNode, number, number, number];
+      this.nodes++;
+      const t = node.type;
+      if (!node.isNamed) {
+        if (COMPARE_OPS.has(t) && node.parent !== null) {
+          for (const sib of nn(node.parent.namedChildren)) {
+            if (STRING.has(sib.type) && plen(sib.text) > 3) inc(this.c, 'magic_strings_compared');
+          }
         }
         continue;
       }
-    }
-    if (
-      (STATEMENT_SUFFIXES.some((s) => t.endsWith(s)) || STATEMENT_EXTRA.has(t)) &&
-      !NOT_STATEMENTS.has(t)
-    ) {
-      w.statements++;
-      if (fn !== null) {
-        fn.statements++;
-        if (nesting - w.fnNestingBase[fi]! >= 3) w.deepStatements++;
+      const fn = fi >= 0 ? this.fns[fi]! : null;
+      if (COMMENT.has(t)) {
+        // tree-sitter-rust's /// and //! comments include their newline and end at column 0 of the next row.
+        let endRow = node.endPosition.row;
+        if (node.endPosition.column === 0 && endRow > node.startPosition.row) endRow--;
+        this.comments.push([node.startPosition.row, endRow, node.text]);
+        this.commentSpans.push([node.startIndex, node.endIndex]);
+        continue;
       }
-      if (flags & 4 || RAISE.has(t)) w.errorStatements++;
-    }
-    if (IDENT.has(t)) inc(w.idents, node.text);
-    else if (NUMBER.has(t)) {
-      let value = rstrip(lower(node.text), 'ulfi_');
-      const parent = node.parent;
+      if (STRING.has(t)) {
+        if (!(flags & 1)) this.strings.push(node.text);
+        flags |= 1;
+      }
+      if (flags & 1) {
+        if (t === 'interpolation' || t === 'template_substitution') flags &= ~1;
+        else {
+          const children = node.children;
+          for (let i = children.length - 1; i >= 0; i--) {
+            const child = children[i];
+            if (child) stack.push([child, fi, nesting, flags]);
+          }
+          continue;
+        }
+      }
       if (
-        parent !== null &&
-        (parent.type === 'unary_expression' || parent.type === 'unary_operator')
-      )
-        value = `-${value}`;
-      if (!TRIVIAL_NUMBERS.has(value) && !(flags & (2 | 16 | 32))) inc(w.magic, value);
-    } else if (BRANCH.has(t) && fn !== null) fn.complexity++;
-    if (BRANCH.has(t)) inc(w.c, 'branches');
-    if (IF.has(t)) visitIf(w, node);
-    else if (CATCH.has(t)) {
-      visitCatch(w, node);
-      flags |= 4;
-    } else if (TERNARY.has(t)) {
-      if (flags & 8) inc(w.c, 'nested_ternaries');
-      flags |= 8;
-    } else if (
-      t === 'break_statement' ||
-      t === 'continue_statement' ||
-      t === 'break_expression' ||
-      t === 'continue_expression'
-    ) {
-      inc(w.c, 'jumps_in_loops');
-    } else if (t === 'return_statement' || t === 'return_expression') {
-      if (fn !== null) fn.returns++;
-      const value = firstNamed(node);
-      if (
-        value !== null &&
-        (['none', 'null', 'nil', 'undefined'].includes(value.type) ||
-          ['-1', 'None', 'null'].includes(value.text))
+        (STATEMENT_SUFFIXES.some((s) => t.endsWith(s)) || STATEMENT_EXTRA.has(t)) &&
+        !NOT_STATEMENTS.has(t)
       ) {
-        inc(w.c, 'sentinel_returns');
+        this.statements++;
+        if (fn !== null) {
+          fn.statements++;
+          if (nesting - this.fnNestingBase[fi]! >= 3) this.deepStatements++;
+        }
+        if (flags & 4 || RAISE.has(t)) this.errorStatements++;
       }
-    } else if (t === 'try_expression' || RAISE.has(t)) inc(w.c, 'error_checks');
-    else if (
-      t === 'global_statement' ||
-      t === 'nonlocal_statement' ||
-      (t === 'static_item' && pslice(node.text, 20).includes('mut'))
-    ) {
-      inc(w.c, 'global_writes');
-    }
-    if (
-      CONST.has(t) ||
-      ((t === 'assignment' || t === 'lexical_declaration' || t === 'variable_declarator') && fi < 0)
-    ) {
-      const head = pslice(node.text, 60);
-      const target = field(node, 'left', 'name');
-      if (CONST.has(t) || head.startsWith('const') || (target !== null && isUpper(target.text))) {
-        inc(w.c, 'named_constants', t !== 'lexical_declaration' ? 1 : 0);
-        flags |= 2;
-      }
-    }
-    if (ARRAY.has(t) && node.namedChildCount > 3) flags |= 32;
-    if (OPERATOR_EXPR.has(t)) {
-      const parent = node.parent;
-      if (
-        parent === null ||
-        !(OPERATOR_EXPR.has(parent.type) || parent.type === 'parenthesized_expression')
+      if (IDENT.has(t)) inc(this.idents, node.text);
+      else if (NUMBER.has(t)) {
+        let value = lower(node.text);
+        // hex digits a-f are not type suffixes (0xff)
+        if (!startsWithAny(value, ['0x', '0o', '0b'])) value = rstrip(value, 'ulfi_');
+        const parent = node.parent;
+        if (
+          parent !== null &&
+          (parent.type === 'unary_expression' || parent.type === 'unary_operator')
+        )
+          value = `-${value}`;
+        if (!TRIVIAL_NUMBERS.has(value) && !(flags & (2 | 16 | 32))) inc(this.magic, value);
+      } else if (BRANCH.has(t) && fn !== null) fn.complexity++;
+      if (BRANCH.has(t)) inc(this.c, 'branches');
+      if (IF.has(t)) this.visitIf(node);
+      else if (CATCH.has(t)) {
+        this.visitCatch(node);
+        flags |= 4;
+      } else if (TERNARY.has(t)) {
+        if (flags & 8) inc(this.c, 'nested_ternaries');
+        flags |= 8;
+      } else if (
+        t === 'break_statement' ||
+        t === 'continue_statement' ||
+        t === 'break_expression' ||
+        t === 'continue_expression'
       ) {
-        // Literal operands (test data such as `x == {...}`) are not expression complexity.
-        let literal = 0;
-        for (const ch of nn(node.namedChildren))
-          if (ARRAY.has(ch.type) || STRING.has(ch.type)) literal += ch.descendantCount;
-        w.exprSizes.push(node.descendantCount - literal);
+        inc(this.c, 'jumps_in_loops');
+      } else if (t === 'return_statement' || t === 'return_expression') {
+        if (fn !== null) fn.returns++;
+        const value = firstNamed(node);
+        if (
+          value !== null &&
+          (['none', 'null', 'nil', 'undefined'].includes(value.type) ||
+            ['-1', 'None', 'null'].includes(value.text))
+        ) {
+          inc(this.c, 'sentinel_returns');
+        }
+      } else if (t === 'try_expression' || RAISE.has(t)) inc(this.c, 'error_checks');
+      else if (
+        t === 'global_statement' ||
+        t === 'nonlocal_statement' ||
+        (t === 'static_item' && pslice(node.text, 20).includes('mut'))
+      ) {
+        inc(this.c, 'global_writes');
+      }
+      if (
+        CONST.has(t) ||
+        ((t === 'assignment' || t === 'lexical_declaration' || t === 'variable_declarator') &&
+          fi < 0)
+      ) {
+        const head = pslice(node.text, 60);
+        const target = field(node, 'left', 'name');
+        if (CONST.has(t) || head.startsWith('const') || (target !== null && isUpper(target.text))) {
+          inc(this.c, 'named_constants', t !== 'lexical_declaration' ? 1 : 0);
+          flags |= 2;
+        }
+      }
+      if (ARRAY.has(t) && node.namedChildCount > 3) flags |= 32;
+      if (OPERATOR_EXPR.has(t)) {
+        const parent = node.parent;
+        if (
+          parent === null ||
+          !(OPERATOR_EXPR.has(parent.type) || parent.type === 'parenthesized_expression')
+        ) {
+          // Literal operands (test data such as `x == {...}`) are not expression complexity.
+          let literal = 0;
+          for (const ch of nn(node.namedChildren))
+            if (ARRAY.has(ch.type) || STRING.has(ch.type)) literal += ch.descendantCount;
+          this.exprSizes.push(node.descendantCount - literal);
+        }
+      }
+      if (
+        INDEX.has(t) ||
+        (t === 'binary_expression' &&
+          nn(node.children).some(
+            (ch) => !ch.isNamed && ['&', '|', '^', '<<', '>>'].includes(ch.type),
+          ))
+      ) {
+        inc(this.c, 'low_level_ops');
+        if (fn !== null) fn.lowLevel++;
+      }
+      if (NAMED_DECLS.has(t)) {
+        for (const n of nn(node.childrenForFieldName('name'))) this.declared.push(n.text);
+      } else if (t === 'enum_body') {
+        for (const n of nn(node.namedChildren))
+          if (n.type === 'property_identifier') this.declared.push(n.text);
+      }
+      if (CALL.has(t)) this.visitCall(node, fn);
+      if (
+        ASSIGN.has(t) ||
+        t === 'variable_declarator' ||
+        t === 'short_var_declaration' ||
+        t === 'let_declaration'
+      ) {
+        this.visitAssign(node, fn, fi);
+      }
+      if (BLOCK.has(t) || t === 'module' || t === 'program' || t === 'source_file')
+        this.visitBlock(node);
+      const childNesting = NESTING.has(t) ? nesting + 1 : nesting;
+      if (fn !== null && NESTING.has(t))
+        fn.nesting = Math.max(fn.nesting, childNesting - this.fnNestingBase[fi]!);
+      if (FUNCTION.has(t)) {
+        fi = this.visitFunction(node, fi, childNesting);
+        if (
+          TEST_FN.match(pslice(node.text, 80)) ||
+          startsWithAny(this.fns[fi]!.name, ['test', 'Test'])
+        )
+          flags |= 16;
+      }
+      const children = node.children;
+      for (let i = children.length - 1; i >= 0; i--) {
+        const child = children[i];
+        if (child) stack.push([child, fi, childNesting, flags]);
       }
     }
-    if (
-      INDEX.has(t) ||
-      (t === 'binary_expression' &&
-        nn(node.children).some(
-          (ch) => !ch.isNamed && ['&', '|', '^', '<<', '>>'].includes(ch.type),
-        ))
-    ) {
-      inc(w.c, 'low_level_ops');
-      if (fn !== null) fn.lowLevel++;
-    }
-    if (NAMED_DECLS.has(t)) {
-      for (const n of nn(node.childrenForFieldName('name'))) w.declared.push(n.text);
-    } else if (t === 'enum_body') {
-      for (const n of nn(node.namedChildren))
-        if (n.type === 'property_identifier') w.declared.push(n.text);
-    }
-    if (CALL.has(t)) visitCall(w, node, fn);
-    if (
-      ASSIGN.has(t) ||
-      t === 'variable_declarator' ||
-      t === 'short_var_declaration' ||
-      t === 'let_declaration'
-    ) {
-      visitAssign(w, node, fn, fi);
-    }
-    if (BLOCK.has(t) || t === 'module' || t === 'program' || t === 'source_file')
-      visitBlock(w, node);
-    const childNesting = NESTING.has(t) ? nesting + 1 : nesting;
-    if (fn !== null && NESTING.has(t))
-      fn.nesting = Math.max(fn.nesting, childNesting - w.fnNestingBase[fi]!);
-    if (FUNCTION.has(t)) {
-      fi = visitFunction(w, node, fi, childNesting);
-      if (TEST_FN.match(pslice(node.text, 80)) || startsWithAny(w.fns[fi]!.name, ['test', 'Test']))
-        flags |= 16;
-    }
-    const children = node.children;
-    for (let i = children.length - 1; i >= 0; i--) {
-      const child = children[i];
-      if (child) stack.push([child, fi, childNesting, flags]);
-    }
   }
-}
 
-function visitFunction(w: Walker, node: SyntaxNode, _parentFi: number, nesting: number): number {
-  const nameNode = node.childForFieldName('name');
-  const name = nameNode !== null ? nameNode.text : '';
-  const paramsNode = field(node, 'parameters', 'parameter');
-  const params = new Set<string>();
-  if (paramsNode !== null) {
-    if (paramsNode.type === 'identifier') params.add(paramsNode.text);
-    for (const child of nn(paramsNode.namedChildren)) {
-      for (const p of patternNames(w, child)) params.add(p);
-      if (child.type === 'identifier') params.add(child.text);
+  private visitFunction(node: SyntaxNode, _parentFi: number, nesting: number): number {
+    const nameNode = node.childForFieldName('name');
+    const name = nameNode !== null ? nameNode.text : '';
+    const paramsNode = field(node, 'parameters', 'parameter');
+    const params = new Set<string>();
+    if (paramsNode !== null) {
+      if (paramsNode.type === 'identifier') params.add(paramsNode.text);
+      for (const child of nn(paramsNode.namedChildren)) {
+        for (const p of this.patternNames(child)) params.add(p);
+        if (child.type === 'identifier') params.add(child.text);
+      }
     }
-  }
-  for (const p of ['self', 'cls', 'this']) params.delete(p);
-  w.declared.push(...params);
-  const parent = node.parent;
-  if (name) {
-    w.declared.push(name);
-    const isPrivate =
-      (w.lang === 'python' && name.startsWith('_') && !name.startsWith('__')) ||
-      // Go: lowercase functions are visible package-wide, so a file cannot tell. Rust: only free functions;
-      // methods may implement a trait that is called from elsewhere.
-      (w.lang === 'rust' &&
-        node.type === 'function_item' &&
-        parent !== null &&
-        parent.type === 'source_file' &&
-        !node.text.startsWith('pub')) ||
-      ((w.lang === 'javascript' || w.lang === 'typescript') &&
-        node.type === 'function_declaration' &&
-        (parent === null || parent.type !== 'export_statement'));
-    if (isPrivate && name !== 'main' && name !== 'init') w.privateFns.push(name);
-  }
-  const fn: Fn = {
-    name,
-    lines: node.endPosition.row - node.startPosition.row + 1,
-    params,
-    startRow: node.startPosition.row,
-    endRow: node.endPosition.row,
-    complexity: 1,
-    nesting: 0,
-    statements: 0,
-    callees: new Set(),
-    namedCalls: 0,
-    lowLevel: 0,
-    mutatesArgs: false,
-    writesSelf: false,
-    doesIo: false,
-    hasDoc: false,
-    isMethod:
-      node.type === 'method_definition' ||
-      node.type === 'method_declaration' ||
-      (parent !== null &&
-        ['block', 'declaration_list', 'class_body'].includes(parent.type) &&
-        pslice((paramsNode ?? node).text, 40).includes('self')),
-    returns: 0,
-  };
-  const body = node.childForFieldName('body');
-  if (w.lang === 'python' && body !== null && body.namedChildCount) {
-    const first = body.namedChildren[0] as SyntaxNode;
-    fn.hasDoc =
-      first.type === 'expression_statement' &&
-      first.namedChildCount > 0 &&
-      (first.namedChildren[0] as SyntaxNode).type === 'string';
-  } else {
-    let prev = node.previousNamedSibling;
-    if (prev === null && parent !== null && parent.type === 'export_statement')
-      prev = parent.previousNamedSibling;
-    while (prev !== null && (prev.type === 'attribute_item' || prev.type === 'decorator'))
-      prev = prev.previousNamedSibling;
-    fn.hasDoc =
-      prev !== null && COMMENT.has(prev.type) && prev.endPosition.row >= node.startPosition.row - 3;
-  }
-  if (name && body !== null && BLOCK.has(body.type)) {
-    const inner = statementsOf(body).filter((c) => c.type !== 'pass_statement');
-    if (!inner.length && !nn(body.namedChildren).some((c) => COMMENT.has(c.type)))
-      inc(w.c, 'empty_functions');
-  }
-  w.fns.push(fn);
-  w.fnNestingBase.push(nesting);
-  return w.fns.length - 1;
-}
-
-function visitIf(w: Walker, node: SyntaxNode): void {
-  const condition = node.childForFieldName('condition');
-  if (condition !== null) {
-    let ops = 0;
-    let negated = false;
-    const stack = [condition];
-    while (stack.length) {
-      const current = stack.pop() as SyntaxNode;
-      if (!current.isNamed && BOOL_OPS.has(current.type)) ops++;
-      else if (current.type === 'not_operator' || (!current.isNamed && current.type === '!'))
-        negated = true;
-      stack.push(...nn(current.children));
-    }
-    w.boolOps.push(ops);
-    inc(w.c, 'negated_conditions', negated ? 1 : 0);
-    if (condition.text.includes('err != nil')) {
-      inc(w.c, 'error_checks');
-      const consequence = node.childForFieldName('consequence');
-      if (consequence !== null) w.errorStatements += Math.max(1, consequence.namedChildCount);
-    }
-  }
-  const consequence = field(node, 'consequence', 'body');
-  if (consequence === null) return;
-  const body = statementsOf(consequence);
-  if (
-    body.length === 1 &&
-    (EXIT.has(body[0]!.type) ||
-      (body[0]!.type === 'expression_statement' &&
-        body[0]!.namedChildCount &&
-        EXIT.has((body[0]!.namedChildren[0] as SyntaxNode).type)))
-  ) {
-    inc(w.c, 'guard_clauses');
-  }
-  const alternative = node.childForFieldName('alternative');
-  if (body.length && alternative !== null && EXIT.has(body[body.length - 1]!.type))
-    inc(w.c, 'else_after_return');
-}
-
-function visitCatch(w: Walker, node: SyntaxNode): void {
-  inc(w.c, 'catches');
-  let body = node.childForFieldName('body');
-  if (body === null) {
-    for (const child of nn(node.namedChildren)) if (BLOCK.has(child.type)) body = child;
-  }
-  const statements = body !== null ? statementsOf(body) : [];
-  if (!statements.length || (statements.length === 1 && statements[0]!.type === 'pass_statement')) {
-    inc(w.c, 'empty_catches');
-  }
-  const text = body !== null ? body.text : '';
-  if (!SWALLOW.search(text)) inc(w.c, 'swallowing_catches');
-  const head = strip(node.text.split(':')[0]!.split('{')[0]!);
-  if (node.type === 'except_clause' && (head === 'except' || BROAD.search(head)))
-    inc(w.c, 'broad_catches');
-}
-
-function visitCall(w: Walker, node: SyntaxNode, fn: Fn | null): void {
-  const [name, receiver] = callee(w, node);
-  if ((name === 'unwrap' || name === 'expect') && w.lang === 'rust') inc(w.c, 'unwraps');
-  const io = IO_NAMES.match(name) || (receiver !== null && IO_RECEIVERS.has(receiver));
-  if (io) inc(w.c, 'io_calls');
-  const parent = node.parent;
-  if (parent === null || !MEMBER.has(parent.type)) w.chains.push(chainLength(w, node));
-  if (fn !== null) {
+    for (const p of ['self', 'cls', 'this']) params.delete(p);
+    this.declared.push(...params);
+    const parent = node.parent;
     if (name) {
-      fn.callees.add(name);
-      if (subtokens(name).length >= 2) fn.namedCalls++;
+      this.declared.push(name);
+      const isPrivate =
+        (this.lang === 'python' && name.startsWith('_') && !name.startsWith('__')) ||
+        // Go: lowercase functions are visible package-wide, so a file cannot tell. Rust: only free functions;
+        // methods may implement a trait that is called from elsewhere.
+        (this.lang === 'rust' &&
+          node.type === 'function_item' &&
+          parent !== null &&
+          parent.type === 'source_file' &&
+          !node.text.startsWith('pub')) ||
+        ((this.lang === 'javascript' || this.lang === 'typescript') &&
+          node.type === 'function_declaration' &&
+          (parent === null || parent.type !== 'export_statement'));
+      if (isPrivate && name !== 'main' && name !== 'init') this.privateFns.push(name);
     }
-    if (io) fn.doesIo = true;
-    if (receiver !== null && fn.params.has(receiver) && MUTATING_METHODS.has(name))
-      fn.mutatesArgs = true;
+    const fn: Fn = {
+      name,
+      lines: node.endPosition.row - node.startPosition.row + 1,
+      params,
+      startRow: node.startPosition.row,
+      endRow: node.endPosition.row,
+      complexity: 1,
+      nesting: 0,
+      statements: 0,
+      callees: new Set(),
+      namedCalls: 0,
+      lowLevel: 0,
+      mutatesArgs: false,
+      writesSelf: false,
+      doesIo: false,
+      hasDoc: false,
+      isMethod:
+        node.type === 'method_definition' ||
+        node.type === 'method_declaration' ||
+        (parent !== null &&
+          ['block', 'declaration_list', 'class_body'].includes(parent.type) &&
+          pslice((paramsNode ?? node).text, 40).includes('self')),
+      returns: 0,
+    };
+    const body = node.childForFieldName('body');
+    if (this.lang === 'python' && body !== null && body.namedChildCount) {
+      const first = body.namedChildren[0] as SyntaxNode;
+      fn.hasDoc =
+        first.type === 'expression_statement' &&
+        first.namedChildCount > 0 &&
+        (first.namedChildren[0] as SyntaxNode).type === 'string';
+    } else {
+      // A function used as a value is documented before the statement that holds it.
+      let anchor = node;
+      while (anchor.parent !== null && DOC_ANCHORS.has(anchor.parent.type)) anchor = anchor.parent;
+      let prev = anchor.previousNamedSibling;
+      while (prev !== null && (prev.type === 'attribute_item' || prev.type === 'decorator'))
+        prev = prev.previousNamedSibling;
+      fn.hasDoc =
+        prev !== null &&
+        COMMENT.has(prev.type) &&
+        prev.endPosition.row >= anchor.startPosition.row - 3;
+    }
+    if (name && body !== null && BLOCK.has(body.type)) {
+      const inner = statementsOf(body).filter((c) => c.type !== 'pass_statement');
+      if (!inner.length && !nn(body.namedChildren).some((c) => COMMENT.has(c.type)))
+        inc(this.c, 'empty_functions');
+    }
+    this.fns.push(fn);
+    this.fnNestingBase.push(nesting);
+    return this.fns.length - 1;
   }
-}
 
-function visitAssign(w: Walker, node: SyntaxNode, fn: Fn | null, fi: number): void {
-  const t = node.type;
-  const left = field(node, 'left', 'name', 'pattern');
-  const right = field(node, 'right', 'value');
-  if (left === null) return;
-  const ltext = left.text;
-  // Thrown-away results: _ = f(), let _ = f(), x, _ := f()
-  const rcall =
-    right !== null &&
-    (CALL.has(right.type) ||
-      right.type === 'await_expression' ||
-      right.type === 'await' ||
-      (right.type === 'expression_list' && nn(right.namedChildren).some((c) => CALL.has(c.type))));
-  if (rcall && (ltext === '_' || IGNORED.search(ltext))) inc(w.c, 'ignored_results');
-  if (MEMBER.has(left.type) || INDEX.has(left.type)) {
-    const root = rootObject(w, left);
-    if (fn !== null && root !== null && fn.params.has(root)) fn.mutatesArgs = true;
-    if (fn !== null && (root === 'self' || root === 'this')) fn.writesSelf = true;
-    return;
+  private visitIf(node: SyntaxNode): void {
+    const condition = node.childForFieldName('condition');
+    if (condition !== null) {
+      let ops = 0;
+      let negated = false;
+      const stack = [condition];
+      while (stack.length) {
+        const current = stack.pop() as SyntaxNode;
+        if (!current.isNamed && BOOL_OPS.has(current.type)) ops++;
+        else if (current.type === 'not_operator' || (!current.isNamed && current.type === '!'))
+          negated = true;
+        stack.push(...nn(current.children));
+      }
+      this.boolOps.push(ops);
+      inc(this.c, 'negated_conditions', negated ? 1 : 0);
+      if (condition.text.includes('err != nil')) {
+        inc(this.c, 'error_checks');
+        const consequence = node.childForFieldName('consequence');
+        if (consequence !== null) this.errorStatements += Math.max(1, consequence.namedChildCount);
+      }
+    }
+    const consequence = field(node, 'consequence', 'body');
+    if (consequence === null) return;
+    // Without braces (JS/TS `if (!x) return;`) the consequence is the statement itself, not a block.
+    const body = BLOCK.has(consequence.type) ? statementsOf(consequence) : [consequence];
+    if (body.length === 1 && isExit(body[0]!)) inc(this.c, 'guard_clauses');
+    const alternative = node.childForFieldName('alternative');
+    if (body.length && alternative !== null && isExit(body[body.length - 1]!))
+      inc(this.c, 'else_after_return');
   }
-  if (
-    t === 'augmented_assignment' ||
-    t === 'augmented_assignment_expression' ||
-    t === 'compound_assignment_expr'
-  )
-    return;
-  declareTargets(w, left, fi >= 0);
-  if (right !== null && left.type === 'identifier') {
-    const rtype = right.type;
-    const isBool =
-      rtype === 'true' ||
-      rtype === 'false' ||
-      rtype === 'comparison_operator' ||
-      rtype === 'boolean_operator' ||
-      rtype === 'not_operator' ||
-      (rtype === 'binary_expression' &&
-        nn(right.children).some(
-          (c) =>
-            !c.isNamed &&
-            (COMPARE_OPS.has(c.type) ||
-              BOOL_OPS.has(c.type) ||
-              ['<', '>', '<=', '>='].includes(c.type)),
-        ));
-    const parts = subtokens(ltext);
-    if (isBool && parts.length && !BOOL_PREFIXES.has(parts[0]!)) inc(w.c, 'bool_names_unclear');
-  }
-}
 
-function visitBlock(w: Walker, node: SyntaxNode): void {
-  let jumped = false;
-  for (const child of statementsOf(node)) {
-    if (jumped) inc(w.c, 'unreachable_statements');
+  private visitCatch(node: SyntaxNode): void {
+    inc(this.c, 'catches');
+    let body = node.childForFieldName('body');
+    if (body === null) {
+      for (const child of nn(node.namedChildren)) if (BLOCK.has(child.type)) body = child;
+    }
+    const statements = body !== null ? statementsOf(body) : [];
     if (
-      JUMP.has(child.type) ||
-      (child.type === 'expression_statement' &&
-        child.namedChildCount &&
-        JUMP.has((child.namedChildren[0] as SyntaxNode).type))
+      !statements.length ||
+      (statements.length === 1 && statements[0]!.type === 'pass_statement')
     ) {
-      jumped = true;
+      inc(this.c, 'empty_catches');
+    }
+    const text = body !== null ? body.text : '';
+    if (!SWALLOW.search(text)) inc(this.c, 'swallowing_catches');
+    const head = strip(node.text.split(':')[0]!.split('{')[0]!);
+    if (node.type === 'except_clause' && (head === 'except' || BROAD.search(head)))
+      inc(this.c, 'broad_catches');
+  }
+
+  private visitCall(node: SyntaxNode, fn: Fn | null): void {
+    const [name, receiver] = this.callee(node);
+    if ((name === 'unwrap' || name === 'expect') && this.lang === 'rust') inc(this.c, 'unwraps');
+    const io = IO_NAMES.match(name) || (receiver !== null && IO_RECEIVERS.has(receiver));
+    if (io) inc(this.c, 'io_calls');
+    const parent = node.parent;
+    if (parent === null || !MEMBER.has(parent.type)) this.chains.push(this.chainLength(node));
+    if (fn !== null) {
+      if (name) {
+        fn.callees.add(name);
+        if (subtokens(name).length >= 2) fn.namedCalls++;
+      }
+      if (io) fn.doesIo = true;
+      if (receiver !== null && fn.params.has(receiver) && MUTATING_METHODS.has(name))
+        fn.mutatesArgs = true;
+    }
+  }
+
+  private visitAssign(node: SyntaxNode, fn: Fn | null, fi: number): void {
+    const t = node.type;
+    const left = field(node, 'left', 'name', 'pattern');
+    const right = field(node, 'right', 'value');
+    if (left === null) return;
+    const ltext = left.text;
+    // Thrown-away results: _ = f(), let _ = f(), x, _ := f()
+    const rcall =
+      right !== null &&
+      (CALL.has(right.type) ||
+        right.type === 'await_expression' ||
+        right.type === 'await' ||
+        (right.type === 'expression_list' &&
+          nn(right.namedChildren).some((c) => CALL.has(c.type))));
+    if (rcall && (ltext === '_' || IGNORED.search(ltext))) inc(this.c, 'ignored_results');
+    if (MEMBER.has(left.type) || INDEX.has(left.type)) {
+      const root = this.rootObject(left);
+      if (fn !== null && root !== null && fn.params.has(root)) fn.mutatesArgs = true;
+      if (fn !== null && (root === 'self' || root === 'this')) fn.writesSelf = true;
+      return;
+    }
+    if (
+      t === 'augmented_assignment' ||
+      t === 'augmented_assignment_expression' ||
+      t === 'compound_assignment_expr'
+    )
+      return;
+    this.declareTargets(left, fi >= 0);
+    if (right !== null && left.type === 'identifier') {
+      const rtype = right.type;
+      const isBool =
+        rtype === 'true' ||
+        rtype === 'false' ||
+        rtype === 'comparison_operator' ||
+        rtype === 'boolean_operator' ||
+        rtype === 'not_operator' ||
+        (rtype === 'binary_expression' &&
+          nn(right.children).some(
+            (c) =>
+              !c.isNamed &&
+              (COMPARE_OPS.has(c.type) ||
+                BOOL_OPS.has(c.type) ||
+                ['<', '>', '<=', '>='].includes(c.type)),
+          ));
+      const parts = subtokens(ltext);
+      if (isBool && parts.length && !BOOL_PREFIXES.has(parts[0]!))
+        inc(this.c, 'bool_names_unclear');
+    }
+  }
+
+  private visitBlock(node: SyntaxNode): void {
+    let jumped = false;
+    for (const child of statementsOf(node)) {
+      if (jumped) inc(this.c, 'unreachable_statements');
+      if (
+        JUMP.has(child.type) ||
+        (child.type === 'expression_statement' &&
+          child.namedChildCount &&
+          JUMP.has((child.namedChildren[0] as SyntaxNode).type))
+      ) {
+        jumped = true;
+      }
     }
   }
 }
@@ -1519,17 +1353,11 @@ function commentFeatures(
   lines: string[],
   language: LanguageName,
   codeLines: number,
+  codeRows: Set<number>,
   parse: Parse,
 ): Record<string, number> {
-  const commentRows = new Set<number>();
-  for (const [start, end] of w.comments) for (let r = start; r <= end; r++) commentRows.add(r);
   let firstCodeRow = lines.length;
-  for (let i = 0; i < lines.length; i++) {
-    if (strip(lines[i]!) && !commentRows.has(i)) {
-      firstCodeRow = i;
-      break;
-    }
-  }
+  for (const r of codeRows) if (r < firstCodeRow) firstCodeRow = r;
   let kept = 0;
   let commented = 0;
   let blocks = 0;
@@ -1627,7 +1455,13 @@ function commentFeatures(
   };
 }
 
-function commentBlocks(w: Walker, lines: string[], codeRows: Set<number>): Record<string, number> {
+/** `trailingRows`: rows where a comment follows code on the same line. */
+function commentBlocks(
+  w: Walker,
+  lines: string[],
+  codeRows: Set<number>,
+  trailingRows: Set<number>,
+): Record<string, number> {
   let firstCodeRow = lines.length;
   for (const r of codeRows) if (r < firstCodeRow) firstCodeRow = r;
   if (!codeRows.size) firstCodeRow = lines.length;
@@ -1656,7 +1490,7 @@ function commentBlocks(w: Walker, lines: string[], codeRows: Set<number>): Recor
       .filter((b) => b);
     if (!body.length || (body.length === 1 && DIRECTIVE.search(body[0]!))) continue;
     kept++;
-    if (codeRows.has(start)) inline++;
+    if (trailingRows.has(start)) inline++;
     if (startsWithAny(block[0]![2], DOC_PREFIXES)) {
       docLines += end - start + 1;
       longest = Math.max(longest, end - start + 1);
@@ -1684,40 +1518,43 @@ function commentBlocks(w: Walker, lines: string[], codeRows: Set<number>): Recor
   };
 }
 
-const PY_IMPORT = pyRe('^[ \\t]*import[ \\t]+([\\w., \\t]+)$', 'M');
-const PY_FROM = pyRe('^[ \\t]*from[ \\t]+([\\w.]+)[ \\t]+import[ \\t]+(\\([^)]*\\)|[^\\n]+)', 'M');
-const PY_HASH_COMMENT = pyRe('#[^\\n]*');
-const JS_IMPORT = pyRe('^[ \\t]*import\\s+(?:type\\s+)?([^\'";]+?)\\s+from\\s+[\'"]', 'M');
-const JS_BRACES = pyRe('\\{([^}]*)\\}');
-const JS_STAR = pyRe('\\*\\s+as\\s+([\\w$]+)');
-const JS_DEFAULT = pyRe('[\\w$]+');
-const GO_IMPORT = pyRe('^import\\s+(\\w+\\s+)?"([^"]+)"', 'M');
-const GO_BLOCK = pyRe('^import\\s*\\(([^)]*)\\)', 'M');
-const GO_SPEC = pyRe('^\\s*(\\w+\\s+|[._]\\s+)?"([^"]+)"', 'M');
-const GO_MAJOR = pyRe('v\\d+');
-const GO_NAME = pyRe('[A-Za-z_]\\w*');
+const PY_IMPORT = new PyRe('^[ \\t]*import[ \\t]+([\\w., \\t]+)\\r?$', 'M');
+const PY_FROM = new PyRe(
+  '^[ \\t]*from[ \\t]+([\\w.]+)[ \\t]+import[ \\t]+(\\([^)]*\\)|[^\\n]+)',
+  'M',
+);
+const PY_HASH_COMMENT = new PyRe('#[^\\n]*');
+const JS_IMPORT = new PyRe('^[ \\t]*import\\s+(?:type\\s+)?([^\'";]+?)\\s+from\\s+[\'"]', 'M');
+const JS_BRACES = new PyRe('\\{([^}]*)\\}');
+const JS_STAR = new PyRe('\\*\\s+as\\s+([\\w$]+)');
+const JS_DEFAULT = new PyRe('[\\w$]+');
+const GO_IMPORT = new PyRe('^import\\s+(\\w+\\s+)?"([^"]+)"', 'M');
+const GO_BLOCK = new PyRe('^import\\s*\\(([^)]*)\\)', 'M');
+const GO_SPEC = new PyRe('^\\s*(\\w+\\s+|[._]\\s+)?"([^"]+)"', 'M');
+const GO_MAJOR = new PyRe('v\\d+');
+const GO_NAME = new PyRe('[A-Za-z_]\\w*');
 
 /** Names a file imports and could use, skipping side-effect imports and wildcards. */
 function importedNames(content: string, language: LanguageName): string[] {
   const names: string[] = [];
   if (language === 'python') {
-    for (const [spec = ''] of PY_IMPORT.findallGroups(content)) {
-      for (const part of spec.split(',')) {
+    for (const [spec] of PY_IMPORT.findallGroups(content)) {
+      for (const part of spec!.split(',')) {
         const bits = splitWs(part);
         if (bits.length)
           names.push(bits.includes('as') ? bits[bits.length - 1]! : bits[0]!.split('.')[0]!);
       }
     }
-    for (const [module, what = ''] of PY_FROM.findallGroups(content)) {
+    for (const [module, what] of PY_FROM.findallGroups(content)) {
       if (module === '__future__') continue;
-      for (const part of strip(PY_HASH_COMMENT.sub(what, ''), '()\\ \n').split(',')) {
+      for (const part of strip(PY_HASH_COMMENT.sub(what!, ''), '()\\ \n').split(',')) {
         const bits = splitWs(part);
         if (bits.length && bits[0] !== '*') names.push(bits[bits.length - 1]!);
       }
     }
   } else if (language === 'javascript' || language === 'typescript') {
-    for (const [found = ''] of JS_IMPORT.findallGroups(content)) {
-      let spec = found;
+    for (const [found] of JS_IMPORT.findallGroups(content)) {
+      let spec = found!;
       const inner = JS_BRACES.exec(spec);
       if (inner) {
         for (const part of inner.groups[1]!.split(',')) {
@@ -1737,10 +1574,10 @@ function importedNames(content: string, language: LanguageName): string[] {
   } else if (language === 'go') {
     const specs = GO_IMPORT.findallGroups(content);
     for (const block of GO_BLOCK.findall(content)) specs.push(...GO_SPEC.findallGroups(block));
-    for (const [rawAlias = '', path = ''] of specs) {
-      const alias = strip(rawAlias);
+    for (const [rawAlias, path] of specs) {
+      const alias = strip(rawAlias!);
       if (alias === '_' || alias === '.') continue;
-      const segments = path.split('/');
+      const segments = path!.split('/');
       let last = segments[segments.length - 1]!;
       if (GO_MAJOR.fullmatch(last) && segments.length > 1) last = segments[segments.length - 2]!;
       const name = alias || last;
@@ -1941,6 +1778,7 @@ export function extract(
   const feats: Record<string, number> = {};
   for (const name of FEATURE_NAMES) feats[name] = 0.0;
   if (!LANGUAGES.includes(language)) return feats;
+  content = content.replace(SCANNER_SPACES, ' '); // one UTF-16 unit each: offsets and lengths are unchanged
   const trees: { delete?(): void }[] = [];
   try {
     const first = parse(language, content);
@@ -1955,13 +1793,16 @@ export function extract(
       }
     }
     if (root === null) return feats; // no tree within the time limit: as for a language without a grammar
-    const w = newWalker(language);
-    walk(w, root);
-    const lines = splitlines(content);
-    if (!lines.length) lines.push('');
+    const w = new Walker(language);
+    w.walk(root);
+    const lines = sourceLines(content);
     const commentRows = new Set<number>();
     for (const [start, end] of w.comments) for (let r = start; r <= end; r++) commentRows.add(r);
-    const code = lines.filter((ln, i) => strip(ln) && !commentRows.has(i));
+    // Code lines: rows with text outside comments, so `x = 1  # note` is one.
+    const codeRowSet = new Set(
+      [...codeRows(content, w.commentSpans)].filter((i) => i < lines.length),
+    );
+    const code = [...codeRowSet].sort((a, b) => a - b).map((i) => lines[i]!);
     const codeLines = Math.max(1, code.length);
     const per100 = 100.0 / codeLines;
     const fns = w.fns;
@@ -2042,17 +1883,15 @@ export function extract(
     feats.name_vocabulary = vocabulary.size;
     feats.io_calls_per_100 = get(w.c, 'io_calls') * per100;
 
-    Object.assign(feats, commentFeatures(w, lines, language, codeLines, parse));
-    const codeRows = new Set<number>();
-    lines.forEach((ln, i) => {
-      if (strip(ln) && !commentRows.has(i)) codeRows.add(i);
-    });
-    // A row with code and a trailing comment is a code row too.
+    Object.assign(feats, commentFeatures(w, lines, language, codeLines, codeRowSet, parse));
+    // Comments that follow code on their first row (inline_comment_share).
+    const trailingRows = new Set<number>();
     for (const [start] of w.comments) {
-      const line = lines[start] ?? '';
-      if (strip(line) && !startsWithAny(lstrip(line), ['//', '#', '/*', '*'])) codeRows.add(start);
+      const line = start < lines.length ? lines[start]! : '';
+      if (strip(line) && !startsWithAny(lstrip(line), ['//', '#', '/*', '*']))
+        trailingRows.add(start);
     }
-    Object.assign(feats, commentBlocks(w, lines, codeRows));
+    Object.assign(feats, commentBlocks(w, lines, codeRowSet, trailingRows));
     extraFeatures(feats, w, root, content, lines, code, realFns, commentRows, language);
     feats.unused_private_functions = count(
       [...new Set(w.privateFns)],
@@ -2066,10 +1905,8 @@ export function extract(
     feats.error_checks_per_100 = get(w.c, 'error_checks') * per100;
     feats.error_statement_share = Math.min(1.0, w.errorStatements / Math.max(1, w.statements));
 
+    for (const [name, pattern] of LEXICAL) feats[name] = pattern.count(content);
     const low = lower(content);
-    for (const [name, pattern, triggers] of LEXICAL) {
-      if (triggers.some((t) => low.includes(t))) feats[name] = pattern.count(content);
-    }
     let secrets = PRIVATE_KEY.count(content);
     if (['password', 'passwd', 'secret', 'key', 'token'].some((t) => low.includes(t)))
       secrets += SECRET_NAME.count(content);
@@ -2094,50 +1931,52 @@ export function extract(
   }
 }
 
-const TS_HINT = pyRe(
-  '^\\s*(export\\s+)?(interface|type|enum|declare|namespace|abstract class)\\s+\\w|\\bimport type\\b|' +
+const TS_HINT = new PyRe(
+  '^[ \\t]*(export\\s+)?(interface|type|enum|declare|namespace|abstract class)\\s+\\w|\\bimport type\\b|' +
     '\\)\\s*:\\s*[\\w<\\[{|]+\\s*(=>|\\{)|\\b(private|public|protected|readonly)\\s+\\w+\\s*[:(]|' +
     ':\\s*(string|number|boolean|unknown|any|void|never)\\b|\\bas const\\b',
   'M',
 );
-const GO_PACKAGE = pyRe('^package\\s+\\w+\\s*$', 'M');
+const GO_PACKAGE = new PyRe('^package\\s+\\w+\\s*(//.*)?$', 'M'); // `package x // import "..."` too
 const LANGUAGE_SIGNS: [LanguageName, PyRe][] = [
   [
     'rust',
-    pyRe(
-      '^\\s*(pub(\\([\\w:]+\\))?\\s+)?(fn|struct|enum|impl|trait|mod)\\s|^\\s*use\\s+[\\w:]+::|' +
+    new PyRe(
+      '^[ \\t]*(pub(\\([\\w:]+\\))?\\s+)?(fn|struct|enum|impl|trait|mod)\\s|^[ \\t]*use\\s+[\\w:]+::|' +
         '\\blet\\s+mut\\b|#!?\\[\\w+|&(mut\\s+)?self\\b|\\b\\w+!\\(|\\b(Option|Result|Vec|Box)<|::new\\(',
       'M',
     ),
   ],
   [
     'python',
-    pyRe(
-      '^\\s*(async\\s+)?def\\s+\\w+\\(|^\\s*class\\s+\\w+[(:]|^\\s*from\\s+[\\w.]+\\s+import\\s|' +
-        '^\\s*import\\s+[\\w.]+\\s*$|^\\s*(elif|except|with)\\b|\\bself\\.\\w+|\\b(None|True|False)\\b|' +
-        '^\\s*@\\w+',
+    new PyRe(
+      '^[ \\t]*(async\\s+)?def\\s+\\w+\\(|^[ \\t]*class\\s+\\w+[(:]|^[ \\t]*from\\s+[\\w.]+\\s+import\\s|' +
+        '^[ \\t]*import\\s+[\\w.]+\\s*$|^[ \\t]*(elif|except|with)\\b|\\bself\\.\\w+|\\b(None|True|False)\\b|' +
+        '^[ \\t]*@\\w+',
       'M',
     ),
   ],
   [
     'javascript',
-    pyRe(
-      '^\\s*(export\\s+)?(const|let|var|function|class)\\s|=>|\\brequire\\(|' +
-        '^\\s*import\\s.+\\sfrom\\s|\\bthis\\.\\w+|[!=]==|\\bmodule\\.exports\\b|\\bundefined\\b',
+    new PyRe(
+      '^[ \\t]*(export\\s+)?(const|let|var|function|class)\\s|=>|\\brequire\\(|' +
+        '^[ \\t]*import\\s.+\\sfrom\\s|\\bthis\\.\\w+|[!=]==|\\bmodule\\.exports\\b|\\bundefined\\b',
       'M',
     ),
   ],
 ];
-const BRACE_END = pyRe('[;{}]\\s*$', 'M');
+// Rust paths (`std::io`): Rust shares `let`, `=>`, `self.` and `None` with the other languages' signs.
+const RUST_PATH = new PyRe('\\w::\\w');
+const BRACE_END = new PyRe('[;{}]\\s*$', 'M');
 
 /** The language of a file from its content alone (`features_code.detect_language()`). */
 export function detectLanguage(content: string): LanguageName {
+  if (GO_PACKAGE.search(content)) return 'go'; // the whole file: long doc comments can push it past the head
   const head = pslice(content, 20_000);
-  if (GO_PACKAGE.search(head)) return 'go';
   let best: LanguageName = LANGUAGE_SIGNS[0]![0];
   let bestScore = -1;
   for (const [lang, pattern] of LANGUAGE_SIGNS) {
-    const score = pattern.count(head);
+    const score = pattern.count(head) + (lang === 'rust' ? RUST_PATH.count(head) : 0);
     if (score > bestScore) {
       best = lang;
       bestScore = score;

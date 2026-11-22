@@ -161,7 +161,9 @@ export function hashedCounts(text: string, columns: number): Map<number, number>
 
 /**
  * One score per word-model question: sublinear TF-IDF over the hashed words, L2-normalised, through
- * a linear model. The trees take these scores as extra features.
+ * a linear model. The trees take these scores as extra features, so they must equal training's to
+ * the last bit: the same float64 operations in the same order, columns ascending and the intercept
+ * added last.
  */
 function wordScores(
   { n_features: columns, questions, intercept }: ModelMeta['words'],
@@ -169,17 +171,21 @@ function wordScores(
   coef: Float32Array,
   text: string,
 ): Float64Array {
-  const out = Float64Array.from(intercept);
-  const weights = [...hashedCounts(text, columns)].map(
-    ([column, count]) => [column, (Math.log(count) + 1) * idf[column]!] as const,
-  );
-  const norm = Math.sqrt(weights.reduce((sum, [, w]) => sum + w * w, 0));
-  if (norm === 0) return out;
-  for (const [column, w] of weights) {
-    for (let q = 0; q < questions.length; q++) {
-      out[q]! += (w / norm) * coef[column * questions.length + q]!;
+  const n = questions.length;
+  const out = new Float64Array(n);
+  const weights = [...hashedCounts(text, columns)]
+    .sort(([a], [b]) => a - b)
+    .map(([column, count]) => [column, (Math.log(count) + 1) * idf[column]!] as const);
+  let norm = 0;
+  for (const [, w] of weights) norm += w * w;
+  if (norm !== 0) {
+    norm = Math.sqrt(norm);
+    for (const [column, w] of weights) {
+      const x = w / norm;
+      for (let q = 0; q < n; q++) out[q]! += x * coef[column * n + q]!;
     }
   }
+  for (let q = 0; q < n; q++) out[q]! += intercept[q]!;
   return out;
 }
 
@@ -202,8 +208,9 @@ export function createLocalModel(meta: ModelMeta, bin: Uint8Array): LocalModel {
       `The model needs code features v${meta.feature_version}, but features.ts computes v${FEATURE_VERSION}`,
     );
   }
-  // Typed arrays need aligned offsets, which a pooled Buffer may not start at.
-  const bytes = bin.byteOffset % 8 === 0 ? bin : bin.slice();
+  // Typed arrays need aligned offsets, which a pooled Buffer may not start at. Copy with the
+  // Uint8Array constructor: Buffer's slice() returns a view at the same offset, not a copy.
+  const bytes = bin.byteOffset % 8 === 0 ? bin : new Uint8Array(bin);
   const view = ({ dtype, offset, length }: BufferRef) => {
     const Type = dtype === 'f64' ? Float64Array : dtype === 'f32' ? Float32Array : Int32Array;
     return new Type(bytes.buffer as ArrayBuffer, bytes.byteOffset + offset, length);
