@@ -2,7 +2,7 @@
 
 This project follows [Semantic Versioning](https://semver.org).
 
-## Unreleased
+## 0.2.7 - 2026-11-22
 
 - **A built-in model, with no API key.** jevlint now ships a small decision model of its own, the
   `local` provider. With no key, `audit` and every command built on it score files with it on your
