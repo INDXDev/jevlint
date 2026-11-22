@@ -4,7 +4,7 @@ import { defineCommand } from 'citty';
 import type { AuditOptions } from '../audit.ts';
 import { type Config, type ConfigOverrides, UserError } from '../config.ts';
 import { stagedChange } from '../git.ts';
-import { editedPath, reviewEdit } from '../hook.ts';
+import { editedFile, reviewEdit } from '../hook.ts';
 import { formatReview } from '../report.ts';
 import { madeWorse, reviewChange } from '../review.ts';
 import type { ChangeReview } from '../types.ts';
@@ -44,10 +44,12 @@ function printNotices(config: Config, review: ChangeReview, options: AuditOption
 
 async function reviewEditedFile(options: AuditOptions, presets: ConfigOverrides): Promise<void> {
   const text = await readStdin();
-  const path = text === undefined ? undefined : editedPath(text);
-  if (path === undefined) return;
-  const config = await projectConfig(presets);
-  const review = await reviewEdit(config, resolve(path), options);
+  const edit = text === undefined ? undefined : editedFile(text);
+  if (edit === undefined) return;
+  // From the main checkout, discovery skips a worktree, so the review starts where the agent works.
+  const cwd = edit.cwd ?? process.cwd();
+  const config = await projectConfig(presets, cwd);
+  const review = await reviewEdit(config, resolve(cwd, edit.path), options);
   if (!review) return;
   printNotices(config, review, options);
   if (!madeWorse(review)) return;

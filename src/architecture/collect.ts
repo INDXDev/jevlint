@@ -258,9 +258,12 @@ export function matchCalls(searches: CallSearch[], sources: Map<string, string>)
       const source = sources.get(path);
       const language = languageOf(path);
       if (source === undefined || !language || unreadable.has(language)) return [];
+      // Outside the try: a parser that cannot load is no fault of the rule's pattern, and with
+      // every outline cached, this can be the run's first parse.
+      const root = parse(LANGUAGES[language].parser, source).root();
       let nodes: SgNode[];
       try {
-        nodes = parse(LANGUAGES[language].parser, source).root().findAll(pattern);
+        nodes = root.findAll(pattern);
       } catch {
         if (named) {
           throw new UserError(`Rule ${ruleId}: ast-grep cannot read the pattern for ${language}.`);

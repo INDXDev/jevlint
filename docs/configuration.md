@@ -14,8 +14,10 @@ jevlint works with no config. Everything below is optional.
 Later layers win. Tables merge key by key, and arrays are replaced rather than combined.
 `XDG_CONFIG_HOME` moves the user directory.
 
-jevlint finds the repository config by walking up from the current directory. The directory holding
-`jevlint.toml` is the root. If there is none, the root is the git root, then the current directory.
+jevlint finds the root by walking up from the current directory to the nearest directory that holds
+`jevlint.toml` or `.git`, and reads the repository config there. The walk stops at a checkout, so a
+worktree, submodule or nested clone is its own root, and an outer checkout's `jevlint.toml` does not
+apply inside it. With neither, the root is the current directory.
 
 Run `jevlint config show` to see the result, and `jevlint config path` to see which files applied.
 

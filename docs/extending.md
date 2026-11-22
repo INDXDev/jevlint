@@ -44,6 +44,10 @@ for (const file of report.files.slice(0, 5)) {
 
 `audit` returns the same object as [`--json`](json-output.md).
 
+jevlint registers its Python, Go and Rust grammars with ast-grep on its first parse. ast-grep accepts
+`registerDynamicLanguage` only once in a process, so if your program registers languages of its own
+before that, jevlint stops with an error rather than leave those files unparsed.
+
 ## Adding a language
 
 Every source file already gets [approximate metrics](scoring.md#languages-without-a-grammar) and the

@@ -9,7 +9,7 @@ import { type Config, type ConfigOverrides, loadConfig, UserError } from '../con
 import { envKeysAllowed, KEY_ENV } from '../credentials.ts';
 import { PROVIDER_ERROR } from '../decision/decide.ts';
 import { createDecisionModel } from '../decision/providers.ts';
-import { discoverFiles } from '../files.ts';
+import { checkoutHolding, discoverFiles } from '../files.ts';
 import { OUTPUT_FORMATS, type OutputFormat } from '../formats.ts';
 import { dirtyFiles, gitFailureReason } from '../git.ts';
 import { presetsInArgs } from '../presets.ts';
@@ -77,9 +77,9 @@ export interface AgentRun {
   files: FileReport[];
 }
 
-/** Loads the config for the current directory. */
-export function projectConfig(overrides?: ConfigOverrides): Promise<Config> {
-  return loadConfig({ cwd: process.cwd(), overrides });
+/** Loads the config for a directory, the current one unless `cwd` names another. */
+export function projectConfig(overrides?: ConfigOverrides, cwd = process.cwd()): Promise<Config> {
+  return loadConfig({ cwd, overrides });
 }
 
 function parseNumber(
@@ -173,7 +173,7 @@ export function resolvePaths(paths: string[]): string[] | undefined {
 export async function warnAboutScope(config: Config, paths?: string[]): Promise<void> {
   if (!paths && config.root === homedir()) {
     console.error(
-      'Warning: running in your home directory, so every project under it is in scope. Run jevlint inside a project, or pass paths.',
+      'Warning: running in your home directory, so every file under it is in scope, apart from the git checkouts it holds, which are skipped. Run jevlint inside a project, or pass paths.',
     );
   }
   const { length } = await discoverFiles(config, paths);
@@ -266,11 +266,20 @@ export async function auditProject(
   if (report.model === null && !options.astOnly) printNoKeyNotice(config);
   printFallbackNotice(config, report.provider);
   if (paths.length > 0 && report.files.length === 0 && report.skipped.length === 0) {
-    throw new UserError(
-      `No files matched ${paths.join(', ')}. Check the path, and include and exclude in your config.`,
-    );
+    throw new UserError(noFilesMatched(config.root, paths, resolvedPaths ?? []));
   }
   return report;
+}
+
+/** Says why named paths matched nothing: a path in another checkout is skipped from this root. */
+function noFilesMatched(root: string, paths: string[], resolvedPaths: string[]): string {
+  for (const [index, path] of paths.entries()) {
+    const checkout = checkoutHolding(root, resolvedPaths[index] ?? path);
+    if (checkout !== undefined) {
+      return `${path} is in ${checkout}, a checkout of its own, which jevlint skips from ${root}. Run jevlint inside ${checkout} to audit it.`;
+    }
+  }
+  return `No files matched ${paths.join(', ')}. Check the path, and include and exclude in your config.`;
 }
 
 /** Picks files with issues to work on: `top` if given, else every named file, else the first. */

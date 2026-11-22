@@ -193,7 +193,7 @@ function formatSummary({ score, scale, files, skipped }: AuditReport): string {
 
 function formatEmpty({ skipped }: AuditReport): string {
   if (skipped.length === 0) {
-    return ' No files to audit.\n Next: jevlint config show   # check include and exclude';
+    return ' No files to audit. Worktrees, submodules and other checkouts below the root are skipped.\n Next: jevlint config show   # check include and exclude';
   }
   const reason = `Skipped ${plural(skipped.length, 'file')}: no AST support and no model ran.`;
   return ` ${reason}\n Next: jevlint auth list`;

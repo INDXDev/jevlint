@@ -373,14 +373,16 @@ function mergeTables(base: Record<string, unknown>, layer: Record<string, unknow
   return merged;
 }
 
-/** The nearest directory from start upwards that holds name, or undefined at the filesystem root. */
-export async function findUp(start: string, name: string): Promise<string | undefined> {
+/** The nearest directory from start upwards that holds any of names, or undefined at the top. */
+export async function findUp(start: string, ...names: string[]): Promise<string | undefined> {
   for (let dir = start; ; dir = dirname(dir)) {
-    const found = await access(join(dir, name)).then(
-      () => true,
-      () => false,
-    );
-    if (found) return dir;
+    for (const name of names) {
+      const found = await access(join(dir, name)).then(
+        () => true,
+        () => false,
+      );
+      if (found) return dir;
+    }
     if (dir === dirname(dir)) return undefined;
   }
 }
@@ -407,7 +409,9 @@ export async function loadConfig(options: {
   skip?: 'user' | 'repo';
 }): Promise<Config> {
   const cwd = resolve(options.cwd);
-  const root = (await findUp(cwd, REPO_CONFIG)) ?? (await findUp(cwd, '.git')) ?? cwd;
+  // The walk stops at a checkout, so a worktree or submodule is its own root even when the outer
+  // checkout holds the config: discovery skips every checkout below the root.
+  const root = (await findUp(cwd, REPO_CONFIG, '.git')) ?? cwd;
   const userFile = paths.configFile();
   const repoFile = join(root, REPO_CONFIG);
   const user = options.skip === 'user' ? undefined : await readLayer(userFile);

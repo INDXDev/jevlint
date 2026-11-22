@@ -6,11 +6,18 @@ This project follows [Semantic Versioning](https://semver.org).
 
 - **Linked worktrees and nested checkouts are no longer audited.** A directory below the root that
   holds its own `.git`, such as a worktree in `.claude/worktrees/`, a nested clone or a submodule,
-  is skipped, as is `.claude/worktrees/` itself. Before, each worktree was audited as part of the
-  repository, multiplying the files in scope. ([#24](https://github.com/INDXDev/jevlint/issues/24))
+  is skipped, as is any `.claude/worktrees/` itself. Before, each worktree was audited as part of the
+  repository, multiplying the files in scope. A path into one says to run jevlint inside it.
+  ([#24](https://github.com/INDXDev/jevlint/issues/24))
+- **A worktree, submodule or nested clone is its own root.** The search for the root now stops at the
+  nearest `jevlint.toml` or `.git`, so run inside one, jevlint audits it even when only an outer
+  checkout has a `jevlint.toml`, which then no longer applies there.
+- **`jevlint hook` reviews edits in a desktop worktree session.** It starts from the `cwd` in Claude
+  Code's JSON, as the Claude desktop app runs a worktree session's hooks in the main checkout.
 - **A parser built for another platform no longer breaks every command.** Installed by Windows npm
   and run from WSL, jevlint crashed even on `--help`. Now only commands that parse code need the
-  parser, and they say how to reinstall it. ([#23](https://github.com/INDXDev/jevlint/issues/23))
+  parser. They stop with the reason it did not load, and say how to reinstall it when its binary is
+  missing. ([#23](https://github.com/INDXDev/jevlint/issues/23))
 
 ## 0.2.7 - 2026-11-22
 

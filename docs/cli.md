@@ -546,6 +546,10 @@ With no flag it reads JSON on stdin, either Claude Code's `{"tool_input":{"file_
 flat `{"file_path":"..."}`, and compares that file on disk with `HEAD`. A path relative to the current
 directory works. A new file counts as all new, and problems already in `HEAD` are not reported.
 
+When Claude Code's JSON names the agent's directory in `cwd`, the review starts there instead of in
+the current directory. A worktree session in the Claude desktop app runs hooks in the main checkout,
+whose discovery skips the worktree, so this is how its edits still get reviewed.
+
 | Result | Exit code | Output |
 | --- | --- | --- |
 | The edit made the file worse | 2 | The findings, on stderr |

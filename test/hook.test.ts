@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { editedPath } from '../src/hook.ts';
+import { editedFile } from '../src/hook.ts';
 
 // Each case starts a real process, which is slow while the whole suite runs in parallel.
 vi.setConfig({ testTimeout: 60_000 });
@@ -66,21 +66,29 @@ beforeEach(() => {
   git('init', '-q', '-b', 'main');
 });
 
-describe('editedPath', () => {
+describe('editedFile', () => {
   it('reads Claude Code and flat payloads', () => {
-    expect(editedPath('{"tool_input":{"file_path":"a.ts"},"cwd":"/x"}')).toBe('a.ts');
-    expect(editedPath('{"file_path":"a.ts"}')).toBe('a.ts');
+    expect(editedFile('{"tool_input":{"file_path":"a.ts"},"cwd":"/x"}')).toEqual({
+      path: 'a.ts',
+      cwd: '/x',
+    });
+    expect(editedFile('{"file_path":"a.ts"}')).toEqual({ path: 'a.ts' });
+  });
+
+  it('ignores a cwd that is not an absolute path', () => {
+    expect(editedFile('{"tool_input":{"file_path":"a.ts"},"cwd":"x"}')).toEqual({ path: 'a.ts' });
+    expect(editedFile('{"tool_input":{"file_path":"a.ts"},"cwd":1}')).toEqual({ path: 'a.ts' });
   });
 
   it.each(['{}', '[]', 'null', '{"tool_input":{}}', '{"file_path":""}', '{"file_path":1}'])(
     'finds no path in %s',
     (text) => {
-      expect(editedPath(text)).toBeUndefined();
+      expect(editedFile(text)).toBeUndefined();
     },
   );
 
   it('rejects invalid JSON', () => {
-    expect(() => editedPath('not json')).toThrow('expects JSON');
+    expect(() => editedFile('not json')).toThrow('expects JSON');
   });
 });
 
@@ -145,6 +153,35 @@ describe('jevlint hook after an edit', () => {
     const cwd = tempDir();
     writeFileSync(join(cwd, 'a.ts'), MESSY);
     expectSilentPass(jevlintIn(cwd, edited('a.ts'), 'hook'));
+  });
+
+  describe('in a worktree, which discovery skips from the main checkout', () => {
+    const WORKTREE = '.claude/worktrees/agent-1';
+    const inWorktree = (...path: string[]) => join(dir, WORKTREE, ...path);
+
+    beforeEach(() => {
+      commit({ 'a.ts': CLEAN });
+      git('worktree', 'add', '-q', WORKTREE);
+      writeFileSync(inWorktree('a.ts'), MESSY);
+    });
+
+    it("reviews the edit in the worktree that Claude Code's cwd names", () => {
+      // A desktop worktree session runs hooks in the main checkout.
+      const input = JSON.stringify({
+        tool_input: { file_path: inWorktree('a.ts') },
+        cwd: inWorktree(),
+      });
+      const { status, stderr } = jevlintIn(dir, input, 'hook');
+      expect(status).toBe(2);
+      expect(stderr).toContain('Edited a.ts');
+    });
+
+    it('reviews the edit when only the main checkout has a jevlint.toml', () => {
+      write({ 'jevlint.toml': '' });
+      const { status, stderr } = jevlintIn(inWorktree(), edited(inWorktree('a.ts')), 'hook');
+      expect(status).toBe(2);
+      expect(stderr).toContain('Edited a.ts');
+    });
   });
 
   it('stops reading stdin at its limit and lets the edit pass', () => {

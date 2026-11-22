@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
 // Each case starts a real process, which is slow while the whole suite runs in parallel.
@@ -34,6 +35,18 @@ function jevlintAt(home: string, cwd: string, ...args: string[]) {
 }
 
 const jevlint = (cwd: string, ...args: string[]) => jevlintAt(tempDir(), cwd, ...args);
+
+const NO_PARSER = pathToFileURL(join(import.meta.dirname, 'fixtures/no-parser/register.mjs')).href;
+
+/** As jevlintAt, with the parser's binary missing, as when Windows npm installed jevlint for WSL. */
+function withoutParser(home: string, cwd: string, ...args: string[]) {
+  const env = { PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: home, XDG_CACHE_HOME: home };
+  return spawnSync(process.execPath, ['--import', NO_PARSER, CLI, ...args], {
+    cwd,
+    env,
+    encoding: 'utf8',
+  });
+}
 
 const CODE = {
   'src/web/page.ts':
@@ -240,6 +253,17 @@ describe('jevlint architecture check and drift', () => {
     );
   });
 
+  it('blames a parser that does not load, not a rule, when every outline is cached', () => {
+    const index = `${SSOT[`${DIR}/index.yaml`]}  - { id: quiet, kind: forbid-call, pattern: "console.$M($$$)" }\n`;
+    const cwd = project({ ...CODE, ...SSOT, [`${DIR}/index.yaml`]: index });
+    const home = tempDir();
+    expect(jevlintAt(home, cwd, 'architecture', 'check', '--static').status).toBe(0);
+    const { status, stderr } = withoutParser(home, cwd, 'architecture', 'check', '--static');
+    expect(status).toBe(2);
+    expect(stderr).toContain("jevlint's parser has no binary");
+    expect(stderr).not.toContain('cannot read the pattern');
+  });
+
   it('needs a model for checklists without --static', () => {
     const cwd = project({
       ...CODE,
@@ -334,6 +358,23 @@ describe('the SSOT in other commands', () => {
     const written = JSON.parse(readFileSync(join(cwd, '.jevlint/baseline.json'), 'utf8'));
     expect(written.architecture).toHaveLength(2);
     expect(jevlintAt(home, cwd, 'architecture', 'check', '--static', '--new').status).toBe(0);
+  });
+
+  it('baseline stops, keeping the recorded violations, when the parser does not load', () => {
+    const files = {
+      ...CODE,
+      ...SSOT,
+      'src/db/client.ts': REVERSED,
+      'scripts/run.sh': 'f() { :; }\n',
+    };
+    const cwd = project(files);
+    expect(jevlint(cwd, 'baseline', '--ast-only').status).toBe(0);
+    const recorded = readFileSync(join(cwd, '.jevlint/baseline.json'), 'utf8');
+    // The audit of scripts/ parses nothing, so the architecture is the first to need the parser.
+    const { status, stderr } = withoutParser(tempDir(), cwd, 'baseline', 'scripts', '--ast-only');
+    expect(status).toBe(2);
+    expect(stderr).toContain("jevlint's parser has no binary");
+    expect(readFileSync(join(cwd, '.jevlint/baseline.json'), 'utf8')).toBe(recorded);
   });
 
   it('baseline still writes the audit baseline when the SSOT does not load', () => {

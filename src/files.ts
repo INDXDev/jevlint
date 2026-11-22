@@ -24,8 +24,8 @@ const SOURCE_EXTENSIONS = new Set(
 const ALWAYS_EXCLUDED = [
   ...['.env*', '*.pem', '*.key', '*.p12', '*.pfx', 'id_rsa*', '*credentials*', '*secret*'],
   ...['dist', 'build', 'vendor', 'target', 'coverage', '*.min.*'],
-  // Claude Code's worktrees, each a full copy of the repository.
-  '.claude/worktrees/',
+  // Claude Code's worktrees, each a full copy of the repository, at any depth.
+  '**/.claude/worktrees/',
   // Bad on purpose, for `jevlint test`, so they must not count against the repository.
   '/.jevlint/fixtures/',
 ];
@@ -117,6 +117,21 @@ function inNestedCheckout(root: string): (file: string) => boolean {
   };
 }
 
+/**
+ * The checkout below the root that holds a path, root-relative, or undefined. Discovery skips such a
+ * checkout, so a path into it matches nothing from this root.
+ */
+export function checkoutHolding(root: string, path: string): string | undefined {
+  const relativePath = relative(root, resolve(root, path));
+  if (relativePath === '' || isOutsideRoot(relativePath)) return undefined;
+  const parts = relativePath.split(sep);
+  for (let depth = 1; depth <= parts.length; depth++) {
+    const dir = parts.slice(0, depth).join('/');
+    if (existsSync(join(root, dir, '.git'))) return dir;
+  }
+  return undefined;
+}
+
 const isUnder = (file: string, target: string) =>
   target === '' || file === target || file.startsWith(`${target}/`);
 
@@ -177,8 +192,10 @@ async function discover(
     .filter(keep)
     .filter((file) => !alwaysExcluded.ignores(file))
     .filter((file) => !rules.some((rule) => matchesRules(rule, file)))
-    .filter((file) => !nested(file))
-    .filter((file) => !targets || targets.some((target) => isUnder(file, target)));
+    .filter((file) => !targets || targets.some((target) => isUnder(file, target)))
+    // Last, as it checks the disk for every directory, so that a hook narrowed to one file checks
+    // only that file's.
+    .filter((file) => !nested(file));
 
   const realRoot = await realpath(root);
   const files: string[] = [];

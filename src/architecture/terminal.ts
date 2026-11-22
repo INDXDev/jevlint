@@ -116,7 +116,7 @@ export function formatArchitecture(untrusted: ArchitectureReport, opts: { top: n
   const engine = model ? `${provider}/${model}` : 'AST only';
   const header = ` ${pc.bold('jevlint architecture')}  ${[root, engine].join(SEPARATOR)}`;
   if (modules.length === 0) {
-    return `${header}\n\n No source files with AST support.\n Next: jevlint config show   # check include and exclude`;
+    return `${header}\n\n No source files with AST support. Worktrees, submodules and other checkouts below the root are skipped.\n Next: jevlint config show   # check include and exclude`;
   }
   const problems = findings.toSorted((a, b) => findingHealth(a) - findingHealth(b));
   return [

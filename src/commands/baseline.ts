@@ -3,6 +3,7 @@ import { defineCommand } from 'citty';
 import { violationsOf } from '../architecture/check.ts';
 import { collect } from '../architecture/collect.ts';
 import { loadArchitecture } from '../architecture/load.ts';
+import { isParserFailure } from '../ast/languages.ts';
 import { architectureBaseline, BASELINE_PATH, toBaseline, writeBaseline } from '../baseline.ts';
 import { type Config, UserError } from '../config.ts';
 import { plural, withoutControlCharacters } from '../report.ts';
@@ -27,7 +28,9 @@ async function architectureEntries(config: Config) {
     const collected = await collect(config, { keepSources: true, skipHistory: true });
     return architectureBaseline(violationsOf(ssot, collected));
   } catch (error) {
-    if (!(error instanceof UserError)) throw error;
+    // A parser that does not load is no fault of the SSOT, and leaving the section out would make
+    // every recorded violation count as new once the parser is back.
+    if (!(error instanceof UserError) || isParserFailure(error)) throw error;
     console.error(
       `Warning: no architecture violations recorded: ${withoutControlCharacters(error.message)}`,
     );
