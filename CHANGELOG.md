@@ -2,7 +2,7 @@
 
 This project follows [Semantic Versioning](https://semver.org).
 
-## Unreleased
+## 0.2.8 - 2026-11-22
 
 - **Linked worktrees and nested checkouts are no longer audited.** A directory below the root that
   holds its own `.git`, such as a worktree in `.claude/worktrees/`, a nested clone or a submodule,
