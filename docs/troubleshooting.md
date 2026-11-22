@@ -105,6 +105,13 @@ input.
 Install the agent and check it runs on its own, or change its `command` in your
 [user config](agents.md#adding-an-agent).
 
+## "jevlint's parser has no binary for linux-x64"
+
+npm installs the parser's binary for the system that ran `npm install`. Under WSL, this usually
+means jevlint was installed by Windows npm and WSL found it on the Windows `PATH`. Install it with
+WSL's own npm (`npm install -g @indxjp/jevlint`), then check that `which jevlint` no longer points
+under `/mnt/c/`. Commands that parse no code, such as `auth`, `config` and `preset`, still work.
+
 ## "Node.js ... has known security holes"
 
 jevlint refuses Node.js releases without the security fixes it requires, and end-of-life lines.

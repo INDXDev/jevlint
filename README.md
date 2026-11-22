@@ -52,7 +52,8 @@ npm install -g @indxjp/jevlint     # or: pnpm add -g @indxjp/jevlint
 jevlint --version
 ```
 
-Requires Node.js 24.22.1 or later (or 22.23.4, or 26.12.1, on those lines).
+Requires Node.js 24.22.1 or later (or 22.23.4, or 26.12.1, on those lines). Under WSL, install with
+WSL's own npm, not Windows'.
 
 ## See it work
 

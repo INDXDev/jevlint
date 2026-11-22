@@ -204,6 +204,9 @@ Among source files, and besides `.gitignore` matches, jevlint never reads these:
   such a name may hold real secrets, so jevlint errs on the side of not uploading it.
 - Generated: `node_modules`, `dist`, `build`, `vendor`, `target`, `coverage`, `*.min.*`
 - [Fixtures](presets.md#testing-a-question), which are bad on purpose: `.jevlint/fixtures/`
+- Other checkouts below the root: any directory holding its own `.git`, such as a linked git
+  worktree, a nested clone or a submodule, and Claude Code's `.claude/worktrees/`. Run jevlint
+  inside one to audit it.
 - Binary files
 
 ## Settings a repository cannot set

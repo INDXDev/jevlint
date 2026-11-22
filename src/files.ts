@@ -1,4 +1,5 @@
 /** File discovery: which files under the root jevlint may read. */
+import { existsSync } from 'node:fs';
 import { access, open, readFile, realpath } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import ignore, { type Ignore } from 'ignore';
@@ -23,6 +24,8 @@ const SOURCE_EXTENSIONS = new Set(
 const ALWAYS_EXCLUDED = [
   ...['.env*', '*.pem', '*.key', '*.p12', '*.pfx', 'id_rsa*', '*credentials*', '*secret*'],
   ...['dist', 'build', 'vendor', 'target', 'coverage', '*.min.*'],
+  // Claude Code's worktrees, each a full copy of the repository.
+  '.claude/worktrees/',
   // Bad on purpose, for `jevlint test`, so they must not count against the repository.
   '/.jevlint/fixtures/',
 ];
@@ -92,6 +95,28 @@ function matchesRules({ dir, matcher, prefix }: IgnoreRules, file: string): bool
   return file.startsWith(`${dir}/`) && matcher.ignores(posix.relative(dir, file));
 }
 
+/**
+ * Says whether a file lies in a checkout of its own below the root, such as a linked worktree, a
+ * nested clone or a submodule, which holds a `.git` file or directory. The root itself may be one.
+ */
+function inNestedCheckout(root: string): (file: string) => boolean {
+  const known = new Map<string, boolean>();
+  const isCheckout = (dir: string) => {
+    let found = known.get(dir);
+    if (found === undefined) {
+      found = existsSync(join(root, dir, '.git'));
+      known.set(dir, found);
+    }
+    return found;
+  };
+  return (file) => {
+    for (let dir = posix.dirname(file); dir !== '.'; dir = posix.dirname(dir)) {
+      if (isCheckout(dir)) return true;
+    }
+    return false;
+  };
+}
+
 const isUnder = (file: string, target: string) =>
   target === '' || file === target || file.startsWith(`${target}/`);
 
@@ -121,12 +146,14 @@ async function isAuditable(realRoot: string, file: string): Promise<boolean> {
 export async function excludedPaths(config: Config, paths: string[]): Promise<string[]> {
   const rules = await loadIgnoreRules(config);
   const alwaysExcluded = ignore().add(ALWAYS_EXCLUDED);
+  const nested = inNestedCheckout(config.root);
   return paths.filter(
     (file) =>
       // A crafted tree can hold a path such as `../x`, which the matchers throw on.
       !ignore.isPathValid(file) ||
       alwaysExcluded.ignores(file) ||
-      rules.some((rule) => matchesRules(rule, file)),
+      rules.some((rule) => matchesRules(rule, file)) ||
+      nested(file),
   );
 }
 
@@ -142,6 +169,7 @@ async function discover(
   const rules = await loadIgnoreRules(config);
   // Kept apart from `rules` so a `!.env` in a repository's ignore lists cannot re-include secrets.
   const alwaysExcluded = ignore().add(ALWAYS_EXCLUDED);
+  const nested = inNestedCheckout(root);
 
   const candidates = (await walk(patterns, root))
     // A repository's patterns are untrusted and may point above the root.
@@ -149,6 +177,7 @@ async function discover(
     .filter(keep)
     .filter((file) => !alwaysExcluded.ignores(file))
     .filter((file) => !rules.some((rule) => matchesRules(rule, file)))
+    .filter((file) => !nested(file))
     .filter((file) => !targets || targets.some((target) => isUnder(file, target)));
 
   const realRoot = await realpath(root);

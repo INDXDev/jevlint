@@ -137,6 +137,24 @@ describe('discoverFiles', () => {
     expect(await discoverFiles(await configWith())).toEqual(['local.ts']);
   });
 
+  it('skips linked worktrees, nested clones and submodules below the root', async () => {
+    await write({
+      '.git/HEAD': 'ref: refs/heads/main',
+      'src/a.ts': '',
+      'wt/.git': 'gitdir: ../.git/worktrees/wt\n',
+      'wt/src/a.ts': '',
+      'vendored/lib/.git/HEAD': 'ref: refs/heads/main',
+      'vendored/lib/b.ts': '',
+      'vendored/c.ts': '',
+    });
+    expect(await discoverFiles(await configWith())).toEqual(['src/a.ts', 'vendored/c.ts']);
+  });
+
+  it("skips Claude Code's worktrees even when they have lost their .git", async () => {
+    await write({ 'a.ts': '', '.claude/worktrees/agent-1/a.ts': '', '.claude/hooks/check.sh': '' });
+    expect(await discoverFiles(await configWith())).toEqual(['.claude/hooks/check.sh', 'a.ts']);
+  });
+
   it('applies include and exclude', async () => {
     await write({ 'src/a.ts': '', 'src/a.test.ts': '', 'b.ts': '' });
     const config = await configWith({ include: ['src/**'], exclude: ['*.test.ts'] });

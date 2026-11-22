@@ -114,6 +114,35 @@ describe('command routing', () => {
   });
 });
 
+describe('a parser built for another platform', () => {
+  // As when Windows npm installs jevlint and WSL runs it: only commands that parse code need it.
+  const NO_PARSER = join(import.meta.dirname, 'fixtures/no-parser/register.mjs');
+  const run = (cwd: string, ...args: string[]) => {
+    const env = { PATH: process.env.PATH, HOME: cwd, XDG_CONFIG_HOME: cwd, XDG_CACHE_HOME: cwd };
+    return spawnSync(process.execPath, ['--import', NO_PARSER, CLI, ...args], {
+      cwd,
+      env,
+      encoding: 'utf8',
+    });
+  };
+
+  it.each([['--version'], ['--help'], ['auth', '--help'], ['preset', 'list']])(
+    'still runs %s',
+    (...args) => {
+      const { status, stderr } = run(project(), ...args);
+      expect(stderr).toBe('');
+      expect(status).toBe(0);
+    },
+  );
+
+  it('says how to reinstall when a command needs the parser', () => {
+    const { status, stderr } = run(project({ 'a.ts': MESSY }), 'audit', '--ast-only');
+    expect(status).toBe(2);
+    expect(stderr).toContain("jevlint's parser has no binary for");
+    expect(stderr).toContain('npm install -g @indxjp/jevlint');
+  });
+});
+
 describe('--fail-under', () => {
   it('exits 1 when the score is below the threshold', () => {
     const { status } = jevlint(project({ 'a.ts': MESSY }), '--ast-only', '--fail-under', '100');

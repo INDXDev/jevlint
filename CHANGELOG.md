@@ -2,6 +2,16 @@
 
 This project follows [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+- **Linked worktrees and nested checkouts are no longer audited.** A directory below the root that
+  holds its own `.git`, such as a worktree in `.claude/worktrees/`, a nested clone or a submodule,
+  is skipped, as is `.claude/worktrees/` itself. Before, each worktree was audited as part of the
+  repository, multiplying the files in scope. ([#24](https://github.com/INDXDev/jevlint/issues/24))
+- **A parser built for another platform no longer breaks every command.** Installed by Windows npm
+  and run from WSL, jevlint crashed even on `--help`. Now only commands that parse code need the
+  parser, and they say how to reinstall it. ([#23](https://github.com/INDXDev/jevlint/issues/23))
+
 ## 0.2.7 - 2026-11-22
 
 - **A built-in model, with no API key.** jevlint now ships a small decision model of its own, the

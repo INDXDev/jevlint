@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Lang, registerDynamicLanguage } from '@ast-grep/napi';
+import { UserError } from '../config.ts';
 import type { Language } from '../types.ts';
 
 type GrammarName = 'python' | 'go' | 'rust';
@@ -49,11 +49,42 @@ const available = Object.entries(GRAMMARS).flatMap(([name, grammar]) => {
   registered.add(name as GrammarName);
   return [[name, { ...grammar, libraryPath, expandoChar: 'µ' }] as const];
 });
-registerDynamicLanguage(Object.fromEntries(available));
+
+type AstGrep = typeof import('@ast-grep/napi');
+let astGrep: AstGrep | undefined;
+
+/** npm's own hint about lockfiles misleads here, so say what actually went wrong. */
+function missingParser(error: unknown): unknown {
+  if (!(error instanceof Error) || !error.message.includes('Cannot find native binding'))
+    return error;
+  const platform = `${process.platform}-${process.arch}`;
+  // Windows npm installs only Windows binaries, and WSL reaches its shim through PATH.
+  const cause = import.meta.url.startsWith('file:///mnt/')
+    ? 'It was probably installed by Windows npm and is being run from WSL. Install it inside WSL'
+    : 'Reinstall it on this machine';
+  return new UserError(
+    `jevlint's parser has no binary for ${platform}. ${cause}: npm install -g @indxjp/jevlint`,
+  );
+}
+
+/** Loads ast-grep on first use, so commands that parse no code still run without its binary. */
+function loadAstGrep(): AstGrep {
+  if (astGrep) return astGrep;
+  try {
+    astGrep = createRequire(import.meta.url)('@ast-grep/napi') as AstGrep;
+  } catch (error) {
+    throw missingParser(error);
+  }
+  astGrep.registerDynamicLanguage(Object.fromEntries(available));
+  return astGrep;
+}
+
+/** Parses source with ast-grep, loading it on the first call. */
+export const parse: AstGrep['parse'] = (lang, source) => loadAstGrep().parse(lang, source);
 
 /** The node kinds that give one language its metrics. */
 export interface LanguageSpec {
-  parser: Lang | 'python' | 'go' | 'rust';
+  parser: 'JavaScript' | 'TypeScript' | 'Tsx' | GrammarName;
   functions: string[];
   /** Add 1 plus the nesting depth, and nest what they contain. */
   branches: string[];
@@ -97,9 +128,9 @@ const typed = {
 
 /** Every language with AST support. */
 export const LANGUAGES: Record<Language, LanguageSpec> = {
-  javascript: { ...ecmascript, parser: Lang.JavaScript },
-  typescript: { ...typed, parser: Lang.TypeScript },
-  tsx: { ...typed, parser: Lang.Tsx },
+  javascript: { ...ecmascript, parser: 'JavaScript' },
+  typescript: { ...typed, parser: 'TypeScript' },
+  tsx: { ...typed, parser: 'Tsx' },
   python: {
     parser: 'python',
     functions: ['function_definition', 'lambda'],
