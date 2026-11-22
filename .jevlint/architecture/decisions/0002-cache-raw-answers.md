@@ -5,7 +5,7 @@ date: 2026-11-05
 status: accepted
 components: [decision, decision-cache, scoring]
 enforced_by: [decision.cache-key, scoring.pure]
-evidence: [docs/architecture.md:187, src/decision/decide.ts:177-183, commit:e5d06f4]
+evidence: [docs/architecture.md:187, src/decision/decide.ts:187-193, commit:e5d06f4]
 ---
 
 Dated from commit e5d06f4, the initial release, whose `docs/architecture.md` first records it.

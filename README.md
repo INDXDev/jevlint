@@ -38,10 +38,11 @@ files first. Then it writes the prompt that gets Claude Code or Codex to fix the
 
 ## Try it now
 
-No install, no API key, and your code stays on your machine:
+No install, no API key, and your code stays on your machine. With no key, jevlint scores files with
+AST metrics and its [built-in model](docs/providers.md#the-built-in-model):
 
 ```sh
-npx @indxjp/jevlint --ast-only
+npx @indxjp/jevlint
 ```
 
 ## Install
@@ -98,8 +99,9 @@ hands it to Claude Code, and confirms the score went up.
 - **Not a verdict.** Model scores are calibrated opinions. They vary between models and can move
   between model versions, so treat them as candidates for a person to review, pin a model version
   in CI, and use [`jevlint test`](docs/presets.md#testing-a-question) to see when a question drifts.
-- **Not private by default, once a provider is on.** Everything except `--ast-only` sends code to
-  the provider you configure. See [Before you run it](#before-you-run-it).
+- **Not private by default, once a provider is on.** With a key, everything except `--ast-only` and
+  the built-in `local` provider sends code to the provider you configure. See
+  [Before you run it](#before-you-run-it).
 
 ## Quick start
 
@@ -331,7 +333,8 @@ Start with the [documentation index](docs/README.md).
 
 An audit sends the contents of your source files to the provider you configure. Read
 [Security and privacy](docs/security.md) first if your code is confidential. `audit --ast-only`
-never touches the network.
+never touches the network, and neither does an audit with the built-in model: with no key, or with
+`provider.name = "local"`.
 
 ## Contributing
 

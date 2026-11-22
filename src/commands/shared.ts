@@ -211,6 +211,10 @@ export async function withSpinner<T>(
 
 /** Explains why a run that wanted a model stayed on this machine. */
 export function printNoKeyNotice({ provider: { name } }: Config): void {
+  if (name === 'local') {
+    console.error('The built-in model answers only audit questions, so this ran AST-only.');
+    return;
+  }
   const variable = KEY_ENV[name];
   const fix = process.env[variable]
     ? `${variable} is set but not allowed. Run: jevlint auth env on`
@@ -241,7 +245,12 @@ export function everyProviderCallFailed({ model, files }: AuditReport): boolean 
 
 /** Says when a run went to a provider other than the configured one. */
 export function printFallbackNotice({ provider: { name } }: Config, used: string | null): void {
-  if (used && used !== name) console.error(`No API key found for ${name}, using ${used}.`);
+  if (!used || used === name) return;
+  if (used === 'local') {
+    console.error(
+      `No API key found for ${name}, so the built-in model answered the questions it knows, on this machine. Run: jevlint auth set ${name}`,
+    );
+  } else console.error(`No API key found for ${name}, using ${used}.`);
 }
 
 /** Runs an audit for a command: resolves paths, shows progress and prints the no-key notice. */

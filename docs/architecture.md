@@ -39,6 +39,7 @@ jevlint/
 │   ├── spec/            Spec-driven development: load, check, drift and their output
 │   └── *.ts             Core modules, listed below
 ├── presets/             Built-in presets, as TOML
+├── models/              The built-in decision model's weights, as data
 ├── .jevlint/            jevlint's own spec and architecture SSOT
 ├── examples/messy-shop/ A deliberately messy project for demos
 ├── .claude-plugin/      Claude Code plugin manifests, with commands/, hooks/ and skills/ beside
@@ -51,7 +52,7 @@ jevlint/
 | --- | --- | --- |
 | `src/commands/` | It parses flags or prints for one command | Business logic |
 | `src/ast/` | It measures source code without a network | Scoring, I/O |
-| `src/decision/` | It depends on the AI SDK or a provider | Scoring, file discovery |
+| `src/decision/` | It depends on the AI SDK or a provider, or it is the built-in model | Scoring, file discovery |
 | `src/architecture/` | It reviews structure across files, or reads, checks or renders the SSOT | Per-file metrics, terminal output outside `terminal.ts` |
 | `src/spec/` | It reads a spec or judges code or documents against one | Terminal output outside `prompt.ts` and `terminal.ts` |
 | `presets/` | It is a principle or a question | Code of any kind |
@@ -109,6 +110,10 @@ Three rules keep these layers clean:
 | `src/decision/providers.ts` | Creates a decision model from config |
 | `src/decision/decide.ts` | Sends one file's questions and uses the cache |
 | `src/decision/pricing.ts` | Estimates what input tokens cost |
+| `src/decision/local.ts` | The built-in model as a decision provider, the `local` provider |
+| `src/decision/local/model.ts` | Loads `models/` and evaluates its trees and word model |
+| `src/decision/local/features.ts` | The code features the built-in model was trained on |
+| `src/decision/local/parse.ts` | Parses for those features with web-tree-sitter and the training grammars |
 | `src/architecture/extract.ts` | Reads a file's imports, top-level names and classes |
 | `src/architecture/resolve.ts` | Turns import specifiers into repository paths |
 | `src/architecture/graph.ts` | Pure graph algorithms: cycles and layers |
@@ -155,6 +160,7 @@ Three rules keep these layers clean:
 | `src/diff-view.ts` | Draws patches for a terminal, unified or side by side, with changed words highlighted, and the summary with scores |
 | `src/types.ts` | Contracts shared between modules |
 | `presets/*.toml` | Built-in presets, as data rather than code |
+| `models/` | The built-in model: trees, word weights and the questions they answer, as data |
 
 ## Design decisions
 
@@ -183,6 +189,22 @@ source. On a platform with no prebuilt parser, that language gets the lexical fa
 `node:crypto`, which every S3-compatible store accepts, so no SDK is needed.
 
 **Presets are data.** New principles need no code, and users get the same power as maintainers.
+
+**A built-in model behind the same decision API.** With no key, a run used to fall back to AST
+metrics alone. `src/decision/local.ts` implements the AI SDK's decision model contract around
+gradient-boosted trees in `models/`, learned from a large decision model's answers, so the cache,
+scoring and every command work unchanged. It knows questions by their wording rather than their
+ids, and `answerable` keeps the questions it does not know out of its requests, so a file scores on
+the ones it knows. Only `audit()` accepts it, through `createDecisionModel(config, { local: true })`:
+rules, intent, specs and architecture reviews ask questions it was never trained on.
+
+**The built-in model computes its own features.** The trees were trained on features computed in
+Python with py-tree-sitter, and a feature that differs sends a file down another branch. So
+`features.ts` follows the Python line by line, with Python's regular expression and string
+semantics, rather than reusing `src/ast/`. It parses with web-tree-sitter and the grammar versions
+used in training, pinned exactly in `package.json`, not with ast-grep, whose bundled grammars
+differ. Both sides parse UTF-16 text, which keeps tree-sitter's error recovery, and with it the
+trees, the same. The grammars' `.wasm` files ship in `dist/grammars/`, as the ast-grep parsers do.
 
 **Scoring is pure and runs after the cache.** Only raw answers are cached, so tuning weights is free.
 
@@ -235,6 +257,7 @@ with no Markdown parser, because the text is hostile and GitHub bodies are simpl
 | --- | --- |
 | `ai`, `@ai-sdk/*` | Decision models |
 | `@ast-grep/napi` | Parsing. Grammars from `@ast-grep/lang-*` are copied into the build |
+| `web-tree-sitter` | Parsing for the built-in model. Grammars from `tree-sitter-*` are copied into the build |
 | `citty` | Command parsing |
 | `@clack/prompts` | Interactive prompts |
 | `picocolors` | Colour |

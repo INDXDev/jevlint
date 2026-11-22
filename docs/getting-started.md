@@ -28,11 +28,13 @@ pnpm install && pnpm build && pnpm link --global
 
 ## Try it with no API key
 
-AST analysis runs on your machine and sends nothing anywhere:
+With no key, jevlint scores files with AST metrics and [its built-in model](providers.md#the-built-in-model),
+on your machine. Nothing is sent anywhere:
 
 ```sh
 cd your-project
-jevlint audit --ast-only
+jevlint audit
+jevlint audit --ast-only   # AST metrics alone
 ```
 
 ## Add a provider

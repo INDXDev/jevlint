@@ -42,6 +42,11 @@ or parameter properties. Imports use the `.ts` extension, and type-only imports 
 - Plain functions and data. `UserError` is the only class, because it needs `instanceof`.
 - Config keys stay `snake_case`, as written in TOML, with no mapping layer.
 - Give every exported symbol a short doc comment. Inline comments explain why, never what.
+- `src/decision/local/features.ts` must compute exactly the features the built-in model in
+  `models/` was trained on, so it follows that code line by line. Do not refactor or "fix" it, and
+  do not change the pinned `web-tree-sitter` and `tree-sitter-*` versions, without a retrained
+  model. Rewording a question in `readable-code`, `clean-code` or `security` takes it away from the
+  built-in model; `test/local.test.ts` says which. See `models/README.md`.
 - New principles go in `presets/`, and new languages and providers in their tables. See
   [docs/extending.md](docs/extending.md). Built-in presets must paraphrase, never copy, their source.
 

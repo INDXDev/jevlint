@@ -1,6 +1,6 @@
 ---
 title: How it runs
-evidence: [src/cli.ts:65-88, src/audit.ts:82-117, src/audit.ts:167-236, src/decision/decide.ts:12-15, src/decision/decide.ts:79-87, src/decision/decide.ts:163-196, src/review.ts:20-27, src/git.ts:8-27, src/fixers.ts:6-11, src/commands/quickfix.ts:1-23, src/architecture/check.ts:1-35, docs/architecture-reference.md:194-209, docs/security.md, commit:e8bda6b, commit:78e2f39, commit:a91e05b]
+evidence: [src/cli.ts:65-88, src/audit.ts:83-126, src/audit.ts:176-245, src/decision/decide.ts:12-15, src/decision/decide.ts:89-97, src/decision/decide.ts:173-206, src/review.ts:20-27, src/git.ts:8-27, src/fixers.ts:6-11, src/commands/quickfix.ts:1-23, src/architecture/check.ts:1-35, docs/architecture-reference.md:194-209, docs/security.md, commit:e8bda6b, commit:78e2f39, commit:a91e05b]
 ---
 
 Four use cases cover most runs. Each diagram shows the components in call order. Dashed steps do
@@ -13,7 +13,7 @@ not always happen.
 
 **What happens.** The command loads the layered config and calls `audit()`. In parallel, audit
 loads the presets, discovers files, creates the decision model (unless `--ast-only`) and counts
-churn. Each file then runs through `auditFile` (`src/audit.ts:120`) under `p-limit` at
+churn. Each file then runs through `auditFile` (`src/audit.ts:129`) under `p-limit` at
 `concurrency`. It is read, measured, and checked for pins. A file pin ends the work for that file
 with no model call. Otherwise the stripped code goes to `decideFile` and each semantic rule match to
 `judgeRules`. Last, `rank` and `repoScore` build the report.
@@ -21,11 +21,11 @@ with no model call. Otherwise the stripped code goes to `decideFile` and each se
 **What comes back.** An `AuditReport`, printed as a table, `--format sarif|github`, or `--json`.
 The exit code is 1 below `fail_under`.
 
-**Where it fails.** A config error or a rejected key (HTTP 401 or 403, `src/decision/decide.ts:79-87`)
+**Where it fails.** A config error or a rejected key (HTTP 401 or 403, `src/decision/decide.ts:89-97`)
 is a `UserError`. It stops the run and clears the queue, so no more provider calls are spent
-(`src/audit.ts:176-178`). Any other provider error, a stalled request (5 minutes per file,
+(`src/audit.ts:185-187`). Any other provider error, a stalled request (5 minutes per file,
 `src/decision/decide.ts:14`) or an AST crash on generated code becomes a warning on that one file
-(`src/audit.ts:82-97`, `src/audit.ts:113-116`).
+(`src/audit.ts:83-98`, `src/audit.ts:122-125`).
 
 <!-- jevlint:diagram flow:audit -->
 

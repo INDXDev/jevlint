@@ -68,7 +68,9 @@ async function printDryRun(
     throw new UserError(`--dry-run has no findings to print as ${format}.`);
   }
   await warnAboutScope(config, resolvePaths(paths));
-  const target = astOnly ? null : ((await createDecisionModel(config)) ?? configuredTarget(config));
+  // The built-in model sends nothing, so a run with it plans like an AST-only run.
+  const local = astOnly || config.provider.name === 'local';
+  const target = local ? null : ((await createDecisionModel(config)) ?? configuredTarget(config));
   const plan = await planAudit(config, { paths: resolvePaths(paths), ignorePins, noCache, target });
   if (format === 'json') return printJson(plan);
   console.log(formatPlan(plan, target?.provider ?? null));

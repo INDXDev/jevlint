@@ -6,10 +6,17 @@ An API key in your environment, such as `ANTHROPIC_API_KEY`, takes the place of 
 Codex's own login. Retry with `--agent-login`, or set `use_login = true` for the agent. See
 [Use your subscription, not an API key](agents.md#use-your-subscription-not-an-api-key).
 
+## "No API key found ... the built-in model answered the questions it knows"
+
+No usable key was found for the configured provider or any [fallback](providers.md#fallback), so
+[the built-in model](providers.md#the-built-in-model) scored the files on your machine. To use your
+provider, run `jevlint auth list`, then `jevlint auth set <provider>`, or export the variable from
+[Providers](providers.md) and run `jevlint auth env on`.
+
 ## "No API key found, running AST-only"
 
-No usable key was found for the configured provider or any [fallback](providers.md#fallback). Run `jevlint auth list`, then `jevlint auth set <provider>`,
-or export the variable from [Providers](providers.md) and run `jevlint auth env on`.
+A command that asks questions the built-in model cannot answer, such as `architecture review` or
+`pr --intent`, found no usable key. Set one up as above.
 
 ## 401 or 403 from the provider
 

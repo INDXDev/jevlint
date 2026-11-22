@@ -38,10 +38,11 @@ Codex 去修复它们。
 
 ## 立即试用
 
-无需安装，无需 API key，代码也不会离开你的机器：
+无需安装，无需 API key，代码也不会离开你的机器。没有 key 时，jevlint 用 AST 指标和
+[内置模型](docs/providers.md#the-built-in-model)给文件打分：
 
 ```sh
-npx @indxjp/jevlint --ast-only
+npx @indxjp/jevlint
 ```
 
 ## 安装
@@ -93,8 +94,8 @@ Claude Code 处理，并确认分数确实提高了。
 - **不是最终裁决。** 模型分数是经过校准的意见。不同模型之间会有差异，模型版本更新时也可能变化。
   因此请把它们当作需要人来审阅的候选项，在 CI 中固定模型版本，并用
   [`jevlint test`](docs/presets.md#testing-a-question) 发现问题的答案何时发生漂移。
-- **一旦启用 provider，默认就不是私密的。** 除 `--ast-only` 外，所有操作都会把代码发送到你配置的
-  provider。参见[运行之前](#运行之前)。
+- **一旦启用 provider，默认就不是私密的。** 有 key 时，除 `--ast-only` 和内置的 `local` provider 外，
+  所有操作都会把代码发送到你配置的 provider。参见[运行之前](#运行之前)。
 
 ## 快速开始
 
@@ -318,7 +319,8 @@ fail_under = 60    # 低于此值时以 1 退出，用于 CI
 ## 运行之前
 
 一次 audit 会把你的源文件内容发送到你配置的 provider。如果代码是机密的，请先阅读
-[Security and privacy](docs/security.md)。`audit --ast-only` 从不访问网络。
+[Security and privacy](docs/security.md)。`audit --ast-only` 从不访问网络，使用内置模型的 audit
+（没有 key，或设置了 `provider.name = "local"`）也一样。
 
 ## 贡献
 

@@ -35,9 +35,10 @@ jobs:
           TYPESAFE_AI_API_KEY: ${{ secrets.TYPESAFE_AI_API_KEY }}
 ```
 
-GitHub does not expose secrets to pull requests from forks, so with no key the audit runs AST-only.
-Those scores differ from a model-backed run. Use the AST-only gate if you accept outside
-contributions.
+GitHub does not expose secrets to pull requests from forks, so with no key the audit uses
+[the built-in model](providers.md#the-built-in-model). Those scores differ from a run with your
+provider. Use the AST-only gate if you accept outside contributions, or set
+`provider.name = "local"` so that every run scores the same way.
 
 Pin a model version in `jevlint.toml` so that a new release does not move your threshold.
 

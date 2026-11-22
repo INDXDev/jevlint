@@ -3,28 +3,35 @@ title: Decision models
 summary: >
   The only code that talks to a model: creates the configured provider through the AI SDK, asks one
   state's questions through the cache, splits large sets for Cloudflare, and prices input tokens.
-  decideState is the general form that also takes choice questions.
+  decideState is the general form that also takes choice questions. Also holds the built-in model,
+  a decision provider that answers the questions it was trained on with no key or network.
 layer: engines
 paths: ["src/decision/**"]
 key_files:
   - { path: src/decision/decide.ts, role: "decideFile, decideState and the cache key" }
   - { path: src/decision/providers.ts, role: "createDecisionModel from config and keys" }
   - { path: src/decision/pricing.ts, role: "estimateCostUsd" }
+  - { path: src/decision/local.ts, role: "localDecisionModel, the local provider" }
+  - { path: src/decision/local/features.ts, role: "code features, as in training" }
 interface:
   [
     decideFile,
     decideState,
     decisionRequest,
+    answerable,
     isDecisionCached,
     requestsPerFile,
     createDecisionModel,
     configuredTarget,
     estimateCostUsd,
+    localDecisionModel,
   ]
 depends_on: [configuration, decision-cache, contracts]
-uses: [ai_sdk]
+uses: [ai_sdk, web_tree_sitter]
 rules: []
 checklist:
   - id: cache-key
     text: "A decision cache key covers provider, model, endpoint, questions and content, and only raw answers are cached."
+  - id: local-parity
+    text: "The built-in model's features follow the code it was trained with, so a change to them comes with a new model."
 status: current

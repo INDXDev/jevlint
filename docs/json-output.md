@@ -64,6 +64,9 @@ every file is included regardless of `--top`.
 ## Notes
 
 - `score` at the top level and on each file uses the configured `scale`.
+- `provider` is `"local"` when [the built-in model](providers.md#the-built-in-model) answered, and
+  `model` names its version. Its `inputTokens` are 0 and its `estimatedCostUsd` is 0. A file's
+  `model.answers` then holds only the questions it knows.
 - `ast.score`, `model.score`, `compliance` and `presets` values always run from 0 to 1.
 - `ast` is `null` when a file has no grammar and no function was found. `model` is `null` when no
   model ran.
@@ -104,8 +107,8 @@ The same data is available from the [library API](extending.md#library-api).
 | `files` | Paths that would send anything: the file, or a [semantic rule](presets.md#semantic-rules) match |
 | `skipped` | How many files found would send nothing: pinned, blank or already cached |
 | `chars` | Characters of those files and rule matches that would be sent |
-| `estimatedTokens` | Rough input tokens, including the questions and rule matches. 0 with `--ast-only` |
-| `estimatedCostUsd` | A [rough cost](providers.md#cost-estimates), or `null` with `--ast-only` or an unknown price |
+| `estimatedTokens` | Rough input tokens, including the questions and rule matches. 0 with `--ast-only` or the `local` provider |
+| `estimatedCostUsd` | A [rough cost](providers.md#cost-estimates), or `null` with `--ast-only`, the `local` provider or an unknown price |
 
 ## Change reviews
 

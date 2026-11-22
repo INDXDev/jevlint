@@ -1,6 +1,6 @@
 ---
 title: Design principles
-evidence: [AGENTS.md, CONTRIBUTING.md, docs/architecture.md:60-93, src/decision/decide.ts:17-18, src/decision/decide.ts:177-183, src/scoring.ts:1-3, src/commands/shared.ts:19-20, src/audit.ts:40-50, src/config.ts:17-19, src/git.ts:16-27, src/architecture/externals.ts:1, src/ast/languages.ts:11-15]
+evidence: [AGENTS.md, CONTRIBUTING.md, docs/architecture.md:60-93, src/decision/decide.ts:17-18, src/decision/decide.ts:187-193, src/scoring.ts:1-3, src/commands/shared.ts:19-20, src/audit.ts:41-51, src/config.ts:17-19, src/git.ts:16-27, src/architecture/externals.ts:1, src/ast/languages.ts:11-15]
 ---
 
 Each principle below says what it costs and what keeps it true. Rule ids refer to `index.yaml` and
@@ -22,7 +22,7 @@ Commands parse flags and print; `audit()` and the other pipelines decide.
 ### 2. Only `src/decision/` talks to a model
 
 Every model call, whether audit questions, semantic rules, `--intent`, spec verdicts or architecture
-reviews, goes through `decideFile` or `decideState` (`src/decision/decide.ts:177-196`).
+reviews, goes through `decideFile` or `decideState` (`src/decision/decide.ts:187-206`).
 
 - **Why.** The AI SDK's decision API is experimental, so a breaking change must stay in one folder
   (`docs/architecture.md:81-82`). One path also gives every caller the cache, retries, timeouts and
@@ -51,7 +51,7 @@ Prompts go to stderr through `PROMPT_IO` (`src/commands/shared.ts:19-20`).
 - **Why.** `--json` and piped prompts stay parseable, and the library API prints nothing
   (`src/index.ts:1`).
 - **Cost.** Progress has to come back through callbacks such as `AuditOptions.onProgress`
-  (`src/audit.ts:49`), and every formatter returns a string for a command to print.
+  (`src/audit.ts:50`), and every formatter returns a string for a command to print.
 - **Kept by** `terminal-only-interface` (a `forbid-call` on `console.$M($$$)`) and the
   `stdout-results-only` checklist item.
 
@@ -89,5 +89,5 @@ user's mistake from a bug. Config keys stay `snake_case` as written in TOML. Typ
 erasable, so Node runs `src/` directly.
 
 - **Cost.** Shared state lives in module scope, such as the in-flight decision map
-  (`src/decision/decide.ts:164`).
+  (`src/decision/decide.ts:174`).
 - **Kept by** convention and Biome (`pnpm check`).

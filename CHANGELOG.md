@@ -4,6 +4,15 @@ This project follows [Semantic Versioning](https://semver.org).
 
 ## Unreleased
 
+- **A built-in model, with no API key.** jevlint now ships a small decision model of its own, the
+  `local` provider. With no key, `audit` and every command built on it score files with it on your
+  machine instead of running AST-only, and say so on stderr. It answers the 20 questions of
+  `readable-code`, `clean-code` and `security`, and the file's model score comes from those. Set
+  `provider.name = "local"` to use it even when you hold a key, so that no code leaves your machine.
+  `--ast-only` still runs no model. Semantic rules, `--intent`, `--acceptance`, `spec`, `test` and
+  `architecture` reviews need questions it was not trained on, so they still need a provider. The
+  package grows by about 30 MB. See [The built-in model](docs/providers.md#the-built-in-model) and
+  [models/README.md](models/README.md).
 - **`jevlint pr --acceptance`: does the pull request do what was asked?** It reads the pull
   request's body and the issues it closes (`Fixes #12`, or linked in the sidebar; issues in other
   repositories are named and not read), cuts them into checklist items, list items and sentences,

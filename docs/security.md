@@ -7,6 +7,7 @@
 | `audit --ast-only`, `baseline --ast-only`, `architecture --ast-only`, `commits --ast-only`, `hook` | Nothing | |
 | `architecture compile`, `list`, `show`, `plan`, `check --static`, `drift --static`, `pr --architecture` | Nothing. `compile` and `plan` print a prompt; with `--agent`, the agent sends it | |
 | `audit --dry-run` | Nothing, unless `cache.remote` is set | |
+| `audit`, `baseline`, `explain`, `prompt`, `pr`, `commits`, `hook --model` with [the built-in model](providers.md#the-built-in-model): with no key, or with `provider.name = "local"` | Nothing, unless `cache.remote` is set | |
 | `audit`, `baseline`, `explain`, `prompt`, `fix`, `quickfix` | File contents, up to `max_file_chars`, and preset questions. For each [semantic rule](presets.md#semantic-rules), the matched code and the rule's question | Your configured provider |
 | `pr`, `commits`, `hook --model` | The same, for changed files on both sides of the change | Your configured provider |
 | `pr --intent`, `commits --intent` | Also each change's message, its unified diff, and `AGENTS.md` or `CLAUDE.md` from the base commit, up to `max_file_chars` | Your configured provider |
@@ -28,6 +29,8 @@ check it before sending confidential code.
 
 Run `jevlint audit --dry-run` to see exactly which files would be sent, and to which provider. With
 no key for the configured provider, they go to [another provider you hold a key for](providers.md#fallback).
+With no key at all, audits use the built-in model, which sends nothing. To keep code on your machine
+even when you hold a key, set `provider.name = "local"`.
 
 ## Protecting secrets in code
 

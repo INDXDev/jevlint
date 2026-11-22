@@ -6,12 +6,14 @@ const TOKENS_PER_PRICE = 1_000_000;
 
 // USD per million input tokens, checked 2026-11-05, by model id prefix. Update with docs/providers.md.
 // `cloudflareFetch` always calls clef, so every Cloudflare model id costs what clef costs.
-// microsoft and compatible are absent: their price depends on the endpoint.
+// microsoft and compatible are absent: their price depends on the endpoint. local runs on this
+// machine, so it costs nothing.
 const INPUT_PRICES: Partial<Record<ProviderName, Record<string, number>>> = {
   typesafe: { jev: 0.042 },
   openai: { 'gpt-6-luna': 0.1 },
   gateway: { 'typesafe-ai/jev': 0.042 },
   cloudflare: { '': 0.24 },
+  local: { '': 0 },
 };
 
 /** Estimates what input tokens cost, or null when the model's price is unknown. */

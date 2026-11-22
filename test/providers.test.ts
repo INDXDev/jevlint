@@ -43,6 +43,24 @@ describe('createDecisionModel', () => {
     expect(await createDecisionModel(config({ name: 'typesafe' }))).toBeNull();
   });
 
+  it('returns the built-in model without a key, to a caller that accepts it', async () => {
+    vi.mocked(getApiKey).mockResolvedValue(undefined);
+    const resolved = await createDecisionModel(config({ name: 'typesafe' }), { local: true });
+    expect(resolved).toMatchObject({ provider: 'local' });
+    expect(resolved?.answers).toBeTypeOf('function');
+  });
+
+  it('uses the built-in model when the config names it, even with a key', async () => {
+    vi.mocked(getApiKey).mockClear();
+    const resolved = await createDecisionModel(config({ name: 'local' }), { local: true });
+    expect(resolved?.provider).toBe('local');
+    expect(getApiKey).not.toHaveBeenCalled();
+  });
+
+  it('returns null for the built-in model to a caller that asks questions it cannot answer', async () => {
+    expect(await createDecisionModel(config({ name: 'local' }))).toBeNull();
+  });
+
   describe('without a key for the configured provider', () => {
     const keysFor = (...names: string[]) =>
       vi
