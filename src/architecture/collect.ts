@@ -6,9 +6,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, posix, relative } from 'node:path';
-import { parse, type SgNode } from '@ast-grep/napi';
+import type { SgNode } from '@ast-grep/napi';
 import pLimit from 'p-limit';
-import { LANGUAGES, languageOf } from '../ast/languages.ts';
+import { LANGUAGES, languageOf, parse } from '../ast/languages.ts';
 import { cacheKey, readCache, writeCache } from '../cache.ts';
 import { type Config, UserError } from '../config.ts';
 import { discoverFiles, excludedPaths } from '../files.ts';
@@ -258,9 +258,12 @@ export function matchCalls(searches: CallSearch[], sources: Map<string, string>)
       const source = sources.get(path);
       const language = languageOf(path);
       if (source === undefined || !language || unreadable.has(language)) return [];
+      // Outside the try: a parser that cannot load is no fault of the rule's pattern, and with
+      // every outline cached, this can be the run's first parse.
+      const root = parse(LANGUAGES[language].parser, source).root();
       let nodes: SgNode[];
       try {
-        nodes = parse(LANGUAGES[language].parser, source).root().findAll(pattern);
+        nodes = root.findAll(pattern);
       } catch {
         if (named) {
           throw new UserError(`Rule ${ruleId}: ast-grep cannot read the pattern for ${language}.`);

@@ -55,7 +55,8 @@ no model ran.
 jevlint warns on stderr, then carries on, when the root is your home directory and no paths were
 given, or when more than `warn_file_count` files (default 1,000) are in scope. Press Ctrl-C to stop.
 Run it inside a project, or narrow the run with paths, `include` or `exclude`. If the repository
-really is that large, raise `warn_file_count`.
+really is that large, raise `warn_file_count`. From the home directory, every project with its own
+`.git` is skipped, like any [checkout below the root](configuration.md#files-that-are-always-excluded).
 
 ## Scores changed but the code did not
 
@@ -104,6 +105,26 @@ input.
 
 Install the agent and check it runs on its own, or change its `command` in your
 [user config](agents.md#adding-an-agent).
+
+## "jevlint's parser has no binary for linux-x64"
+
+npm installs the parser's binary for the system that ran `npm install`. When the message says the
+install holds only the Windows binary, jevlint was installed by Windows npm and WSL found it on the
+Windows `PATH`. Install it with WSL's own npm (`npm install -g @indxjp/jevlint`), then check that
+`which jevlint` no longer points under `/mnt/c/`.
+
+Otherwise, reinstall jevlint the way you installed it: with `npm install -g`, with
+`npm install --prefix ~/.jevlint`, or in your project. In a project, remove `node_modules` and the
+lockfile first, because npm can leave other systems' binaries out of a lockfile.
+
+Commands that parse no code, such as `auth`, `config` and `preset`, still work.
+
+## "jevlint's parser could not load"
+
+The parser's binary is there but did not load, and the message ends with the reason the system gave,
+such as a `GLIBC` version it lacks, a file system mounted `noexec`, or Node's `--permission` without
+`--allow-addons`. Reinstalling the same files does not help: fix what the reason names, or run
+jevlint where the binary can load.
 
 ## "Node.js ... has known security holes"
 

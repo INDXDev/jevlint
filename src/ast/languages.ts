@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Lang, registerDynamicLanguage } from '@ast-grep/napi';
+import { UserError } from '../config.ts';
 import type { Language } from '../types.ts';
 
 type GrammarName = 'python' | 'go' | 'rust';
@@ -49,11 +49,110 @@ const available = Object.entries(GRAMMARS).flatMap(([name, grammar]) => {
   registered.add(name as GrammarName);
   return [[name, { ...grammar, libraryPath, expandoChar: 'µ' }] as const];
 });
-registerDynamicLanguage(Object.fromEntries(available));
+
+type AstGrep = typeof import('@ast-grep/napi');
+let astGrep: AstGrep | undefined;
+/** Kept once loading fails, so each later parse fails alike without rerunning napi's loader. */
+let loadFailure: UserError | undefined;
+
+const firstLine = (text: string) => text.split('\n', 1)[0] ?? text;
+
+/** The reasons napi-rs keeps in `cause`, one for each binary it tried. */
+function loadReasons(error: Error): string[] {
+  const reasons: string[] = [];
+  for (let cause = error.cause; cause instanceof Error; cause = cause.cause) {
+    reasons.push(firstLine(cause.message));
+  }
+  return reasons;
+}
+
+/**
+ * Whether ast-grep's Windows binary sits beside it on Linux. Windows npm installs only that one,
+ * and WSL then runs its shim from the Windows PATH.
+ */
+function hasOnlyWindowsBinary(): boolean {
+  if (process.platform !== 'linux') return false;
+  try {
+    const napi = createRequire(import.meta.url).resolve('@ast-grep/napi/package.json');
+    const scope = dirname(dirname(napi));
+    return ['x64', 'arm64', 'ia32'].some((arch) =>
+      existsSync(join(scope, `napi-win32-${arch}-msvc`)),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Says why ast-grep did not load. napi-rs keeps the real reasons in `cause`, which is never
+ * printed, and its hint about npm lockfiles misleads when another system's npm installed jevlint.
+ */
+function parserFailure(error: unknown): UserError {
+  const platform = `${process.platform}-${process.arch}`;
+  if (!(error instanceof Error) || !error.message.includes('Cannot find native binding')) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return new UserError(`jevlint's parser could not load: ${firstLine(reason)}`, { cause: error });
+  }
+  // napi-rs reports a binary it did not find as a missing module. Any other reason means one was
+  // there and failed to load, which reinstalling the same files will not fix.
+  const reasons = loadReasons(error).filter((reason) => !reason.startsWith('Cannot find module '));
+  if (reasons.length > 0) {
+    return new UserError(`jevlint's parser could not load on ${platform}: ${reasons.join('; ')}`, {
+      cause: error,
+    });
+  }
+  const fix = hasOnlyWindowsBinary()
+    ? 'It holds only the Windows binary, so it was probably installed by Windows npm and is being run from WSL. Install it inside WSL: npm install -g @indxjp/jevlint'
+    : 'Reinstall jevlint on this machine the way you installed it, such as npm install -g @indxjp/jevlint. In a project, remove node_modules and the lockfile first.';
+  return new UserError(`jevlint's parser has no binary for ${platform}. ${fix}`, { cause: error });
+}
+
+/**
+ * ast-grep honours only the first registerDynamicLanguage call in a process, so a program that
+ * registered its own languages before jevlint's first parse leaves Python, Go and Rust unparsed.
+ */
+function checkRegistered(loaded: AstGrep): void {
+  const missing = [...registered].filter((name) => {
+    try {
+      loaded.parse(name, '');
+      return false;
+    } catch {
+      return true;
+    }
+  });
+  if (missing.length === 0) return;
+  throw new UserError(
+    `jevlint cannot parse ${missing.join(', ')}: this process registered other ast-grep languages first, and ast-grep accepts them only once.`,
+  );
+}
+
+/** Loads ast-grep on first use, so commands that parse no code still run without its binary. */
+function loadAstGrep(): AstGrep {
+  if (astGrep) return astGrep;
+  if (loadFailure) throw loadFailure;
+  try {
+    const loaded = createRequire(import.meta.url)('@ast-grep/napi') as AstGrep;
+    loaded.registerDynamicLanguage(Object.fromEntries(available));
+    checkRegistered(loaded);
+    // Kept only now, so a failed registration cannot leave Python, Go and Rust unregistered.
+    astGrep = loaded;
+    return loaded;
+  } catch (error) {
+    loadFailure = error instanceof UserError ? error : parserFailure(error);
+    throw loadFailure;
+  }
+}
+
+/** Parses source with ast-grep, loading it on the first call. */
+export const parse: AstGrep['parse'] = (lang, source) => loadAstGrep().parse(lang, source);
+
+/** Whether an error is ast-grep failing to load, which no single file or rule caused. */
+export const isParserFailure = (error: unknown): boolean =>
+  loadFailure !== undefined && error === loadFailure;
 
 /** The node kinds that give one language its metrics. */
 export interface LanguageSpec {
-  parser: Lang | 'python' | 'go' | 'rust';
+  parser: 'JavaScript' | 'TypeScript' | 'Tsx' | GrammarName;
   functions: string[];
   /** Add 1 plus the nesting depth, and nest what they contain. */
   branches: string[];
@@ -97,9 +196,9 @@ const typed = {
 
 /** Every language with AST support. */
 export const LANGUAGES: Record<Language, LanguageSpec> = {
-  javascript: { ...ecmascript, parser: Lang.JavaScript },
-  typescript: { ...typed, parser: Lang.TypeScript },
-  tsx: { ...typed, parser: Lang.Tsx },
+  javascript: { ...ecmascript, parser: 'JavaScript' },
+  typescript: { ...typed, parser: 'TypeScript' },
+  tsx: { ...typed, parser: 'Tsx' },
   python: {
     parser: 'python',
     functions: ['function_definition', 'lambda'],

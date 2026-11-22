@@ -12,9 +12,11 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { confirm, multiselect, select, spinner } from '@clack/prompts';
 import clipboard from 'clipboardy';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { languageOf } from '../src/ast/languages.ts';
 import { askAboutEnvKeys, usesProviderKey } from '../src/commands/auth.ts';
 import { initCommand } from '../src/commands/init.ts';
 import { promptCommand } from '../src/commands/prompt.ts';
@@ -112,6 +114,82 @@ describe('command routing', () => {
     expect(status).toBe(0);
     expect(JSON.parse(stdout).files).toHaveLength(1);
   });
+});
+
+describe('a path in another checkout below the root', () => {
+  it('says to run jevlint inside that checkout, as discovery skips it', () => {
+    const cwd = project({ 'jevlint.toml': '', 'sub/.git': 'gitdir: x\n', 'sub/s.ts': MESSY });
+    const { status, stderr } = jevlint(cwd, 'sub/s.ts', '--ast-only');
+    expect(status).toBe(2);
+    expect(stderr).toContain('sub/s.ts is in sub, a checkout of its own');
+    expect(stderr).toContain('Run jevlint inside sub to audit it.');
+  });
+});
+
+describe('a parser that does not load', () => {
+  // A URL, as `--import` takes one: a Windows path or a `#` in the checkout's path is not one.
+  const preload = (mode: string) =>
+    `${pathToFileURL(join(import.meta.dirname, 'fixtures/no-parser/register.mjs')).href}?${mode}`;
+  const run = (mode: string, cwd: string, ...args: string[]) => {
+    const home = tempDir();
+    const env = { PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: home, XDG_CACHE_HOME: home };
+    return spawnSync(process.execPath, ['--import', preload(mode), CLI, ...args], {
+      cwd,
+      env,
+      encoding: 'utf8',
+    });
+  };
+  // A file the generic analyzer scores, so that a gate could pass if a.ts went unscored.
+  const FILES = { 'a.ts': MESSY, 'run.sh': 'greet() { echo hi; }\n' };
+
+  // As when Windows npm installs jevlint and WSL runs it: only commands that parse code need it.
+  it.each([['--version'], ['--help'], ['auth', '--help'], ['preset', 'list']])(
+    'still runs %s',
+    (...args) => {
+      const { status, stderr } = run('missing', project(), ...args);
+      expect(stderr).toBe('');
+      expect(status).toBe(0);
+    },
+  );
+
+  it('says how to reinstall when a command needs the parser', () => {
+    const { status, stderr } = run('missing', project({ 'a.ts': MESSY }), 'audit', '--ast-only');
+    expect(status).toBe(2);
+    expect(stderr).toContain("jevlint's parser has no binary for");
+    expect(stderr).toContain('npm install -g @indxjp/jevlint');
+  });
+
+  it('says why a binary that is there does not load', () => {
+    const { status, stderr } = run('broken', project({ 'a.ts': MESSY }), 'audit', '--ast-only');
+    expect(status).toBe(2);
+    expect(stderr).toContain("jevlint's parser could not load on");
+    expect(stderr).toContain('file too short');
+  });
+
+  it.each([
+    ['ast-grep is missing', 'gone'],
+    ['its grammars do not register', 'unregistered'],
+  ])('stops the run, rather than leave files unscored, when %s', (_, mode) => {
+    const { status, stderr } = run(
+      mode,
+      project(FILES),
+      'audit',
+      '--ast-only',
+      '--fail-under',
+      '90',
+    );
+    expect(status).toBe(2);
+    expect(stderr).toContain("jevlint's parser could not load");
+  });
+
+  it.skipIf(languageOf('a.py') === null)(
+    'says so when the process registered other languages first',
+    () => {
+      const { status, stderr } = run('taken', project({ 'a.ts': MESSY }), 'audit', '--ast-only');
+      expect(status).toBe(2);
+      expect(stderr).toContain('jevlint cannot parse python');
+    },
+  );
 });
 
 describe('--fail-under', () => {

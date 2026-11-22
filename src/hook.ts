@@ -1,6 +1,6 @@
 /** Agent and git hooks: finds the file an edit touched and installs the pre-commit hook. */
 import { mkdir, realpath, stat } from 'node:fs/promises';
-import { dirname, join, relative, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type { AuditOptions } from './audit.ts';
 import {
   type Config,
@@ -22,8 +22,15 @@ const PRE_COMMIT_HOOK = `#!/bin/sh
 exec jevlint hook --staged
 `;
 
-/** Reads the edited path from a hook's JSON, in Claude Code's shape or flat. */
-export function editedPath(text: string): string | undefined {
+/** The file an edit touched, and the directory the agent worked in when the hook's JSON says. */
+export interface Edit {
+  path: string;
+  /** Claude Code's `cwd`: the worktree, when a desktop session runs hooks in the main checkout. */
+  cwd?: string;
+}
+
+/** Reads the edit from a hook's JSON, in Claude Code's shape or flat. */
+export function editedFile(text: string): Edit | undefined {
   let payload: unknown;
   try {
     payload = JSON.parse(text);
@@ -34,7 +41,9 @@ export function editedPath(text: string): string | undefined {
   }
   const input = isTable(payload) && isTable(payload.tool_input) ? payload.tool_input : payload;
   const path = isTable(input) ? input.file_path : undefined;
-  return typeof path === 'string' && path !== '' ? path : undefined;
+  if (typeof path !== 'string' || path === '') return undefined;
+  const cwd = isTable(payload) ? payload.cwd : undefined;
+  return typeof cwd === 'string' && isAbsolute(cwd) ? { path, cwd } : { path };
 }
 
 /** Resolves links first, so a path through one cannot lead the review out of the root. */

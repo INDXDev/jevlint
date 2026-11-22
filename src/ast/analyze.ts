@@ -1,9 +1,9 @@
 /** Language-independent AST metrics and pattern matching. */
-import { parse, type SgNode } from '@ast-grep/napi';
+import type { SgNode } from '@ast-grep/napi';
 import { type Config, UserError } from '../config.ts';
 import { astScoreFrom } from '../scoring.ts';
 import type { AstFinding, AstPattern, AstResult, Language } from '../types.ts';
-import { LANGUAGES, type LanguageSpec } from './languages.ts';
+import { LANGUAGES, type LanguageSpec, parse } from './languages.ts';
 
 /** The configured maximum for each metric. */
 export type Limits = Config['ast'];

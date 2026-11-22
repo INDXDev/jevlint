@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Config, loadConfig, UserError } from '../src/config.ts';
-import { discoverDocs, discoverFiles } from '../src/files.ts';
+import { checkoutHolding, discoverDocs, discoverFiles } from '../src/files.ts';
 
 let home: string;
 let root: string;
@@ -137,6 +137,29 @@ describe('discoverFiles', () => {
     expect(await discoverFiles(await configWith())).toEqual(['local.ts']);
   });
 
+  it('skips linked worktrees, nested clones and submodules below the root', async () => {
+    await write({
+      '.git/HEAD': 'ref: refs/heads/main',
+      'src/a.ts': '',
+      'wt/.git': 'gitdir: ../.git/worktrees/wt\n',
+      'wt/src/a.ts': '',
+      'vendored/lib/.git/HEAD': 'ref: refs/heads/main',
+      'vendored/lib/b.ts': '',
+      'vendored/c.ts': '',
+    });
+    expect(await discoverFiles(await configWith())).toEqual(['src/a.ts', 'vendored/c.ts']);
+  });
+
+  it("skips Claude Code's worktrees, at any depth, even when they have lost their .git", async () => {
+    await write({
+      'a.ts': '',
+      '.claude/worktrees/agent-1/a.ts': '',
+      'pkg/.claude/worktrees/agent-2/b.ts': '',
+      '.claude/hooks/check.sh': '',
+    });
+    expect(await discoverFiles(await configWith())).toEqual(['.claude/hooks/check.sh', 'a.ts']);
+  });
+
   it('applies include and exclude', async () => {
     await write({ 'src/a.ts': '', 'src/a.test.ts': '', 'b.ts': '' });
     const config = await configWith({ include: ['src/**'], exclude: ['*.test.ts'] });
@@ -203,6 +226,19 @@ describe('discoverFiles', () => {
       expect(await discoverFiles(await configWith())).toEqual(['a.ts', 'locked.ts']);
     },
   );
+});
+
+describe('checkoutHolding', () => {
+  it('names the checkout below the root that holds a path', async () => {
+    await write({ '.git/HEAD': '', 'lib/sub/.git': 'gitdir: x\n', 'lib/sub/a.ts': '', 'b.ts': '' });
+    expect(checkoutHolding(root, 'lib/sub/a.ts')).toBe('lib/sub');
+    expect(checkoutHolding(root, join(root, 'lib/sub'))).toBe('lib/sub');
+    expect(checkoutHolding(root, 'b.ts')).toBeUndefined();
+    expect(checkoutHolding(root, 'lib')).toBeUndefined();
+    // The root itself, and anything outside it, is never "below the root".
+    expect(checkoutHolding(root, '.')).toBeUndefined();
+    expect(checkoutHolding(root, '../elsewhere')).toBeUndefined();
+  });
 });
 
 describe('discoverDocs', () => {

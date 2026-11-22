@@ -14,8 +14,10 @@ jevlint works with no config. Everything below is optional.
 Later layers win. Tables merge key by key, and arrays are replaced rather than combined.
 `XDG_CONFIG_HOME` moves the user directory.
 
-jevlint finds the repository config by walking up from the current directory. The directory holding
-`jevlint.toml` is the root. If there is none, the root is the git root, then the current directory.
+jevlint finds the root by walking up from the current directory to the nearest directory that holds
+`jevlint.toml` or `.git`, and reads the repository config there. The walk stops at a checkout, so a
+worktree, submodule or nested clone is its own root, and an outer checkout's `jevlint.toml` does not
+apply inside it. With neither, the root is the current directory.
 
 Run `jevlint config show` to see the result, and `jevlint config path` to see which files applied.
 
@@ -204,6 +206,9 @@ Among source files, and besides `.gitignore` matches, jevlint never reads these:
   such a name may hold real secrets, so jevlint errs on the side of not uploading it.
 - Generated: `node_modules`, `dist`, `build`, `vendor`, `target`, `coverage`, `*.min.*`
 - [Fixtures](presets.md#testing-a-question), which are bad on purpose: `.jevlint/fixtures/`
+- Other checkouts below the root: any directory holding its own `.git`, such as a linked git
+  worktree, a nested clone or a submodule, and Claude Code's `.claude/worktrees/`. Run jevlint
+  inside one to audit it.
 - Binary files
 
 ## Settings a repository cannot set

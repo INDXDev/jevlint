@@ -1,7 +1,7 @@
 /** Reads what a source file imports and declares from its AST. */
-import { parse, type SgNode } from '@ast-grep/napi';
+import type { SgNode } from '@ast-grep/napi';
 import { countLines } from '../ast/analyze.ts';
-import { LANGUAGES, type LanguageSpec } from '../ast/languages.ts';
+import { LANGUAGES, type LanguageSpec, parse } from '../ast/languages.ts';
 import type { CodeComment, DataField, DataType, ImportRef, Language } from '../types.ts';
 
 /** One class, or the parts of one that a single file declares. */

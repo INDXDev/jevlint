@@ -310,6 +310,15 @@ describe('root discovery', () => {
   it('falls back to the current directory', async () => {
     expect((await loadConfig({ cwd: repo })).root).toBe(repo);
   });
+
+  it('stops at a checkout below the jevlint.toml, such as a worktree or submodule', async () => {
+    const inner = join(repo, 'libs', 'inner');
+    await mkdir(join(repo, '.git'));
+    await writeRepo('');
+    await mkdir(join(inner, 'src'), { recursive: true });
+    await writeFile(join(inner, '.git'), 'gitdir: ../../.git/modules/inner\n');
+    expect((await loadConfig({ cwd: join(inner, 'src') })).root).toBe(inner);
+  });
 });
 
 describe('renderConfigToml', () => {
