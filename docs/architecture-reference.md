@@ -225,7 +225,7 @@ supersedes: []
 superseded_by: null
 components: [decision]
 enforced_by: [ai-sdk-only-in-decision]
-evidence: [src/decision/providers.ts:9, commit:cd3216c]
+evidence: [src/decision/providers.ts:11, commit:cd3216c]
 ---
 
 ### Context

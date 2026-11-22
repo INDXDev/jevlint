@@ -11,28 +11,29 @@ import {
   setApiKey,
   setEnvKeysAllowed,
 } from '../credentials.ts';
-import type { ProviderName } from '../types.ts';
+import type { KeyedProviderName } from '../types.ts';
 import { answered, PROMPT_IO } from './shared.ts';
 
-const PROVIDERS = Object.keys(KEY_ENV) as ProviderName[];
+const PROVIDERS = Object.keys(KEY_ENV) as KeyedProviderName[];
 const PROVIDER_ARG = {
   provider: { type: 'positional', required: true, description: `One of: ${PROVIDERS.join(', ')}` },
 } as const;
 
-function parseProvider(name: string): ProviderName {
+function parseProvider(name: string): KeyedProviderName {
   const provider = PROVIDERS.find((known) => known === name);
   if (provider) return provider;
+  if (name === 'local') throw new UserError('The local provider is built in and needs no key.');
   throw new UserError(`Unknown provider "${name}". Available: ${PROVIDERS.join(', ')}`);
 }
 
-async function readKey(provider: ProviderName): Promise<string> {
+async function readKey(provider: KeyedProviderName): Promise<string> {
   const key = process.stdin.isTTY
     ? answered(await password({ message: `API key for ${provider}`, ...PROMPT_IO }))
     : await text(process.stdin);
   return key.trim();
 }
 
-async function describeSource(provider: ProviderName): Promise<string> {
+async function describeSource(provider: KeyedProviderName): Promise<string> {
   const source = await keySource(provider);
   if (source === 'env') return `environment (${KEY_ENV[provider]})`;
   return source === 'file' ? 'credentials file' : 'not set';

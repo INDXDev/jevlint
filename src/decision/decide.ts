@@ -53,6 +53,16 @@ function toDecisionQuestion(question: Question) {
     : { type: 'boolean' as const, instructions };
 }
 
+/** The questions a model can answer: all of them, unless it says otherwise. */
+export function answerable(
+  { answers }: Pick<ResolvedModel, 'answers'>,
+  questions: Question[],
+): Question[] {
+  return answers
+    ? questions.filter((question) => answers(toDecisionQuestion(question)))
+    : questions;
+}
+
 /** The questions as the provider receives them, keyed by id. */
 export function decisionRequest(questions: Question[]): Record<string, DecisionQuestion> {
   return Object.fromEntries(questions.map((q) => [q.id, toDecisionQuestion(q)]));

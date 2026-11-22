@@ -4,10 +4,10 @@ import { dirname } from 'node:path';
 import { stringify } from 'smol-toml';
 import { z } from 'zod';
 import { ifExists, parseToml, parseWith, paths, writeFileAtomic } from './config.ts';
-import type { ProviderName } from './types.ts';
+import type { KeyedProviderName } from './types.ts';
 
 /** The environment variable holding each provider's key. */
-export const KEY_ENV: Record<ProviderName, string> = {
+export const KEY_ENV: Record<KeyedProviderName, string> = {
   typesafe: 'TYPESAFE_AI_API_KEY',
   openai: 'OPENAI_API_KEY',
   gateway: 'AI_GATEWAY_API_KEY',
@@ -36,17 +36,17 @@ async function writeKeys(keys: Record<string, string>): Promise<void> {
   await writeFileAtomic(file, stringify(keys), 0o600);
 }
 
-const envKey = (keys: Record<string, string>, provider: ProviderName) =>
+const envKey = (keys: Record<string, string>, provider: KeyedProviderName) =>
   keys[USE_ENV] === 'yes' ? process.env[KEY_ENV[provider]] : undefined;
 
 /** Returns the key for a provider, if one is set. */
-export async function getApiKey(provider: ProviderName): Promise<string | undefined> {
+export async function getApiKey(provider: KeyedProviderName): Promise<string | undefined> {
   const keys = await readKeys();
   return envKey(keys, provider) || keys[provider];
 }
 
 /** Says where a provider's key comes from, without exposing it. */
-export async function keySource(provider: ProviderName): Promise<'env' | 'file' | null> {
+export async function keySource(provider: KeyedProviderName): Promise<'env' | 'file' | null> {
   const keys = await readKeys();
   if (envKey(keys, provider)) return 'env';
   return keys[provider] ? 'file' : null;
@@ -64,12 +64,12 @@ export async function setEnvKeysAllowed(allowed: boolean): Promise<void> {
 }
 
 /** Stores a key, keeping those of other providers. */
-export async function setApiKey(provider: ProviderName, key: string): Promise<void> {
+export async function setApiKey(provider: KeyedProviderName, key: string): Promise<void> {
   await writeKeys({ ...(await readKeys()), [provider]: key });
 }
 
 /** Deletes a stored key, returning whether there was one. */
-export async function removeApiKey(provider: ProviderName): Promise<boolean> {
+export async function removeApiKey(provider: KeyedProviderName): Promise<boolean> {
   const { [provider]: removed, ...others } = await readKeys();
   if (removed === undefined) return false;
   await writeKeys(others);

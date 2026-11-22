@@ -151,7 +151,9 @@ FileReport[] ─ rank ─► AuditReport ─ formatReport ─► terminal
 | `languageOf(path)` | `ast/languages.ts` | Maps a file extension to a `Language` |
 | `analyzeAst(source, language, limits, patterns)` | `ast/analyze.ts` | Measures one file |
 | `analyzeGeneric(source, limits)` | `ast/generic.ts` | Approximates the same metrics with no grammar, or `null` if it finds no function |
-| `createDecisionModel(config)` | `decision/providers.ts` | Builds a model, or `null` with no key |
+| `createDecisionModel(config, { local })` | `decision/providers.ts` | Builds a model. With no key, returns the built-in model if `local` is true, or else `null` |
+| `answerable(resolved, questions)` | `decision/decide.ts` | The questions a model can answer: all of them, except for the built-in model |
+| `localDecisionModel()` | `decision/local.ts` | The built-in model, loaded once per process |
 | `decideFile(options)` | `decision/decide.ts` | Gets answers for one file, using the cache |
 | `isDecisionCached(target, questions, source, config)` | `decision/decide.ts` | Tells a dry run whether `decideFile` would use the cache |
 | `estimateCostUsd` | `decision/pricing.ts` | Prices input tokens, or `null` if the model's price is unknown |

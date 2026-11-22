@@ -5,7 +5,7 @@ date: 2026-11-12
 status: accepted
 components: [architecture-verbs, ssot-loading, ssot-conformance]
 unenforceable: "That jevlint never writes the SSOT is the absence of a write, which no rule over imports or calls can prove."
-evidence: [docs/architecture-driven-development.md:21-25, docs/architecture-driven-development.md:128, docs/security.md, src/decision/providers.ts:9, commit:5f1db8a, commit:aa2cc1a]
+evidence: [docs/architecture-driven-development.md:21-25, docs/architecture-driven-development.md:128, docs/security.md, src/decision/providers.ts:11, commit:5f1db8a, commit:aa2cc1a]
 ---
 
 Dated from commit 5f1db8a, which added the architecture SSOT.
@@ -32,7 +32,7 @@ carries paths and names, never file contents.
 Recorded in issue #15 ("the division of work follows what each part can do well") and
 `docs/architecture-driven-development.md:21-25`, `:128`:
 
-- jevlint's only model is a decision model (`src/decision/providers.ts:9`): it answers fixed
+- jevlint's only model is a decision model (`src/decision/providers.ts:11`): it answers fixed
   questions with a score, a probability or a choice, cached by content. It cannot open files or
   write prose, and writing the SSOT means reading many files the facts point at, on demand.
 - An agent writes into the working tree, so a person reviews the diff and commits it, as with code.

@@ -1,6 +1,6 @@
 ---
 title: Overview
-evidence: [AGENTS.md, docs/architecture.md, src/cli.ts:33-52, src/audit.ts:201-236, src/index.ts, docs/security.md]
+evidence: [AGENTS.md, docs/architecture.md, src/cli.ts:33-52, src/audit.ts:210-245, src/index.ts, docs/security.md]
 ---
 
 jevlint is a model-based linter, shipped as a CLI and as an npm library (`src/index.ts`). It scores
@@ -20,7 +20,7 @@ It serves three kinds of user:
 ### The main workflow
 
 `src/cli.ts` routes a bare `jevlint`, or a path or flag, to `audit` (`src/cli.ts:82-88`). The
-command loads the layered config, and `audit()` in `src/audit.ts:202` does the rest. It discovers
+command loads the layered config, and `audit()` in `src/audit.ts:211` does the rest. It discovers
 the files jevlint may read and counts churn from git. Each file is measured with ast-grep, its
 `jevlint-score` pins are stripped, and its code is sent with the preset questions to the configured
 provider, through a content-addressed cache. Semantic rule matches are judged one question each.

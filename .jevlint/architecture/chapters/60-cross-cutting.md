@@ -1,6 +1,6 @@
 ---
 title: Cross-cutting concerns
-evidence: [AGENTS.md, src/cli.ts:29, src/cli.ts:127-147, src/cli.ts:196-203, src/config.ts:11-19, src/config.ts:294-310, src/config.ts:343-399, src/report.ts:38-46, src/git.ts:16-27, src/commands/shared.ts:19-20, src/commands/architecture.ts:95-100, src/decision/decide.ts:12-18, src/audit.ts:167-182, src/architecture/load.ts:36-53, src/node-version.ts:1-8, docs/security.md, commit:f6c2055]
+evidence: [AGENTS.md, src/cli.ts:29, src/cli.ts:127-147, src/cli.ts:196-203, src/config.ts:11-19, src/config.ts:295-311, src/config.ts:344-400, src/report.ts:38-46, src/git.ts:16-27, src/commands/shared.ts:19-20, src/commands/architecture.ts:95-100, src/decision/decide.ts:12-18, src/audit.ts:176-191, src/architecture/load.ts:36-53, src/node-version.ts:1-8, docs/security.md, commit:f6c2055]
 ---
 
 ### Errors and exit codes
@@ -23,12 +23,12 @@ The repository is hostile, and the boundary runs through several modules:
 
 | Threat | Defence | Where |
 | --- | --- | --- |
-| A repository config redirects a key or names a command | `USER_ONLY_KEYS` refuses `provider.base_url`, `agents`, `cache` and `max_rule_matches` in `jevlint.toml`. A user's `base_url` is dropped when the repository names another provider | `src/config.ts:19`, `src/config.ts:389-399` |
-| An API key in a config file | Any `api_key` key is refused | `src/config.ts:343-354` |
+| A repository config redirects a key or names a command | `USER_ONLY_KEYS` refuses `provider.base_url`, `agents`, `cache` and `max_rule_matches` in `jevlint.toml`. A user's `base_url` is dropped when the repository names another provider | `src/config.ts:19`, `src/config.ts:390-400` |
+| An API key in a config file | Any `api_key` key is refused | `src/config.ts:344-355` |
 | git runs a program from `.git/config` | `git()` sets `safe.bareRepository=explicit`, `core.fsmonitor=false` and `GIT_NO_LAZY_FETCH`. Reads use plumbing (`diff-tree`, `cat-file`, `ls-files`), not `git diff` or `git show` | `src/git.ts:16-27` |
 | A crafted tree escapes a snapshot | `UNSAFE_PATH` refuses `..`, `.git` and `.gitignore` | `src/review.ts:20-22` |
-| A planted symlink redirects a write | `writeFileAtomic` writes a temp file, then renames it over the target | `src/config.ts:294-304` |
-| A FIFO or device hangs a read | `readRegularFile` refuses anything but a regular file | `src/config.ts:306-310` |
+| A planted symlink redirects a write | `writeFileAtomic` writes a temp file, then renames it over the target | `src/config.ts:295-305` |
+| A FIFO or device hangs a read | `readRegularFile` refuses anything but a regular file | `src/config.ts:307-311` |
 | Repository text drives the terminal | `withoutEscapes` and `withoutControlCharacters` turn control characters and bidi overrides into `?` | `src/report.ts:38-46` |
 | The SSOT names something outside the root | Globs with `..` or a leading `/` are refused | `src/architecture/load.ts:47-52` |
 | `quickfix.after` runs repository commands | They run only after an approval that fingerprints their inputs, without a shell | `src/trust.ts`, `src/fixers.ts` |
@@ -39,22 +39,22 @@ injection aimed at a model. jevlint also refuses to start on a Node release with
 
 ### Configuration
 
-Four layers merge in order: defaults (`src/config.ts:197`), the user's `config.toml`, the nearest
-`jevlint.toml` found upwards (`findUp`, `src/config.ts:376`), then flags. Keys stay `snake_case` as written in TOML. Each layer is
+Four layers merge in order: defaults (`src/config.ts:198`), the user's `config.toml`, the nearest
+`jevlint.toml` found upwards (`findUp`, `src/config.ts:377`), then flags. Keys stay `snake_case` as written in TOML. Each layer is
 validated by a strict zod schema, so an unknown key is an error with its path. A new setting that
 names an endpoint, a command or a path on the user's machine goes into `USER_ONLY_KEYS`.
 
 ### Caching
 
 Every model request goes through one content-addressed cache. Its key is described in "Data and
-state". Identical files in one run share a single lookup (`src/decision/decide.ts:163-175`). With
+state". Identical files in one run share a single lookup (`src/decision/decide.ts:173-185`). With
 `--no-cache`, nothing is read or written.
 
 ### Concurrency and deadlines
 
 `p-limit` caps files in flight at `concurrency` (default 8). Rule matches in a file are asked one at
 a time, so `concurrency` stays the limit for the whole run (`docs/architecture.md`). A fatal error
-clears the queue (`src/audit.ts:176-178`). Each file's provider call, `gh`, `git fetch` and each
+clears the queue (`src/audit.ts:185-187`). Each file's provider call, `gh`, `git fetch` and each
 fixer has a deadline, added after a stalled network hung a run (commit f6c2055).
 
 ### Output contracts

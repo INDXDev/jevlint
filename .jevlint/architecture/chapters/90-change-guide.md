@@ -1,6 +1,6 @@
 ---
 title: Change guide
-evidence: [AGENTS.md, CONTRIBUTING.md, docs/extending.md, docs/architecture.md:50-58, src/node-version.ts:3-8, src/config.ts:17-19, src/decision/decide.ts:61-67, src/architecture/externals.ts:1, src/ast/languages.ts:11-15, src/architecture/collect.ts:25-26, src/commands/shared.ts:19-20]
+evidence: [AGENTS.md, CONTRIBUTING.md, docs/extending.md, docs/architecture.md:50-58, src/node-version.ts:3-8, src/config.ts:17-19, src/decision/decide.ts:71-77, src/architecture/externals.ts:1, src/ast/languages.ts:11-15, src/architecture/collect.ts:25-26, src/commands/shared.ts:19-20]
 ---
 
 Read this before you start a task. Every row ends with `pnpm check`, which runs lint, typecheck,

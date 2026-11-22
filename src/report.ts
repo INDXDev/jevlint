@@ -305,6 +305,10 @@ function formatCost(usd: number): string {
 export function formatUsage(usage: AuditReport['usage']): string[] {
   const { inputTokens, estimatedCostUsd, cacheHits, modelCalls } = usage;
   if (modelCalls === 0 && cacheHits === 0) return [];
+  // Only the built-in model answers without reading tokens, because it runs on this machine.
+  if (modelCalls > 0 && inputTokens === 0) {
+    return [` ${plural(modelCalls, 'model call')} on this machine, at no cost.`];
+  }
   const cost = estimatedCostUsd === null ? '' : `, about ${formatCost(estimatedCostUsd)}`;
   const tokens = inputTokens.toLocaleString('en-US');
   return [

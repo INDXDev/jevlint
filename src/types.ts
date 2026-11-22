@@ -2,13 +2,17 @@
 
 export type Language = 'javascript' | 'typescript' | 'tsx' | 'python' | 'go' | 'rust';
 
-export type ProviderName =
+/** A provider reached over the network with an API key. */
+export type KeyedProviderName =
   | 'typesafe'
   | 'openai'
   | 'gateway'
   | 'cloudflare'
   | 'microsoft'
   | 'compatible';
+
+/** `local` is the built-in model, which runs on this machine and needs no key. */
+export type ProviderName = KeyedProviderName | 'local';
 
 interface QuestionBase {
   /** Unique within a preset; the full id is `<preset>.<id>`. */

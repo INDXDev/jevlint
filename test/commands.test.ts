@@ -38,10 +38,16 @@ vi.setConfig({ testTimeout: 60_000 });
 const CLI = join(import.meta.dirname, '../src/cli.ts');
 const NO_KEY_NOTICE = 'No API key found';
 const MESSY = 'export function f(a, b, c, d, e, g) { return a + b + c + d + e + g; }\n';
+/**
+ * With no key the built-in model answers the questions it was trained on. Tests of agent runs pick
+ * a preset it has none of, so their scores come from AST metrics alone. test/local.test.ts checks
+ * that the model still has none.
+ */
+const AST_ONLY_PRESETS = 'presets = ["solid"]';
 
 const tempDir = () => realpathSync(mkdtempSync(join(tmpdir(), 'jevlint-cli-')));
 
-/** A directory with no config or keys, so a run stays AST-only and off the network. */
+/** A directory with no config or keys, so a run stays off the network. */
 function project(files: Record<string, string> = {}): string {
   const dir = tempDir();
   for (const [path, content] of Object.entries(files)) {
@@ -132,6 +138,23 @@ describe('--fail-under', () => {
 
   it('accepts an empty audit when no gate is set', () => {
     expect(jevlint(project(), '--ast-only').status).toBe(0);
+  });
+});
+
+describe('with no key', () => {
+  it('audits with the built-in model, on this machine', () => {
+    const { status, stdout, stderr } = jevlint(project({ 'a.ts': MESSY }), 'audit', '--json');
+    expect(status).toBe(0);
+    expect(stderr).toContain('the built-in model answered');
+    const report = JSON.parse(stdout);
+    expect(report.provider).toBe('local');
+    expect(report.usage).toMatchObject({ inputTokens: 0, estimatedCostUsd: 0, modelCalls: 1 });
+    expect(report.files[0].model.answers.length).toBeGreaterThan(0);
+  });
+
+  it('uses no model with --ast-only', () => {
+    const { stdout } = jevlint(project({ 'a.ts': MESSY }), 'audit', '--json', '--ast-only');
+    expect(JSON.parse(stdout)).toMatchObject({ provider: null, model: null });
   });
 });
 
@@ -641,6 +664,8 @@ describe('presets outside audit', () => {
   const FINDING = 'An empty catch hides the failure';
   // The default holds every audit preset, so these need a narrower one to compare with.
   const NARROW = { 'jevlint.toml': 'presets = ["readable-code"]\n' };
+  // A preset with no question the built-in model answers, so the run is decided by AST alone.
+  const MODEL_FREE = { 'jevlint.toml': `${AST_ONLY_PRESETS}\n` };
 
   it.each([
     ['named', ['prompt', 'bug-hunt']],
@@ -685,7 +710,7 @@ describe('presets outside audit', () => {
     const home = tempDir();
     mkdirSync(join(home, 'jevlint'));
     writeFileSync(join(home, 'jevlint/config.toml'), '[agents.noop]\ncommand = ["true"]\n');
-    const cwd = project({ ...NARROW, 'a.ts': HIDES_FAILURE });
+    const cwd = project({ ...MODEL_FREE, 'a.ts': HIDES_FAILURE });
     const flags = ['--agent', 'noop', '--yes', '--allow-dirty'];
     expect(jevlintAt(home, cwd, 'fix', ...flags).stderr).toContain('Nothing to fix');
     const { status, stdout } = jevlintAt(home, cwd, 'fix', 'bug-hunt', ...flags);
@@ -825,7 +850,7 @@ describe('quickfix', () => {
     const command = JSON.stringify([process.execPath, '-e', script]);
     writeFileSync(
       join(home, 'jevlint/config.toml'),
-      `[agents.stub]\nquickfix_command = ${command}\ncommand = ["false"]\n`,
+      `${AST_ONLY_PRESETS}\n[agents.stub]\nquickfix_command = ${command}\ncommand = ["false"]\n`,
     );
     const cwd = project(files);
     return jevlintAt(home, cwd, 'quickfix', '--agent', 'stub', '--yes', '--allow-dirty', ...flags);
@@ -851,7 +876,7 @@ describe('quickfix', () => {
       dirty = {},
       flags = [],
       repoToml,
-      userToml = '',
+      userToml = AST_ONLY_PRESETS,
       trust = false,
       files = {},
     }: RepoOptions = {},

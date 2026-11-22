@@ -32,6 +32,12 @@ externals:
   - { id: picocolors, title: picocolors, packages: [picocolors] }
   - { id: smol_toml, title: smol-toml, packages: [smol-toml] }
   - { id: tinyglobby, title: tinyglobby, packages: [tinyglobby] }
+  - {
+      id: web_tree_sitter,
+      title: web-tree-sitter,
+      packages: [web-tree-sitter],
+      summary: "Parsing for the built-in model",
+    }
   - { id: yaml, title: yaml, packages: [yaml] }
   - { id: zod, title: zod, packages: [zod] }
 rules:

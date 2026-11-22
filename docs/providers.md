@@ -18,6 +18,7 @@ model = "jev-latest"   # optional
 | `cloudflare` | `clef` | `CLOUDFLARE_API_TOKEN` | Workers AI. `clef-flash` is the faster variant |
 | `microsoft` | none, set `model` | `AZURE_API_KEY` | Microsoft Foundry. Requires `base_url` |
 | `compatible` | none, set `model` | `JEVLINT_API_KEY` | Any Jev-compatible endpoint. Requires `base_url` |
+| `local` | built in | none | [The built-in model](#the-built-in-model). Runs on your machine, for 20 questions |
 
 ## Cost estimates
 
@@ -37,12 +38,39 @@ Prices were checked on 2026-11-05 and are built in, so they can go stale. A run 
 cost for any other model, and for `microsoft` and `compatible`. Your provider's bill is the real
 figure.
 
+## The built-in model
+
+jevlint ships with a small model of its own, the `local` provider. It needs no key, sends nothing
+and costs nothing, and it loads in under a second, then takes a few milliseconds a file. It answers
+the 20 questions of `readable-code`, `clean-code` and `security`, which it learned from a large
+decision model's answers. [models/README.md](../models/README.md) says how it was made and how
+closely it agrees with that model.
+
+- **With no key, audits use it.** `audit`, `explain`, `prompt`, `fix`, `quickfix`, `baseline`, `pr`
+  and `commits` score files with it and say so on stderr. `--ast-only` still runs no model at all.
+- **To use it even when you have a key,** for example to keep code on your machine:
+
+  ```toml
+  [provider]
+  name = "local"
+  ```
+
+- **It answers only the questions it knows.** With `full`, the default, a file's model score comes
+  from those 20 questions, and the other presets' questions get no answer. It knows a question by
+  its wording, so a question you reword, or one from your own preset, gets no answer.
+- **It cannot judge rules, intent, specs or architecture.** Those ask questions written for each
+  match or change. Semantic rules are skipped, and `--intent`, `spec`, `architecture review` and
+  `test` run as they do with no key.
+- **It is a stand-in, not a substitute.** It agrees with the large model well on structure and less
+  well on rare problems such as weak cryptography. Use a provider when the answers matter.
+
 ## Fallback
 
 With no key for the configured provider, jevlint uses the first of `typesafe`, `openai`, `gateway`
 and `cloudflare` that has one, with that provider's default model, and prints which it used.
 `cloudflare` also needs `CLOUDFLARE_ACCOUNT_ID`. `microsoft` and `compatible` need `base_url`, so
-they are never a fallback. Run `jevlint audit --dry-run` to see where files would go.
+they are never a fallback. With no key at all, audits use [the built-in model](#the-built-in-model).
+Run `jevlint audit --dry-run` to see where files would go.
 
 ## Test status
 
@@ -56,9 +84,11 @@ Only one provider has been run against its live service so far. Reports from the
 | `cloudflare` | Adapter tested against a fake server built from Cloudflare's documented format |
 | `compatible` | Shares the `typesafe` code path. Not tested live |
 | `microsoft` | Experimental. Not tested live |
+| `local` | Runs in the test suite, which checks its answers against the values from training |
 
 ## Which should I use?
 
+- **You have no key, or your code must stay on your machine:** `local`, for a first ranking.
 - **You have Jev access:** `typesafe`.
 - **You have no waitlist access:** `gateway` or `cloudflare`, which both offer decision models
   without waiting.

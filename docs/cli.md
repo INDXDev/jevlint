@@ -38,8 +38,9 @@ stops with a suggestion rather than auditing nothing. See [Choosing presets](pre
 | `--fail-under <n>` | Exit 1 if the repository score is below `n` |
 | `--concurrency <n>` | Maximum parallel provider requests |
 
-With no usable key for any provider, `audit` prints a notice and runs AST-only. `--dry-run` and `--ast-only` work
-with no key.
+With no usable key for any provider, `audit` prints a notice and scores files with
+[the built-in model](providers.md#the-built-in-model), on this machine. `--ast-only` runs no model
+at all. `--dry-run` and `--ast-only` work with no key.
 
 ### Output formats
 

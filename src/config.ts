@@ -65,6 +65,7 @@ const provider = z.strictObject({
     'cloudflare',
     'microsoft',
     'compatible',
+    'local',
   ] as const satisfies ProviderName[]),
   model: z.string().optional(),
   account_id: z.string().optional(),

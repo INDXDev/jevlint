@@ -8,6 +8,7 @@ import { analyzeGeneric } from './ast/generic.ts';
 import { languageOf } from './ast/languages.ts';
 import { type Config, UserError } from './config.ts';
 import {
+  answerable,
   decideFile,
   decisionRequest,
   isDecisionCached,
@@ -98,16 +99,24 @@ async function reviewWithModel(
   { code, questionPins }: Directives,
   { config, options, resolved, questions }: Run,
 ): Promise<{ model: ModelResult | null; warnings: string[] }> {
-  if (!resolved || questions.length === 0 || code.trim() === '') {
+  // The built-in model answers only the questions it was trained on, and the file scores on those.
+  const asked = resolved ? answerable(resolved, questions) : [];
+  if (!resolved || asked.length === 0 || code.trim() === '') {
     return { model: null, warnings: [] };
   }
   try {
     const { noCache } = options;
-    const decision = await decideFile({ resolved, questions, source: code, config, noCache });
+    const decision = await decideFile({
+      resolved,
+      questions: asked,
+      source: code,
+      config,
+      noCache,
+    });
     const warnings = decision.truncated
       ? [`File truncated: the model saw only the first ${config.max_file_chars} characters.`]
       : [];
-    return { model: modelResult(questions, decision, questionPins), warnings };
+    return { model: modelResult(asked, decision, questionPins), warnings };
   } catch (error) {
     if (error instanceof UserError) throw error;
     return { model: null, warnings: [`${PROVIDER_ERROR} ${errorMessage(error)}`] };
@@ -201,7 +210,7 @@ export async function audit(config: Config, options: AuditOptions = {}): Promise
   const presets = await loadPresets(config.presets, options.presetsRoot ?? config.root);
   const [paths, resolved, commits] = await Promise.all([
     discoverFiles(config, options.paths),
-    options.astOnly ? null : createDecisionModel(config),
+    options.astOnly ? null : createDecisionModel(config, { local: true }),
     commitCounts(config.root, config.priority.churn_days),
   ]);
   const questions = activeQuestions(presets, config.weights);

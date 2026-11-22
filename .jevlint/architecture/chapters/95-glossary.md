@@ -1,6 +1,6 @@
 ---
 title: Glossary
-evidence: [src/types.ts:13-182, src/types.ts:533-555, src/types.ts:716-756, src/directives.ts:1-10, src/rules.ts:1, src/config.ts:11-19, src/baseline.ts:1-11, src/fixtures.ts:1, src/architecture/facts.ts:1-4, src/architecture/review.ts:26-31, docs/concepts.md]
+evidence: [src/types.ts:17-186, src/types.ts:537-559, src/types.ts:720-760, src/directives.ts:1-10, src/rules.ts:1, src/config.ts:11-19, src/baseline.ts:1-11, src/fixtures.ts:1, src/architecture/facts.ts:1-4, src/architecture/review.ts:26-31, docs/concepts.md]
 ---
 
 | Term | Meaning here | In the code |

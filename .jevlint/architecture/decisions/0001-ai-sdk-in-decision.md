@@ -5,7 +5,7 @@ date: 2026-11-05
 status: accepted
 components: [decision]
 enforced_by: [ai-sdk-only-in-decision]
-evidence: [docs/architecture.md:161-166, src/decision/providers.ts:9, src/decision/providers.ts:32-40, src/decision/decide.ts:12-18, commit:e5d06f4, commit:cd3216c]
+evidence: [docs/architecture.md:161-166, src/decision/providers.ts:11, src/decision/providers.ts:46-54, src/decision/decide.ts:12-18, commit:e5d06f4, commit:cd3216c]
 ---
 
 Dated from commit e5d06f4, the initial release, whose `docs/architecture.md` first records it.
@@ -19,7 +19,7 @@ Vercel gateway, Cloudflare, Microsoft and generic endpoints.
 
 Use the AI SDK's `experimental_decide`, which already handles the protocol, retries and validation.
 Cloudflare, Microsoft and generic endpoints reuse the TypeSafe provider with another base URL.
-Cloudflare's response envelope is unwrapped by a `fetch` shim (`src/decision/providers.ts:32-40`).
+Cloudflare's response envelope is unwrapped by a `fetch` shim (`src/decision/providers.ts:46-54`).
 All of it stays in `src/decision/` (`docs/architecture.md:161-164`).
 
 ### Consequences

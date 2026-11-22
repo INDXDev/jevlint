@@ -80,7 +80,8 @@ file_score = (ast_weight × ast_score + model_weight × model_score) / (ast_weig
 ```
 
 If only one engine ran, its score is the file score. That happens with `--ast-only`, for a file in
-which no function was found, or after a provider error. A file with neither engine is listed as skipped.
+which no function was found, after a provider error, or when [the built-in model](providers.md#the-built-in-model)
+knows none of the active questions. When it knows some of them, the model score comes from those. A file with neither engine is listed as skipped.
 
 ## Repository score
 

@@ -45,7 +45,10 @@ async function askChoices(config: Config, initial: string[]): Promise<Choices> {
   const provider = answered(
     await select<ProviderName>({
       message: 'Which provider runs the decision model?',
-      options: (Object.keys(KEY_ENV) as ProviderName[]).map((value) => ({ value })),
+      options: [
+        ...(Object.keys(KEY_ENV) as ProviderName[]).map((value) => ({ value })),
+        { value: 'local' as const, hint: 'built in: no key, and no code leaves this machine' },
+      ],
       initialValue: config.provider.name,
       ...PROMPT_IO,
     }),
@@ -106,7 +109,7 @@ export const initCommand = defineCommand({
     // Atomic, so a symlink the repository planted here is replaced, not written through.
     await writeFileAtomic(target, renderConfig(choices));
 
-    const hasKey = (await keySource(choices.provider)) !== null;
+    const hasKey = choices.provider === 'local' || (await keySource(choices.provider)) !== null;
     const next = hasKey ? 'jevlint audit --dry-run' : `jevlint auth set ${choices.provider}`;
     console.error(`Wrote ${target}\nNext: ${next}`);
   },

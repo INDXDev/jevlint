@@ -33,7 +33,7 @@ warn_file_count = 1000  # warn when more files than this are in scope
 max_rule_matches = 20   # user config only: semantic rule matches judged per rule per file
 
 [provider]
-name = "typesafe"
+name = "typesafe"       # "local" for the built-in model, which needs no key
 model = "jev-latest"    # default depends on the provider
 # account_id = "..."    # Cloudflare only
 # base_url = "..."      # user config only, set with the provider's name

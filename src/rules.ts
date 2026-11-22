@@ -2,6 +2,7 @@
 import { patternMatches } from './ast/analyze.ts';
 import { type Config, UserError } from './config.ts';
 import {
+  answerable,
   decideFile,
   decisionRequest,
   isDecisionCached,
@@ -105,9 +106,10 @@ export async function judgeRules(
   const hits: AstFinding[] = [];
   let usage: RuleUsage | undefined;
   for (const { rule, line, text } of requests) {
+    const questions = answerable(resolved, [ruleQuestion(rule)]);
+    if (questions.length === 0) continue;
     try {
       const { noCache } = options;
-      const questions = [ruleQuestion(rule)];
       const decision = await decideFile({ resolved, questions, source: text, config, noCache });
       usage = withDecision(usage, decision);
       if (decision.truncated) {

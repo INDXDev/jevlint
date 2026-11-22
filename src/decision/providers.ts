@@ -4,10 +4,13 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createTypeSafeAi, type TypeSafeAiProvider } from '@ai-sdk/typesafe-ai';
 import { type Config, UserError } from '../config.ts';
 import { getApiKey } from '../credentials.ts';
-import type { ProviderName } from '../types.ts';
+import type { KeyedProviderName, ProviderName } from '../types.ts';
+import type { DecisionQuestion } from './decide.ts';
+import { LOCAL_PROVIDER, localDecisionModel } from './local.ts';
 
 type DecisionModel = ReturnType<TypeSafeAiProvider['decisionModel']>;
 type ProviderConfig = Config['provider'];
+type KeyedProviderConfig = ProviderConfig & { name: KeyedProviderName };
 type Build = (apiKey: string, modelId: string, provider: ProviderConfig) => DecisionModel;
 
 /** A ready model, with the names that identify it in reports and cache keys. */
@@ -17,10 +20,21 @@ export interface ResolvedModel {
   modelId: string;
   /** The custom endpoint, whose same-named model may be a different one. */
   endpoint?: string;
+  /** Says which questions the model can answer, when it cannot answer every question. */
+  answers?: (question: DecisionQuestion) => boolean;
 }
 
 /** The names that identify a model, which need no API key. */
 export type ModelTarget = Pick<ResolvedModel, 'provider' | 'modelId' | 'endpoint'>;
+
+/** What a caller of `createDecisionModel` can use. */
+export interface ModelNeeds {
+  /**
+   * Accept the built-in model, which answers only the audit questions it was trained on: when the
+   * config names it, and when no provider has a key.
+   */
+  local?: boolean;
+}
 
 const DEFAULT_MODELS: Partial<Record<ProviderName, string>> = {
   typesafe: 'jev-latest',
@@ -55,7 +69,7 @@ const jevEndpoint: Build = (apiKey, modelId, { name, base_url }) => {
   return createTypeSafeAi({ apiKey, baseURL: base_url }).decisionModel(modelId);
 };
 
-const BUILDERS: Record<ProviderName, Build> = {
+const BUILDERS: Record<KeyedProviderName, Build> = {
   typesafe: (apiKey, modelId) => createTypeSafeAi({ apiKey }).decisionModel(modelId),
   openai: (apiKey, modelId) => createOpenAI({ apiKey }).decisionModel(modelId),
   gateway: (apiKey, modelId) => createGateway({ apiKey }).decisionModel(modelId),
@@ -69,11 +83,11 @@ const BUILDERS: Record<ProviderName, Build> = {
  * A fallback gets no configured model or endpoint: those belong to the configured provider.
  */
 async function keyedProvider(
-  configured: ProviderConfig,
-): Promise<{ provider: ProviderConfig; apiKey: string } | null> {
+  configured: KeyedProviderConfig,
+): Promise<{ provider: KeyedProviderConfig; apiKey: string } | null> {
   const apiKey = await getApiKey(configured.name);
   if (apiKey) return { provider: configured, apiKey };
-  for (const name of Object.keys(DEFAULT_MODELS) as ProviderName[]) {
+  for (const name of Object.keys(DEFAULT_MODELS) as KeyedProviderName[]) {
     if (name === 'cloudflare' && !process.env.CLOUDFLARE_ACCOUNT_ID) continue;
     const apiKey = await getApiKey(name);
     if (apiKey) return { provider: { name }, apiKey };
@@ -87,10 +101,25 @@ export function configuredTarget({ provider }: Config): ModelTarget {
   return { provider: name, modelId: model ?? DEFAULT_MODELS[name] ?? '', endpoint };
 }
 
-/** Builds the model from config. Returns null with no usable key, so a run can use the AST alone. */
-export async function createDecisionModel(config: Config): Promise<ResolvedModel | null> {
-  const keyed = await keyedProvider(config.provider);
-  if (!keyed) return null;
+async function localModel(): Promise<ResolvedModel> {
+  const { model, modelId, answers } = await localDecisionModel();
+  // The AI SDK's provider-specific model types all implement the same decision model contract.
+  return { model: model as DecisionModel, provider: LOCAL_PROVIDER, modelId, answers };
+}
+
+const isKeyed = (provider: ProviderConfig): provider is KeyedProviderConfig =>
+  provider.name !== LOCAL_PROVIDER;
+
+/**
+ * Builds the model from config. Without a usable key, returns the built-in model if the caller
+ * accepts it, or else null, so a run can use the AST alone.
+ */
+export async function createDecisionModel(
+  config: Config,
+  { local = false }: ModelNeeds = {},
+): Promise<ResolvedModel | null> {
+  const keyed = isKeyed(config.provider) ? await keyedProvider(config.provider) : null;
+  if (!keyed) return local ? localModel() : null;
   const { provider, apiKey } = keyed;
   const modelId = provider.model ?? DEFAULT_MODELS[provider.name];
   if (!modelId) throw new UserError(`Provider "${provider.name}" needs provider.model.`);

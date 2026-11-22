@@ -1,6 +1,6 @@
 ---
 title: Risks and debt
-evidence: [AGENTS.md, src/types.ts:1, src/report.ts:1-14, src/decision/decide.ts:10, test/architecture-views.test.ts, test/architecture-extract.test.ts, src/architecture/check.ts:6, src/fixtures.ts:6, src/decision/decide.ts:17-18, src/decision/decide.ts:163-164, src/commands/shared.ts:1-17, docs/architecture.md:64-70, docs/architecture-reference.md:258-267, commit:94cda93, commit:d7fb1fc]
+evidence: [AGENTS.md, src/types.ts:1, src/report.ts:1-14, src/decision/decide.ts:10, test/architecture-views.test.ts, test/architecture-extract.test.ts, src/architecture/check.ts:6, src/fixtures.ts:6, src/decision/decide.ts:17-18, src/decision/decide.ts:173-174, src/commands/shared.ts:1-17, docs/architecture.md:64-70, docs/architecture-reference.md:258-267, commit:94cda93, commit:d7fb1fc]
 ---
 
 This chapter draws on the static facts of the commit in `compiled_at`. Run `jevlint architecture
@@ -49,7 +49,7 @@ plan` to rank these items by severity, churn and fan-in.
 - **Calls outside the import graph** are invisible: spawned agents and fixers, `gh`, the bucket
   over `fetch`. The views draw them dashed. Checklist items cover the parts that matter.
 - **Global side effects.** Importing `src/decision/decide.ts` turns off AI SDK warnings for the
-  whole process (`src/decision/decide.ts:18`), and the in-flight map (`src/decision/decide.ts:164`)
+  whole process (`src/decision/decide.ts:18`), and the in-flight map (`src/decision/decide.ts:174`)
   is shared module state that a long-lived library caller keeps.
 
 ### Thin test coverage by name
