@@ -59,7 +59,7 @@
     "picocolors": "^1.1.1",
     "smol-toml": "^1.9.1",
     "tinyglobby": "^0.2.17",
-    "web-tree-sitter": "0.25.10",
+    "web-tree-sitter": "0.27.2",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
